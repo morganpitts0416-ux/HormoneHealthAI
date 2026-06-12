@@ -3447,17 +3447,20 @@ export default function PatientProfiles() {
                       </button>
                     </div>
 
-                    {/* Collapsible: email, address, MRN, pharmacy, portal status, lab count */}
+                    {/* Always-visible: address */}
+                    {(selectedPatient as any).address && (
+                      <div className="mt-1 flex items-center gap-1">
+                        <MapPin className="w-3 h-3 flex-shrink-0 text-muted-foreground" />
+                        <span className="text-xs text-muted-foreground">{(selectedPatient as any).address}</span>
+                      </div>
+                    )}
+
+                    {/* Collapsible: email, MRN, pharmacy, portal status, lab count */}
                     {showFullDemographics && (
                       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1.5 pl-0">
                         {(selectedPatient as any).email && (
                           <span className="text-xs text-muted-foreground flex items-center gap-1">
                             <Mail className="w-3 h-3" /> {(selectedPatient as any).email}
-                          </span>
-                        )}
-                        {(selectedPatient as any).address && (
-                          <span className="text-xs text-muted-foreground flex items-center gap-1 basis-full">
-                            <MapPin className="w-3 h-3 flex-shrink-0" /> {(selectedPatient as any).address}
                           </span>
                         )}
                         {selectedPatient.mrn && (

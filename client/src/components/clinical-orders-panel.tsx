@@ -170,14 +170,17 @@ function OrderDetailDrawer({
   async function handlePrint() {
     setPrinting(true);
     try {
-      // Always fetch chart data fresh at print time so medications/history are current
-      let freshChart: any = null;
-      try {
-        const chartRes = await apiRequest("GET", `/api/patients/${order.patientId}/chart`);
-        if (chartRes.ok) freshChart = await chartRes.json();
-      } catch {
-        freshChart = chartData ?? null;
-      }
+      // Always fetch patient + chart data fresh at print time — avoids stale cache
+      const [freshPatientRes, freshChartRes] = await Promise.allSettled([
+        apiRequest("GET", `/api/patients/${order.patientId}`),
+        apiRequest("GET", `/api/patients/${order.patientId}/chart`),
+      ]);
+      const freshPatient = (freshPatientRes.status === "fulfilled" && freshPatientRes.value.ok)
+        ? (await freshPatientRes.value.json())?.patient ?? null
+        : patientData?.patient ?? null;
+      const freshChart = (freshChartRes.status === "fulfilled" && freshChartRes.value.ok)
+        ? await freshChartRes.value.json()
+        : chartData ?? null;
 
       await generateOrderPDF({
         order: {
@@ -197,16 +200,16 @@ function OrderDetailDrawer({
           createdAt: order.createdAt,
         },
         patient: {
-          firstName: patientData?.patient?.firstName ?? order.patientFirstName ?? "Patient",
-          lastName: patientData?.patient?.lastName ?? order.patientLastName ?? "",
-          dateOfBirth: patientData?.patient?.dateOfBirth ?? null,
-          gender: patientData?.patient?.gender ?? null,
-          mrn: patientData?.patient?.mrn ?? null,
-          phone: patientData?.patient?.phone ?? null,
-          email: patientData?.patient?.email ?? null,
-          address: patientData?.patient?.address ?? null,
-          insuranceCarrier: patientData?.patient?.insuranceCarrier ?? null,
-          insuranceMemberId: patientData?.patient?.insuranceMemberId ?? null,
+          firstName: freshPatient?.firstName ?? order.patientFirstName ?? "Patient",
+          lastName: freshPatient?.lastName ?? order.patientLastName ?? "",
+          dateOfBirth: freshPatient?.dateOfBirth ?? null,
+          gender: freshPatient?.gender ?? null,
+          mrn: freshPatient?.mrn ?? null,
+          phone: freshPatient?.phone ?? null,
+          email: freshPatient?.email ?? null,
+          address: freshPatient?.address ?? null,
+          insuranceCarrier: freshPatient?.insuranceCarrier ?? null,
+          insuranceMemberId: freshPatient?.insuranceMemberId ?? null,
         },
         providerName: order.orderingProvider
           ? `${order.orderingProvider.firstName} ${order.orderingProvider.lastName}`.trim()
