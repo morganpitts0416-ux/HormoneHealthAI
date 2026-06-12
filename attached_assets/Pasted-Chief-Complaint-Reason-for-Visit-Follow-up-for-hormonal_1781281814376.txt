@@ -1,0 +1,75 @@
+Chief Complaint / Reason for Visit — Follow-up for hormonal and metabolic concerns
+SUBJECTIVE
+HPI: Molly Gee Webster presents for a follow-up visit with concerns about hormonal irregularities, worsening ADD symptoms, and metabolic health. She reports an exacerbation of ADD symptoms, experiencing a severe migraine mid-week, and menstrual irregularities, including spotting two days ago followed by the onset of her period today. She notes a lack of consistent tracking of her menstrual cycle but recalls a shift in timing over the past six months. Molly describes symptoms of brain fog, excessive sweating, heaviness in her head, forgetfulness, and possibly erratic sleep patterns. She expresses concern about her risk for future Hashimoto's disease, given her history of Epstein-Barr virus and low TSH levels in the past.
+
+Recent lab results were reviewed, showing a TSH of 1.43, which is within normal limits, and a ferritin level of 23, indicating low iron stores. Her vitamin D level is 25.7 ng/mL, which is suboptimal. The cholesterol panel revealed a total cholesterol of 200 mg/dL and LDL of 117 mg/dL, with an ApoB of 84 mg/dL and lipoprotein A elevated at 68 mg/dL. Molly's A1c is 5.6%, suggesting early insulin resistance. She is currently taking Primal Queen Beef Organs as a supplement.
+
+Discussed the role of vitamin D in hormonal balance and brain function, emphasizing the need to increase her levels to 80-100 ng/mL. Consideration was given to rechecking hormone levels in two weeks to assess fluctuations related to her menstrual cycle. The potential addition of CoQ10 and Omega fish oils was explored to support cardiovascular health and mitochondrial function.
+
+Current Medications: 
+
+Primal Queen Beef Organs [dose unknown] [route unknown] [frequency unknown]
+
+Medical History: 
+
+Allergies: Not reported at this visit
+
+Past Medical Hx: Cystic acne, Epstein-Barr virus, Concern for Hashimoto's in the future
+
+Past Surgical Hx: Ruptured ovary in fall of 2004, removed one tenth of ovary; Surgery in 2021 for enlarged ovary
+
+Social Hx: Not mentioned
+
+Family Hx: Father may have cholesterol-related issues; Mother had multiple system atrophy
+
+ROS
+
+Constitutional
+Reports fatigue; denies fever.
+HEENT
+Reports heaviness in head; denies vision changes.
+Genitourinary
+Reports menstrual irregularities; spotting and period onset noted.
+Skin
+Reports excessive sweating; denies rash.
+Neurological
+Reports migraine; denies seizures.
+Psychiatric
+Reports worsening ADD symptoms; denies anxiety.
+Endocrine
+Reports hormonal irregularities; denies diabetes.
+OBJECTIVE
+Vital Signs: BP: 122/73 mmHg  |  HR: 65 bpm  |  Ht: 64 in  |  Wt: 150.6 lbs  |  BMI: 25.8
+
+ASSESSMENT/PLAN
+1. Late Perimenopausal Transition (N95.9)
+
+Molly is experiencing symptoms consistent with late perimenopausal transition, including menstrual irregularities, brain fog, and excessive sweating. Her vitamin D level is low, which may contribute to these symptoms.
+
+Plan: Recheck hormone levels in two weeks to assess cycle-related changes. Consider vitamin D supplementation to reach 80-100 ng/mL.
+
+2. Iron Deficiency (D50.9)
+
+Low ferritin level of 23 suggests iron deficiency. Discussed dietary sources of iron and potential supplementation options.
+
+Plan: Monitor iron levels. Consider iron supplementation if symptoms persist.
+
+3. Early Insulin Resistance (R73.03)
+
+A1c of 5.6% suggests early insulin resistance. Discussed lifestyle modifications and potential supplementation with berberine for metabolic support.
+
+Plan: Monitor A1c and consider lifestyle modifications. Reassess in three months.
+
+CARE PLAN
+Increase vitamin D intake to 80-100 ng/mL to support hormonal balance and brain function.
+
+Monitor iron levels and consider dietary adjustments or supplements if needed.
+
+Recheck hormone levels in two weeks to assess fluctuations related to menstrual cycle.
+
+Consider lifestyle modifications to address early insulin resistance.
+
+Return in two weeks for follow-up on hormone levels and symptom tracking.
+
+FOLLOW-UP
+Return in two weeks to reassess hormone levels and symptom tracking.
