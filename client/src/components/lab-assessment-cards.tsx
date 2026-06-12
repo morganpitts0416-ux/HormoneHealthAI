@@ -830,6 +830,17 @@ export function FemaleHormonePatternCard({
 export function InsulinResistanceCard({ insulinResistance }: { insulinResistance: InsulinResistanceScreening }) {
   if (insulinResistance.likelihood === 'none') return null;
 
+  const ir = insulinResistance as InsulinResistanceScreening & {
+    score?: number; maxScore?: number; missingMarkers?: string[]; a1cSafetyNote?: string | null;
+  };
+  const score    = ir.score    ?? ir.positiveCount;
+  const maxScore = ir.maxScore ?? 6;
+  const missingMarkers: string[] = ir.missingMarkers ?? [];
+  const a1cSafetyNote = ir.a1cSafetyNote ?? null;
+
+  const primaryPhenotype   = insulinResistance.phenotypes.find((p: any) => p.isPrimary) ?? insulinResistance.phenotypes[0];
+  const secondaryPhenotypes = insulinResistance.phenotypes.filter((p: any) => !p.isPrimary && p !== primaryPhenotype);
+
   return (
     <Card data-testid="card-insulin-resistance">
       <CardHeader>
@@ -840,15 +851,25 @@ export function InsulinResistanceCard({ insulinResistance }: { insulinResistance
           </div>
           {insulinResistance.likelihood === 'high' ? (
             <Badge variant="destructive" data-testid="badge-ir-high">High Likelihood</Badge>
+          ) : insulinResistance.likelihood === 'early' ? (
+            <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-950/30 dark:text-yellow-400 dark:border-yellow-800" data-testid="badge-ir-early">Early / Emerging</Badge>
           ) : (
             <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800" data-testid="badge-ir-moderate">Moderate Likelihood</Badge>
           )}
         </div>
         <CardDescription>
-          {insulinResistance.positiveCount} of 6 screening markers positive
+          {score} / {maxScore} weighted points — {insulinResistance.likelihoodLabel.toLowerCase()}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
+
+        {a1cSafetyNote && (
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-yellow-50/50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800" data-testid="text-ir-a1c-safety">
+            <AlertTriangle className="w-4 h-4 text-yellow-600 dark:text-yellow-400 shrink-0 mt-0.5" />
+            <p className="text-sm text-yellow-800 dark:text-yellow-300">{a1cSafetyNote}</p>
+          </div>
+        )}
+
         <div>
           <h4 className="text-sm font-semibold mb-3">Screening Markers</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -868,9 +889,17 @@ export function InsulinResistanceCard({ insulinResistance }: { insulinResistance
                   {marker.value}
                 </span>
                 <p className="text-xs text-muted-foreground mt-1">Threshold: {marker.threshold}</p>
+                {(marker as any).points !== undefined && (
+                  <p className="text-xs text-muted-foreground">{(marker as any).points} / {(marker as any).maxPoints} pt{(marker as any).maxPoints !== 1 ? 's' : ''}</p>
+                )}
               </div>
             ))}
           </div>
+          {missingMarkers.length > 0 && (
+            <p className="text-xs text-muted-foreground mt-2" data-testid="text-ir-missing">
+              Not available: {missingMarkers.join(' · ')}
+            </p>
+          )}
         </div>
 
         {insulinResistance.phenotypes.length > 0 && (
@@ -878,15 +907,16 @@ export function InsulinResistanceCard({ insulinResistance }: { insulinResistance
             <Separator />
             <div className="space-y-4">
               <h4 className="text-sm font-semibold">Identified Phenotype(s)</h4>
-              {insulinResistance.phenotypes.map((phenotype, idx) => (
-                <div key={idx} className="space-y-3 p-4 rounded-lg bg-muted/30 border" data-testid={`ir-phenotype-${idx}`}>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">{phenotype.name}</Badge>
+
+              {primaryPhenotype && (
+                <div className="space-y-3 p-4 rounded-lg bg-muted/30 border" data-testid="ir-phenotype-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">Primary: {primaryPhenotype.name}</Badge>
                   </div>
                   <div>
                     <p className="text-xs font-medium uppercase text-muted-foreground mb-1">Diagnostic Criteria Met</p>
                     <ul className="text-sm space-y-0.5">
-                      {phenotype.matchedCriteria.map((c, i) => (
+                      {primaryPhenotype.matchedCriteria.map((c: string, i: number) => (
                         <li key={i} className="flex items-center gap-1.5">
                           <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />
                           {c}
@@ -896,12 +926,12 @@ export function InsulinResistanceCard({ insulinResistance }: { insulinResistance
                   </div>
                   <div>
                     <p className="text-xs font-medium uppercase text-muted-foreground mb-1">Pathophysiology</p>
-                    <p className="text-sm">{phenotype.pathophysiology}</p>
+                    <p className="text-sm">{primaryPhenotype.pathophysiology}</p>
                   </div>
                   <div>
                     <p className="text-xs font-medium uppercase text-muted-foreground mb-1">Treatment Plan</p>
                     <ul className="text-sm space-y-0.5">
-                      {phenotype.treatmentRecommendations.map((rec, i) => (
+                      {primaryPhenotype.treatmentRecommendations.map((rec: string, i: number) => (
                         <li key={i} className="flex items-start gap-1.5">
                           <span className="text-primary mt-0.5 shrink-0">–</span>
                           {rec}
@@ -909,12 +939,36 @@ export function InsulinResistanceCard({ insulinResistance }: { insulinResistance
                       ))}
                     </ul>
                   </div>
+                  {(primaryPhenotype as any).supplementConsiderations?.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium uppercase text-muted-foreground mb-1">Supplement Considerations</p>
+                      <ul className="text-sm space-y-0.5">
+                        {(primaryPhenotype as any).supplementConsiderations.map((s: string, i: number) => (
+                          <li key={i} className="flex items-start gap-1.5">
+                            <span className="text-muted-foreground mt-0.5 shrink-0">·</span>
+                            {s}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   <div>
                     <p className="text-xs font-medium uppercase text-muted-foreground mb-1">Monitoring</p>
-                    <p className="text-sm">{phenotype.monitoringPlan}</p>
+                    <p className="text-sm">{primaryPhenotype.monitoringPlan}</p>
                   </div>
                 </div>
-              ))}
+              )}
+
+              {secondaryPhenotypes.length > 0 && (
+                <div className="p-3 rounded-lg bg-muted/20 border" data-testid="ir-secondary-phenotypes">
+                  <p className="text-xs font-medium uppercase text-muted-foreground mb-2">Supporting Contributors</p>
+                  <div className="flex flex-wrap gap-2">
+                    {secondaryPhenotypes.map((p: any, i: number) => (
+                      <Badge key={i} variant="outline" className="text-muted-foreground">{p.name}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </>
         )}

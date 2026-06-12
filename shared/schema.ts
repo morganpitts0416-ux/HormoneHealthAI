@@ -348,6 +348,7 @@ export const supplementRecommendationSchema = z.object({
   priority: z.enum(['high', 'medium', 'low']),
   category: z.enum(['iron', 'vitamin', 'mineral', 'hormone-support', 'cardiovascular', 'thyroid', 'bone', 'general', 'detox', 'metabolic', 'probiotic']),
   caution: z.string().optional(),
+  timing: z.string().optional(),
   supportingFindings: z.array(z.string()).optional(),
   patientExplanation: z.string().optional(),
   confidenceLevel: z.enum(['high', 'moderate', 'supportive']).optional(),
@@ -445,28 +446,37 @@ export const insulinResistanceMarkerSchema = z.object({
   value: z.union([z.number(), z.string()]),
   threshold: z.string(),
   positive: z.boolean(),
+  points: z.number().optional(),
+  maxPoints: z.number().optional(),
   detail: z.string(),
 });
 
 export const insulinResistancePhenotypeSchema = z.object({
   name: z.string(),
-  key: z.enum(['visceral_metabolic', 'hepatic', 'hormonal_pcos', 'early_lean']),
+  key: z.enum(['visceral_metabolic', 'hepatic', 'hormonal_low_shbg', 'hyperinsulinemic', 'inflammatory']),
+  isPrimary: z.boolean().optional(),
+  confidenceScore: z.number().optional(),
   triggerCriteria: z.array(z.string()),
   matchedCriteria: z.array(z.string()),
   pathophysiology: z.string(),
   treatmentRecommendations: z.array(z.string()),
+  supplementConsiderations: z.array(z.string()).optional(),
   monitoringPlan: z.string(),
   patientExplanation: z.string(),
 });
 
 export const insulinResistanceScreeningSchema = z.object({
   markers: z.array(insulinResistanceMarkerSchema),
+  missingMarkers: z.array(z.string()).optional(),
+  score: z.number().optional(),
+  maxScore: z.number().optional(),
   positiveCount: z.number(),
-  likelihood: z.enum(['none', 'moderate', 'high']),
+  likelihood: z.enum(['none', 'early', 'moderate', 'high']),
   likelihoodLabel: z.string(),
   phenotypes: z.array(insulinResistancePhenotypeSchema),
   confirmationTests: z.string(),
   providerSummary: z.string(),
+  a1cSafetyNote: z.string().nullable().optional(),
 });
 
 export type InsulinResistanceMarker = z.infer<typeof insulinResistanceMarkerSchema>;

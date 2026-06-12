@@ -1,0 +1,114 @@
+Update the ClinIQ insulin resistance screening logic.
+
+Goal:
+The current screening is too dependent on A1c ≥5.7, which flags later glucose dysregulation rather than early insulin resistance. We need the tool to detect early metabolic dysfunction before prediabetes.
+
+Create a new insulin resistance scoring model with weighted markers.
+
+Use these markers:
+
+1. A1c
+- <5.3 = 0 points
+- 5.3–5.4 = 1 point
+- 5.5–5.6 = 2 points
+- ≥5.7 = 3 points
+
+2. TG:HDL ratio
+- <2.0 = 0 points
+- 2.0–2.9 = 1 point
+- ≥3.0 = 2 points
+
+3. ApoB
+- <80 = 0 points
+- 80–89 = 1 point
+- ≥90 = 2 points
+
+4. ALT
+Female:
+- <20 = 0 points
+- 20–24 = 1 point
+- ≥25 = 2 points
+
+Male:
+- <25 = 0 points
+- 25–34 = 1 point
+- ≥35 = 2 points
+
+5. hs-CRP
+- <1.0 = 0 points
+- 1.0–1.9 = 1 point
+- ≥2.0 = 2 points
+
+6. SHBG
+Female:
+- ≥60 = 0 points
+- 40–59 = 1 point
+- <40 = 2 points
+
+Male:
+- ≥30 = 0 points
+- 20–29 = 1 point
+- <20 = 2 points
+
+7. Fasting insulin, if available
+- <8 = 0 points
+- 8–12 = 1 point
+- >12 = 2 points
+
+8. HOMA-IR, if fasting glucose and fasting insulin are available
+Formula:
+HOMA-IR = fasting insulin × fasting glucose / 405
+
+- <1.5 = 0 points
+- 1.5–2.4 = 1 point
+- ≥2.5 = 2 points
+
+Risk interpretation:
+- 0–2 points = Low likelihood of insulin resistance
+- 3–5 points = Early insulin resistance / emerging metabolic dysfunction
+- 6–8 points = Moderate insulin resistance
+- ≥9 points = High likelihood of insulin resistance
+
+Important:
+Do not require all markers to be present. Score only available markers, but display which markers were missing.
+
+Add phenotype classification:
+
+1. Hepatic/liver-driven insulin resistance
+Trigger if:
+- ALT elevated or borderline
+AND
+- TG:HDL elevated or A1c elevated
+
+2. Visceral/metabolic insulin resistance
+Trigger if:
+- TG:HDL ≥3
+OR
+- ApoB ≥90
+OR
+- BMI/waist circumference elevated if available
+
+3. Hyperinsulinemic insulin resistance
+Trigger if:
+- fasting insulin >12
+OR
+- HOMA-IR ≥2.5
+
+4. Inflammatory insulin resistance
+Trigger if:
+- hs-CRP ≥2.0
+
+5. Hormonal/low-SHBG insulin resistance
+Trigger if:
+- SHBG low for sex
+
+6. Mixed insulin resistance
+Trigger if more than one phenotype is positive.
+
+Documentation language:
+Generate a concise interpretation like:
+
+“Insulin Resistance Screening: [score]/[max available points]. Findings suggest [low/early/moderate/high] likelihood of insulin resistance. Positive markers include: [list]. Pattern is most consistent with [phenotype(s)]. This may represent early metabolic dysfunction even in the absence of prediabetes-range A1c.”
+
+Also add this safety rule:
+If A1c is <5.7 but multiple early markers are positive, do not say “no insulin resistance.” Instead say “A1c remains below the prediabetes threshold, but other markers suggest early insulin resistance physiology.”

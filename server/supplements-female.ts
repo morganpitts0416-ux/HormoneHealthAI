@@ -671,7 +671,7 @@ function evaluateBerberineGT(labs: FemaleLabValues, phenotypes: ClinicalPhenotyp
   const hasLowEnergy        = labs.lowEnergy === true;
 
   // PCOS / hormonal insulin resistance pattern via irScreening phenotypes
-  const hasPcosPhenotype    = irScreening?.phenotypes?.some(p => p.key === 'hormonal_pcos') ?? false;
+  const hasPcosPhenotype    = irScreening?.phenotypes?.some(p => p.key === 'hormonal_low_shbg') ?? false;
   const hasHepaticPhenotype = irScreening?.phenotypes?.some(p => p.key === 'hepatic') ?? false;
 
   if (irPhenotype) {

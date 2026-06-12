@@ -89,7 +89,12 @@ function detectInsulinResistancePhenotype(ctx: PhenotypeDetectionContext): Clini
   const hasWeightGain = labs.weightGain === true;
   const elevatedALT = labs.alt !== undefined && labs.alt > 25;
 
-  if (hasIR) findings.push(`Insulin resistance screening: ${irScreening!.likelihoodLabel} (${irScreening!.positiveCount}/6 markers positive)`);
+  if (hasIR) {
+    const irScore = (irScreening as any).score !== undefined
+      ? `${(irScreening as any).score}/${(irScreening as any).maxScore} pts`
+      : `${irScreening!.positiveCount} markers positive`;
+    findings.push(`Insulin resistance screening: ${irScreening!.likelihoodLabel} (${irScore})`);
+  }
   if (elevatedA1c) findings.push(`A1c ${labs.a1c}% (prediabetic range)`);
   if (highTGHDLRatio) findings.push(`TG:HDL ratio ${(labs.triglycerides! / labs.hdl!).toFixed(1)} (≥3.0)`);
   if (elevatedTriglycerides) findings.push(`Triglycerides ${labs.triglycerides} mg/dL (elevated)`);

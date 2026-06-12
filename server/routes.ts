@@ -1560,17 +1560,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // and rewrite the rationale to focus on adherence + dose optimization.
       supplements = annotateSupplementsWithContext(supplements, therapyContext);
 
-      console.log('[API] Male IR Screening:', insulinResistance ? `${insulinResistance.positiveCount} positive markers, ${insulinResistance.likelihoodLabel}` : 'Not calculated (insufficient markers)');
+      console.log('[API] Male IR Screening:', insulinResistance ? `score ${insulinResistance.score}/${insulinResistance.maxScore}, ${insulinResistance.likelihoodLabel}` : 'Not calculated (insufficient markers)');
 
       if (insulinResistance && insulinResistance.likelihood !== 'none') {
         const irStatus: 'normal' | 'borderline' | 'abnormal' | 'critical' = 
           insulinResistance.likelihood === 'high' ? 'critical' : 'abnormal';
         const irInterpretation = {
           category: 'Insulin Resistance Screening',
-          value: insulinResistance.positiveCount,
-          unit: 'of 6 markers positive',
+          value: insulinResistance.score,
+          unit: `/ ${insulinResistance.maxScore} pts`,
           status: irStatus,
-          referenceRange: '0-1 Low, 2 Moderate, 3+ High Likelihood',
+          referenceRange: '0–2 Low · 3–5 Early · 6–8 Moderate · ≥9 High',
           interpretation: insulinResistance.providerSummary,
           recommendation: insulinResistance.phenotypes.length > 0 
             ? `Phenotype(s): ${insulinResistance.phenotypes.map(p => p.name).join('; ')}. ${insulinResistance.confirmationTests}`
@@ -1904,17 +1904,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Step 7: Insulin Resistance Screening (moved before supplements for phenotype input)
       const insulinResistance = screenInsulinResistance(labs, 'female') || undefined;
-      console.log('[API] Female IR Screening:', insulinResistance ? `${insulinResistance.positiveCount} positive markers, ${insulinResistance.likelihoodLabel}` : 'Not calculated (insufficient markers)');
+      console.log('[API] Female IR Screening:', insulinResistance ? `score ${insulinResistance.score}/${insulinResistance.maxScore}, ${insulinResistance.likelihoodLabel}` : 'Not calculated (insufficient markers)');
 
       if (insulinResistance && insulinResistance.likelihood !== 'none') {
         const irStatus: 'normal' | 'borderline' | 'abnormal' | 'critical' = 
           insulinResistance.likelihood === 'high' ? 'critical' : 'abnormal';
         const irInterpretation = {
           category: 'Insulin Resistance Screening',
-          value: insulinResistance.positiveCount,
-          unit: 'of 6 markers positive',
+          value: insulinResistance.score,
+          unit: `/ ${insulinResistance.maxScore} pts`,
           status: irStatus,
-          referenceRange: '0-1 Low, 2 Moderate, 3+ High Likelihood',
+          referenceRange: '0–2 Low · 3–5 Early · 6–8 Moderate · ≥9 High',
           interpretation: insulinResistance.providerSummary,
           recommendation: insulinResistance.phenotypes.length > 0 
             ? `Phenotype(s): ${insulinResistance.phenotypes.map(p => p.name).join('; ')}. ${insulinResistance.confirmationTests}`

@@ -97,7 +97,7 @@ interface IRPhenotypeShape {
   name?: string;
 }
 interface IRScreeningShape {
-  likelihood?: "none" | "moderate" | "high";
+  likelihood?: "none" | "early" | "moderate" | "high";
   phenotypes?: IRPhenotypeShape[];
 }
 interface ClinicalPhenotypeShape {
@@ -150,7 +150,7 @@ export function detectedPhenotypeKeys(
   const keys = new Set<string>();
 
   if (inputs.irScreening) {
-    if (inputs.irScreening.likelihood === "moderate" || inputs.irScreening.likelihood === "high") {
+    if (inputs.irScreening.likelihood === "early" || inputs.irScreening.likelihood === "moderate" || inputs.irScreening.likelihood === "high") {
       keys.add("ir_likelihood_moderate");
     }
     if (inputs.irScreening.likelihood === "high") {

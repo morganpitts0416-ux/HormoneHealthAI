@@ -1,371 +1,496 @@
-import type { LabValues, FemaleLabValues } from "@shared/schema";
+import type { LabValues, FemaleLabValues, InsulinResistanceMarker, InsulinResistancePhenotype, InsulinResistanceScreening } from "@shared/schema";
 
-export interface InsulinResistanceMarker {
-  name: string;
-  value: number | string;
-  threshold: string;
-  positive: boolean;
-  detail: string;
-}
+export type { InsulinResistanceMarker, InsulinResistancePhenotype, InsulinResistanceScreening };
 
-export interface InsulinResistancePhenotype {
-  name: string;
-  key: 'visceral_metabolic' | 'hepatic' | 'hormonal_pcos' | 'early_lean';
-  triggerCriteria: string[];
-  matchedCriteria: string[];
-  pathophysiology: string;
-  treatmentRecommendations: string[];
-  monitoringPlan: string;
-  patientExplanation: string;
-}
-
-export interface InsulinResistanceScreening {
-  markers: InsulinResistanceMarker[];
-  positiveCount: number;
-  likelihood: 'none' | 'moderate' | 'high';
-  likelihoodLabel: string;
-  phenotypes: InsulinResistancePhenotype[];
-  confirmationTests: string;
-  providerSummary: string;
-}
-
-function computeTgHdlRatio(triglycerides?: number, hdl?: number): number | null {
-  if (triglycerides === undefined || hdl === undefined || hdl === 0) return null;
-  return Math.round((triglycerides / hdl) * 100) / 100;
+function computeTgHdlRatio(trig?: number, hdl?: number): number | null {
+  if (trig === undefined || hdl === undefined || hdl === 0) return null;
+  return Math.round((trig / hdl) * 100) / 100;
 }
 
 export function screenInsulinResistance(
   labs: LabValues | FemaleLabValues,
   sex: 'male' | 'female'
 ): InsulinResistanceScreening | null {
-  const tgHdlRatio = computeTgHdlRatio(labs.triglycerides, labs.hdl);
-  const altOptimalThreshold = sex === 'female' ? 25 : 35;
+  const tgHdl = computeTgHdlRatio(labs.triglycerides, labs.hdl);
+  const fastingInsulin = (labs as any).fastingInsulin as number | undefined;
+  const glucose = labs.glucose;
 
   const markers: InsulinResistanceMarker[] = [];
-  let evaluableCount = 0;
+  const missingMarkers: string[] = [];
 
-  if (tgHdlRatio !== null) {
-    evaluableCount++;
-    markers.push({
-      name: 'TG:HDL Ratio',
-      value: tgHdlRatio,
-      threshold: '>= 3.0',
-      positive: tgHdlRatio >= 3,
-      detail: `Triglycerides ${labs.triglycerides} / HDL ${labs.hdl} = ${tgHdlRatio}`,
-    });
-  }
-
+  // ── A1c (0–3 pts) ────────────────────────────────────────────────────────
   if (labs.a1c !== undefined) {
-    evaluableCount++;
+    let pts = 0;
+    let detail = '';
+    if (labs.a1c < 5.3)        { pts = 0; detail = 'Optimal glycemic control'; }
+    else if (labs.a1c < 5.5)   { pts = 1; detail = 'Early glycemic drift — subtle IR signal'; }
+    else if (labs.a1c < 5.7)   { pts = 2; detail = 'Pre-prediabetes range — early IR physiology'; }
+    else                        { pts = 3; detail = 'Prediabetic range'; }
     markers.push({
-      name: 'A1c',
-      value: `${labs.a1c}%`,
-      threshold: '>= 5.7%',
-      positive: labs.a1c >= 5.7,
-      detail: labs.a1c >= 5.7 ? 'Prediabetic range' : 'Normal glycemic control',
+      name: 'A1c', value: `${labs.a1c}%`,
+      threshold: '<5.3=0 / 5.3–5.4=1pt / 5.5–5.6=2pt / ≥5.7=3pt',
+      positive: pts > 0, points: pts, maxPoints: 3, detail,
     });
+  } else {
+    missingMarkers.push('A1c');
   }
 
-  if (labs.shbg !== undefined) {
-    evaluableCount++;
+  // ── TG:HDL ratio (0–2 pts) ───────────────────────────────────────────────
+  if (tgHdl !== null) {
+    let pts = 0;
+    let detail = '';
+    if (tgHdl < 2.0)      { pts = 0; detail = 'Optimal TG:HDL ratio'; }
+    else if (tgHdl < 3.0) { pts = 1; detail = 'Borderline — early IR signal'; }
+    else                   { pts = 2; detail = 'Elevated — strong IR marker'; }
     markers.push({
-      name: 'SHBG',
-      value: labs.shbg,
-      threshold: '< 50 nmol/L',
-      positive: labs.shbg < 50,
-      detail: labs.shbg < 50
-        ? (labs.shbg < 30 ? 'Very low - strong IR signal' : 'Low - hyperinsulinemia suppresses SHBG')
-        : 'Within normal range',
+      name: 'TG:HDL Ratio', value: tgHdl,
+      threshold: '<2.0=0 / 2.0–2.9=1pt / ≥3.0=2pt',
+      positive: pts > 0, points: pts, maxPoints: 2, detail,
     });
+  } else {
+    missingMarkers.push('TG:HDL Ratio (requires triglycerides + HDL)');
   }
 
-  if (labs.alt !== undefined) {
-    evaluableCount++;
-    markers.push({
-      name: 'ALT',
-      value: labs.alt,
-      threshold: `> ${altOptimalThreshold} U/L (optimal)`,
-      positive: labs.alt > altOptimalThreshold,
-      detail: labs.alt > altOptimalThreshold
-        ? 'Above optimal range - may indicate hepatic insulin resistance'
-        : 'Within optimal range',
-    });
-  }
-
+  // ── ApoB (0–2 pts) ───────────────────────────────────────────────────────
   if (labs.apoB !== undefined) {
-    evaluableCount++;
+    let pts = 0;
+    let detail = '';
+    if (labs.apoB < 80)       { pts = 0; detail = 'Optimal atherogenic particle count'; }
+    else if (labs.apoB < 90)  { pts = 1; detail = 'Borderline ApoB'; }
+    else                       { pts = 2; detail = 'Elevated atherogenic particle count'; }
     markers.push({
-      name: 'ApoB',
-      value: `${labs.apoB} mg/dL`,
-      threshold: '>= 90 mg/dL',
-      positive: labs.apoB >= 90,
-      detail: labs.apoB >= 90
-        ? 'Elevated atherogenic particle count'
-        : 'Normal atherogenic particle count',
+      name: 'ApoB', value: `${labs.apoB} mg/dL`,
+      threshold: '<80=0 / 80–89=1pt / ≥90=2pt',
+      positive: pts > 0, points: pts, maxPoints: 2, detail,
     });
+  } else {
+    missingMarkers.push('ApoB');
   }
 
+  // ── ALT — sex-specific (0–2 pts) ─────────────────────────────────────────
+  if (labs.alt !== undefined) {
+    let pts = 0;
+    let detail = '';
+    if (sex === 'female') {
+      if (labs.alt < 20)       { pts = 0; detail = 'Optimal liver enzyme (female)'; }
+      else if (labs.alt < 25)  { pts = 1; detail = 'Borderline — hepatic IR signal (female)'; }
+      else                      { pts = 2; detail = 'Elevated — hepatic insulin resistance pattern'; }
+    } else {
+      if (labs.alt < 25)       { pts = 0; detail = 'Optimal liver enzyme (male)'; }
+      else if (labs.alt < 35)  { pts = 1; detail = 'Borderline — hepatic IR signal (male)'; }
+      else                      { pts = 2; detail = 'Elevated — hepatic insulin resistance pattern'; }
+    }
+    const thresh = sex === 'female'
+      ? '<20=0 / 20–24=1pt / ≥25=2pt'
+      : '<25=0 / 25–34=1pt / ≥35=2pt';
+    markers.push({
+      name: 'ALT', value: `${labs.alt} U/L`,
+      threshold: thresh,
+      positive: pts > 0, points: pts, maxPoints: 2, detail,
+    });
+  } else {
+    missingMarkers.push('ALT');
+  }
+
+  // ── hs-CRP (0–2 pts) ─────────────────────────────────────────────────────
   if (labs.hsCRP !== undefined) {
-    evaluableCount++;
+    let pts = 0;
+    let detail = '';
+    if (labs.hsCRP < 1.0)       { pts = 0; detail = 'Low inflammatory burden'; }
+    else if (labs.hsCRP < 2.0)  { pts = 1; detail = 'Borderline inflammation'; }
+    else                          { pts = 2; detail = 'Elevated systemic inflammation'; }
     markers.push({
-      name: 'hs-CRP',
-      value: `${labs.hsCRP} mg/L`,
-      threshold: '>= 2.0 mg/L',
-      positive: labs.hsCRP >= 2,
-      detail: labs.hsCRP >= 2
-        ? 'Elevated systemic inflammation'
-        : 'Low inflammatory burden',
+      name: 'hs-CRP', value: `${labs.hsCRP} mg/L`,
+      threshold: '<1.0=0 / 1.0–1.9=1pt / ≥2.0=2pt',
+      positive: pts > 0, points: pts, maxPoints: 2, detail,
+    });
+  } else {
+    missingMarkers.push('hs-CRP');
+  }
+
+  // ── SHBG — sex-specific (0–2 pts) ────────────────────────────────────────
+  if (labs.shbg !== undefined) {
+    let pts = 0;
+    let detail = '';
+    if (sex === 'female') {
+      if (labs.shbg >= 60)      { pts = 0; detail = 'Optimal — no SHBG suppression'; }
+      else if (labs.shbg >= 40) { pts = 1; detail = 'Borderline low — possible hyperinsulinemia'; }
+      else                       { pts = 2; detail = 'Low — hyperinsulinemia-driven SHBG suppression'; }
+    } else {
+      if (labs.shbg >= 30)      { pts = 0; detail = 'Optimal — no SHBG suppression'; }
+      else if (labs.shbg >= 20) { pts = 1; detail = 'Borderline low — possible hyperinsulinemia'; }
+      else                       { pts = 2; detail = 'Low — hyperinsulinemia-driven SHBG suppression'; }
+    }
+    const thresh = sex === 'female'
+      ? '≥60=0 / 40–59=1pt / <40=2pt'
+      : '≥30=0 / 20–29=1pt / <20=2pt';
+    markers.push({
+      name: 'SHBG', value: `${labs.shbg} nmol/L`,
+      threshold: thresh,
+      positive: pts > 0, points: pts, maxPoints: 2, detail,
+    });
+  } else {
+    missingMarkers.push('SHBG');
+  }
+
+  // ── Fasting Insulin — optional (0–2 pts) ─────────────────────────────────
+  if (fastingInsulin !== undefined) {
+    let pts = 0;
+    let detail = '';
+    if (fastingInsulin < 8)       { pts = 0; detail = 'Optimal fasting insulin'; }
+    else if (fastingInsulin <= 12) { pts = 1; detail = 'Borderline — early hyperinsulinemia'; }
+    else                            { pts = 2; detail = 'Elevated — hyperinsulinemia pattern'; }
+    markers.push({
+      name: 'Fasting Insulin', value: `${fastingInsulin} µIU/mL`,
+      threshold: '<8=0 / 8–12=1pt / >12=2pt',
+      positive: pts > 0, points: pts, maxPoints: 2, detail,
+    });
+  } else {
+    missingMarkers.push('Fasting Insulin');
+  }
+
+  // ── HOMA-IR — only if both insulin and glucose are present (0–2 pts) ─────
+  let homaIRValue: number | null = null;
+  if (fastingInsulin !== undefined && glucose !== undefined && glucose > 0) {
+    homaIRValue = Math.round((fastingInsulin * glucose / 405) * 100) / 100;
+    let pts = 0;
+    let detail = '';
+    if (homaIRValue < 1.5)       { pts = 0; detail = 'Optimal insulin sensitivity'; }
+    else if (homaIRValue < 2.5)  { pts = 1; detail = 'Borderline — early insulin resistance'; }
+    else                          { pts = 2; detail = 'Elevated — significant insulin resistance'; }
+    markers.push({
+      name: 'HOMA-IR', value: homaIRValue,
+      threshold: '<1.5=0 / 1.5–2.4=1pt / ≥2.5=2pt',
+      positive: pts > 0, points: pts, maxPoints: 2, detail,
     });
   }
 
-  if (evaluableCount < 2) return null;
+  // Require at least 2 evaluable markers to produce a result
+  if (markers.length < 2) return null;
 
+  const score = markers.reduce((s, m) => s + (m.points ?? 0), 0);
+  const maxScore = markers.reduce((s, m) => s + (m.maxPoints ?? 0), 0);
   const positiveCount = markers.filter(m => m.positive).length;
 
-  let likelihood: 'none' | 'moderate' | 'high';
+  // ── Risk tier ─────────────────────────────────────────────────────────────
+  let likelihood: 'none' | 'early' | 'moderate' | 'high';
   let likelihoodLabel: string;
-  if (positiveCount >= 3) {
+  if (score >= 9) {
     likelihood = 'high';
-    likelihoodLabel = 'HIGH LIKELIHOOD';
-  } else if (positiveCount >= 2) {
+    likelihoodLabel = 'HIGH LIKELIHOOD OF INSULIN RESISTANCE';
+  } else if (score >= 6) {
     likelihood = 'moderate';
-    likelihoodLabel = 'MODERATE LIKELIHOOD';
+    likelihoodLabel = 'MODERATE INSULIN RESISTANCE';
+  } else if (score >= 3) {
+    likelihood = 'early';
+    likelihoodLabel = 'EARLY INSULIN RESISTANCE / EMERGING METABOLIC DYSFUNCTION';
   } else {
     likelihood = 'none';
-    likelihoodLabel = 'LOW LIKELIHOOD';
+    likelihoodLabel = 'LOW LIKELIHOOD OF INSULIN RESISTANCE';
   }
 
-  const phenotypes: InsulinResistancePhenotype[] = [];
+  // ── A1c safety note ───────────────────────────────────────────────────────
+  const a1cValue = labs.a1c;
+  const a1cBelowPrediabetes = a1cValue !== undefined && a1cValue < 5.7;
+  const a1cSafetyNote = (likelihood !== 'none' && a1cBelowPrediabetes)
+    ? 'A1c remains below the prediabetes threshold, but other markers suggest early insulin resistance physiology. A1c often rises last.'
+    : null;
+
+  // ── Phenotype confidence scoring ─────────────────────────────────────────
+  const gm = (name: string) => markers.find(m => m.name === name);
+  const altM    = gm('ALT');
+  const tgHdlM  = gm('TG:HDL Ratio');
+  const a1cM    = gm('A1c');
+  const apoBM   = gm('ApoB');
+  const hsCRPM  = gm('hs-CRP');
+  const shbgM   = gm('SHBG');
+  const insulinM = gm('Fasting Insulin');
+  const homaM   = gm('HOMA-IR');
+
+  const pts = (m: InsulinResistanceMarker | undefined) => m?.points ?? 0;
+
+  const altElevated      = pts(altM) >= 1;
+  const tgHdlBorderline  = pts(tgHdlM) >= 1;
+  const tgHdlHigh        = pts(tgHdlM) >= 2;
+  const a1cElevated      = pts(a1cM) >= 1;
+  const apoBBorderline   = pts(apoBM) >= 1;
+  const apoBHigh         = pts(apoBM) >= 2;
+  const hsCRPBorderline  = pts(hsCRPM) >= 1;
+  const hsCRPHigh        = pts(hsCRPM) >= 2;
+  const shbgLow          = pts(shbgM) >= 1;
+  const insulinHigh      = pts(insulinM) >= 2;
+  const insulinBorderline = pts(insulinM) >= 1;
+  const homaHigh         = pts(homaM) >= 2;
+  const homaBorderline   = pts(homaM) >= 1;
+
+  // Confidence score per phenotype
+  const conf: Record<string, number> = {
+    hyperinsulinemic: 0,
+    hepatic: 0,
+    visceral_metabolic: 0,
+    hormonal_low_shbg: 0,
+    inflammatory: 0,
+  };
+
+  // Hyperinsulinemic
+  if (insulinHigh)      conf.hyperinsulinemic += 2;
+  if (homaHigh)         conf.hyperinsulinemic += 2;
+  if (insulinBorderline && !insulinHigh) conf.hyperinsulinemic += 1;
+  if (homaBorderline && !homaHigh)       conf.hyperinsulinemic += 1;
+
+  // Hepatic: gated on ALT being elevated
+  if (altElevated) {
+    conf.hepatic += pts(altM);
+    if (tgHdlBorderline) conf.hepatic += 1;
+    if (a1cElevated)     conf.hepatic += 1;
+    if (apoBBorderline)  conf.hepatic += 1;
+  }
+
+  // Visceral / metabolic
+  if (tgHdlHigh)       conf.visceral_metabolic += 2;
+  else if (tgHdlBorderline) conf.visceral_metabolic += 1;
+  if (apoBHigh)        conf.visceral_metabolic += 2;
+  else if (apoBBorderline)  conf.visceral_metabolic += 1;
+  if (a1cElevated)     conf.visceral_metabolic += 1;
+
+  // Hormonal / low-SHBG: SHBG must be low; bonus if glucose/A1c still normal
+  if (shbgLow) {
+    conf.hormonal_low_shbg += pts(shbgM);
+    if (!a1cElevated) conf.hormonal_low_shbg += 1;
+  }
+
+  // Inflammatory: hs-CRP drives this, but heavy metabolic phenotypes weaken it
+  if (hsCRPHigh)       conf.inflammatory += 2;
+  else if (hsCRPBorderline) conf.inflammatory += 1;
+
+  // ── Build candidate phenotypes ────────────────────────────────────────────
+  const TIE_ORDER = ['hyperinsulinemic', 'hepatic', 'visceral_metabolic', 'hormonal_low_shbg', 'inflammatory'] as const;
+
+  const candidates: InsulinResistancePhenotype[] = [];
 
   if (likelihood !== 'none') {
-    const markerMap = {
-      tgHdl: markers.find(m => m.name === 'TG:HDL Ratio'),
-      a1c: markers.find(m => m.name === 'A1c'),
-      shbg: markers.find(m => m.name === 'SHBG'),
-      alt: markers.find(m => m.name === 'ALT'),
-      apoB: markers.find(m => m.name === 'ApoB'),
-      hsCRP: markers.find(m => m.name === 'hs-CRP'),
-    };
+    // Hyperinsulinemic
+    if (conf.hyperinsulinemic > 0) {
+      const matched: string[] = [];
+      if (pts(insulinM) > 0) matched.push(`Fasting insulin ${fastingInsulin} µIU/mL${insulinHigh ? ' (>12)' : ' (8–12, borderline)'}`);
+      if (pts(homaM) > 0)    matched.push(`HOMA-IR ${homaIRValue}${homaHigh ? ' (≥2.5)' : ' (1.5–2.4, borderline)'}`);
+      candidates.push({
+        name: 'Hyperinsulinemic Insulin Resistance',
+        key: 'hyperinsulinemic',
+        isPrimary: false,
+        confidenceScore: conf.hyperinsulinemic,
+        triggerCriteria: ['Fasting insulin >12 µIU/mL', 'HOMA-IR ≥2.5'],
+        matchedCriteria: matched,
+        pathophysiology: 'Compensatory hyperinsulinemia is driving receptor downregulation. Glucose and A1c may remain normal despite significant underlying insulin resistance.',
+        treatmentRecommendations: [
+          'Carbohydrate periodization and time-restricted eating',
+          'Resistance training 3–4× weekly',
+          'Post-meal movement (10–15 min walking)',
+          'Consider metformin if HOMA-IR ≥2.5 and other metabolic markers trending',
+          'Consider GLP-1/GIP agonist if obesity phenotype or appetite dysregulation present',
+          'Monitor fasting insulin and HOMA-IR every 3–6 months',
+        ],
+        supplementConsiderations: [
+          'Berberine GT — supports healthy glucose metabolism and insulin response',
+          'MetaGlycemX — supports cardiometabolic health and healthy insulin signaling',
+          'Ultra Glucose Control — consider if meal replacement or higher-protein glucose support is appropriate',
+        ],
+        monitoringPlan: 'Recheck fasting insulin, HOMA-IR, A1c, and metabolic panel in 3–6 months',
+        patientExplanation: `What This Means\n\nYour body is producing more insulin than it should need to keep your blood sugar in range. This is called hyperinsulinemia — and it often develops years before blood sugar rises into the prediabetic or diabetic range.\n\nWhen insulin levels run chronically high:\n- Cell insulin receptors become less sensitive over time\n- Fat storage — especially around the midsection — increases\n- SHBG drops, affecting hormone balance\n- Risk for type 2 diabetes and cardiovascular disease rises\n\nThe good news: this stage responds very well to targeted nutrition, movement, and — when appropriate — medication support.`,
+      });
+    }
 
-    const tgHdlPositive = markerMap.tgHdl?.positive ?? false;
-    const a1cPositive = markerMap.a1c?.positive ?? false;
-    const shbgPositive = markerMap.shbg?.positive ?? false;
-    const altPositive = markerMap.alt?.positive ?? false;
-    const apoBPositive = markerMap.apoB?.positive ?? false;
-    const hsCRPPositive = markerMap.hsCRP?.positive ?? false;
+    // Hepatic
+    if (altElevated && (tgHdlBorderline || a1cElevated || apoBBorderline)) {
+      const matched: string[] = [];
+      if (pts(altM) > 0)   matched.push(`ALT ${labs.alt} U/L (${altM!.detail})`);
+      if (tgHdlBorderline) matched.push(`TG:HDL ${tgHdl}${tgHdlHigh ? ' (≥3.0)' : ' (2.0–2.9)'}`);
+      if (a1cElevated)     matched.push(`A1c ${labs.a1c}% (elevated)`);
+      if (apoBBorderline)  matched.push(`ApoB ${labs.apoB} mg/dL${apoBHigh ? ' (≥90)' : ' (80–89)'}`);
+      candidates.push({
+        name: 'Hepatic / Liver-Driven Insulin Resistance',
+        key: 'hepatic',
+        isPrimary: false,
+        confidenceScore: conf.hepatic,
+        triggerCriteria: [
+          sex === 'female' ? 'ALT ≥20 U/L (female)' : 'ALT ≥25 U/L (male)',
+          'AND TG:HDL ≥2.0 or A1c elevated',
+        ],
+        matchedCriteria: matched,
+        pathophysiology: 'Hepatic insulin resistance leads to increased hepatic glucose output and VLDL overproduction. Often represents early MASLD (metabolic-associated steatotic liver disease) physiology, even when ALT is only mildly elevated.',
+        treatmentRecommendations: [
+          'Reduce fructose and simple carbohydrates; eliminate sugary beverages',
+          'Minimize alcohol intake',
+          'Protein-first nutrition (≥25g per meal)',
+          'Weight reduction goal 5–10% if overweight',
+          'Resistance training 3× weekly',
+          'Consider GLP-1 therapy if weight loss is clinically appropriate',
+        ],
+        supplementConsiderations: [
+          'Berberine GT — supports healthy glucose, insulin, and lipid metabolism',
+          'OmegaGenics EPA-DHA — supports healthy triglyceride levels and inflammatory balance',
+          'CandiBactin-BR — consider only if gut/microbial balance or detox support is clinically relevant',
+        ],
+        monitoringPlan: 'Monitor ALT, TG, ApoB, A1c every 3–6 months',
+        patientExplanation: `What This Means\n\nYour labs suggest your liver may be under metabolic strain. The liver plays a central role in blood sugar regulation and fat metabolism.\n\nWhen the liver becomes resistant to insulin:\n- Blood glucose output from the liver rises throughout the day\n- Triglycerides increase\n- Liver enzymes (like ALT) can elevate even before imaging shows changes\n\nThis is common and highly reversible with targeted nutrition, activity, and — when appropriate — medication support.`,
+      });
+    }
 
-    const visceralMatched: string[] = [];
-    if (a1cPositive) visceralMatched.push('A1c >= 5.7%');
-    if (tgHdlPositive) visceralMatched.push('TG/HDL >= 3');
-    if (apoBPositive) visceralMatched.push('ApoB >= 90 mg/dL');
-    if (hsCRPPositive) visceralMatched.push('hs-CRP >= 2.0');
-    if (altPositive) visceralMatched.push('ALT above optimal range');
-
-    if (visceralMatched.length >= 2) {
-      phenotypes.push({
+    // Visceral / metabolic
+    if (tgHdlBorderline || apoBBorderline) {
+      const matched: string[] = [];
+      if (tgHdlBorderline) matched.push(`TG:HDL ${tgHdl}${tgHdlHigh ? ' (≥3.0 — significant)' : ' (2.0–2.9)'}`);
+      if (apoBBorderline)  matched.push(`ApoB ${labs.apoB} mg/dL${apoBHigh ? ' (≥90 — significant)' : ' (80–89, borderline)'}`);
+      if (a1cElevated)     matched.push(`A1c ${labs.a1c}% (elevated)`);
+      candidates.push({
         name: 'Visceral / Metabolic Insulin Resistance',
         key: 'visceral_metabolic',
-        triggerCriteria: [
-          'A1c >= 5.7%',
-          'TG/HDL >= 3',
-          'ApoB >= 90 mg/dL',
-          'hs-CRP >= 2.0',
-          'Central adiposity phenotype',
-          'ALT above optimal range',
-        ],
-        matchedCriteria: visceralMatched,
-        pathophysiology: 'Early peripheral + hepatic insulin resistance with compensatory hyperinsulinemia. Glucose may still be "normal." A1c often rises last.',
+        isPrimary: false,
+        confidenceScore: conf.visceral_metabolic,
+        triggerCriteria: ['TG:HDL ≥3.0', 'ApoB ≥90 mg/dL', 'A1c elevated (supporting)'],
+        matchedCriteria: matched,
+        pathophysiology: 'Visceral adiposity-driven insulin resistance with dyslipidemia pattern. Elevated atherogenic particle burden (ApoB, TG:HDL) reflects increased VLDL production and impaired lipolysis from insulin-resistant adipose tissue.',
         treatmentRecommendations: [
-          'Protein-forward nutrition (>= 25-35g/meal)',
-          'Carbohydrate quality + timing education',
-          'Strength training 2-3x weekly',
-          '10-15 min post-meal walking',
-          'Sleep optimization',
-          'Consider: GLP-1 therapy if obesity, appetite dysregulation, A1c >= 5.7, or inflammatory phenotype',
-          'Consider: Metformin if prediabetes or strong family history',
-          'Recheck metabolic panel in 3-6 months',
+          'Protein-forward nutrition (≥25–35g per meal)',
+          'Carbohydrate quality and timing optimization',
+          'Strength training 2–3× weekly',
+          '10–15 min post-meal walking',
+          'Sleep and stress optimization',
+          'Consider GLP-1/GIP therapy if obesity, appetite dysregulation, or A1c ≥5.7',
+          'Consider metformin if prediabetes or strong family history',
         ],
-        monitoringPlan: 'Recheck A1c, lipid panel, hs-CRP, ApoB in 3-6 months',
-        patientExplanation: `What This Means
-
-Your lab pattern suggests your body may not be responding to insulin as efficiently as it should. Insulin is the hormone that helps move sugar from your bloodstream into your cells for energy.
-
-When cells become less sensitive to insulin:
-- Blood sugar slowly rises over time
-- Triglycerides increase
-- Inflammation increases
-- Weight gain around the midsection becomes easier
-
-The good news? This stage is highly reversible with targeted nutrition, strength training, sleep optimization, and - when appropriate - medication support.
-
-We'll focus on improving how your body processes fuel and reducing long-term cardiometabolic risk.`,
+        supplementConsiderations: [
+          'Berberine GT — supports healthy glucose metabolism and insulin response',
+          'Ultra Glucose Control — supports cardiometabolic health and healthy insulin signaling',
+          'OmegaGenics EPA-DHA — supports healthy triglyceride levels if elevated',
+        ],
+        monitoringPlan: 'Recheck A1c, lipid panel, hs-CRP, ApoB in 3–6 months',
+        patientExplanation: `What This Means\n\nYour labs suggest your body may not be responding to insulin as efficiently as it should. Elevated triglycerides, elevated ApoB (particle count), and a high TG:HDL ratio are among the earliest detectable signs of insulin resistance — often appearing before blood sugar rises into the prediabetic range.\n\nThe good news: this pattern responds very well to targeted nutrition, exercise, and — when appropriate — medication.`,
       });
     }
 
-    const hepaticMatched: string[] = [];
-    if (altPositive) hepaticMatched.push(`ALT above optimal (>${altOptimalThreshold} U/L)`);
-    if (tgHdlPositive) hepaticMatched.push('TG elevated / TG:HDL >= 3');
-    if (apoBPositive) hepaticMatched.push('ApoB elevated');
-    if (a1cPositive) hepaticMatched.push('A1c mildly elevated');
-
-    if (altPositive && (tgHdlPositive || apoBPositive)) {
-      phenotypes.push({
-        name: 'Hepatic (Liver-Driven) Insulin Resistance',
-        key: 'hepatic',
+    // Hormonal / low-SHBG
+    if (shbgLow) {
+      const matched: string[] = [];
+      matched.push(`SHBG ${labs.shbg} nmol/L (${shbgM!.detail})`);
+      if (!a1cElevated && a1cValue !== undefined) matched.push(`A1c ${a1cValue}% — below prediabetes threshold (hormonal IR physiology)`);
+      if (tgHdlBorderline) matched.push(`TG:HDL ${tgHdl}`);
+      if (sex === 'female') {
+        const fl = labs as FemaleLabValues;
+        if (fl.testosterone !== undefined && fl.testosterone > 45)       matched.push(`Elevated total testosterone ${fl.testosterone} ng/dL`);
+        if (fl.freeTestosterone !== undefined && fl.freeTestosterone > 6.4) matched.push('Elevated free testosterone');
+      }
+      candidates.push({
+        name: 'Hormonal / Low-SHBG Insulin Resistance',
+        key: 'hormonal_low_shbg',
+        isPrimary: false,
+        confidenceScore: conf.hormonal_low_shbg,
         triggerCriteria: [
-          `ALT above optimal (>= ${sex === 'female' ? '25' : '35'} U/L)`,
-          'TG elevated or TG/HDL >= 3',
-          'ApoB elevated',
-          'A1c may be normal or mildly elevated',
+          sex === 'female' ? 'SHBG <60 nmol/L (female threshold)' : 'SHBG <30 nmol/L (male threshold)',
+          'May occur with normal glucose and A1c',
         ],
-        matchedCriteria: hepaticMatched,
-        pathophysiology: 'Hepatic insulin resistance leads to increased hepatic glucose output + VLDL overproduction. Often early MASLD (metabolic-associated steatotic liver disease) physiology.',
+        matchedCriteria: matched,
+        pathophysiology: 'Chronic hyperinsulinemia suppresses hepatic SHBG production. Low SHBG is an independent marker of insulin resistance and often precedes glucose dysregulation by years.',
         treatmentRecommendations: [
-          'Weight reduction goal 5-10% if overweight',
-          'Eliminate sugary beverages',
-          'Alcohol reduction',
-          'Protein-first nutrition',
-          'Consider GLP-1 if weight loss appropriate',
-          'Omega-3 if TG elevated',
+          sex === 'female'
+            ? 'Evaluate androgen excess and PCOS pattern; assess thyroid, estradiol/progesterone, sleep quality'
+            : 'Evaluate androgen status, thyroid function, visceral adiposity, and sleep quality',
+          'Strength training and visceral adiposity reduction',
+          'Consider metformin if cycles irregular (female) or A1c trending',
+          'Consider GLP-1 if obesity phenotype present',
         ],
-        monitoringPlan: 'Monitor ALT, TG, ApoB, A1c every 3-6 months',
-        patientExplanation: `What This Means
-
-Your labs suggest your liver may be under metabolic strain. The liver plays a major role in managing blood sugar and fat metabolism.
-
-When the liver becomes less responsive to insulin:
-- Triglycerides rise
-- Liver enzymes increase
-- Fat can accumulate in the liver over time
-
-This is common and often related to nutrition, stress, sleep, and weight distribution.
-
-The encouraging part: liver-related metabolic changes are very responsive to targeted lifestyle changes and, if needed, medication support.`,
+        supplementConsiderations: [
+          'Berberine GT — consider if TG:HDL, ApoB, or A1c also suggest metabolic dysfunction',
+          'MetaGlycemX — consider if broader insulin signaling support is appropriate',
+        ],
+        monitoringPlan: 'Monitor SHBG, androgens, A1c, and TG:HDL every 3–6 months',
+        patientExplanation: `What This Means\n\nYour SHBG (sex hormone-binding globulin) is below optimal. SHBG is produced by the liver and is directly suppressed by elevated insulin levels.\n\nLow SHBG can:\n- Indicate that insulin has been running high, even when blood sugar looks normal\n- Affect hormone availability and balance\n- Signal early metabolic dysfunction before other markers change\n\nImproving insulin sensitivity often helps restore SHBG and hormone balance.`,
       });
     }
 
-    if (sex === 'female') {
-      const hormonalMatched: string[] = [];
-      if (shbgPositive) {
-        const shbgVal = labs.shbg!;
-        hormonalMatched.push(shbgVal < 30 ? 'SHBG very low (<30)' : 'SHBG low (<50)');
-      }
-      const femaleLabs = labs as FemaleLabValues;
-      if (femaleLabs.testosterone !== undefined && femaleLabs.testosterone > 45) {
-        hormonalMatched.push('Elevated total testosterone');
-      }
-      if (femaleLabs.freeTestosterone !== undefined && femaleLabs.freeTestosterone > 6.4) {
-        hormonalMatched.push('Elevated free testosterone');
-      }
-      if (tgHdlPositive) hormonalMatched.push('TG/HDL borderline-high');
-      if (a1cPositive) hormonalMatched.push('A1c elevated');
-
-      if (shbgPositive && hormonalMatched.length >= 2) {
-        phenotypes.push({
-          name: 'Hormonal / PCOS-Type Insulin Resistance',
-          key: 'hormonal_pcos',
-          triggerCriteria: [
-            'Low SHBG (<50; strong if <30)',
-            'Elevated total or free testosterone',
-            'Irregular cycles',
-            'A1c may still be normal',
-            'TG/HDL may be borderline-high',
-          ],
-          matchedCriteria: hormonalMatched,
-          pathophysiology: 'Hyperinsulinemia suppresses SHBG and increases ovarian androgen production.',
-          treatmentRecommendations: [
-            'Protein-forward, lower refined carb approach',
-            'Strength training',
-            'Consider metformin if cycles irregular or A1c trending',
-            'Consider GLP-1 if obesity phenotype present',
-            'Monitor SHBG, androgens, A1c',
-          ],
-          monitoringPlan: 'Monitor SHBG, androgens, A1c every 3-6 months',
-          patientExplanation: `What This Means
-
-Your lab pattern suggests insulin may be influencing your hormone balance.
-
-When insulin levels run high:
-- The body makes less SHBG (a protective hormone-binding protein)
-- Androgen levels can rise
-- Cycles may become irregular
-
-This pattern is common in PCOS and other hormone imbalance states.
-
-Improving insulin sensitivity often helps restore hormonal balance and reduce long-term metabolic risk.`,
-        });
-      }
-    }
-
-    const earlyLeanMatched: string[] = [];
-    if (tgHdlRatio !== null && tgHdlRatio >= 2 && tgHdlRatio < 3) {
-      earlyLeanMatched.push(`TG/HDL in 2-3 range (${tgHdlRatio})`);
-    } else if (tgHdlPositive) {
-      earlyLeanMatched.push(`TG/HDL elevated (${tgHdlRatio})`);
-    }
-    if (hsCRPPositive) earlyLeanMatched.push('hs-CRP >= 2');
-    if (apoBPositive) earlyLeanMatched.push('ApoB mildly elevated');
-    const a1cNormal = labs.a1c !== undefined && labs.a1c < 5.7;
-    if (a1cNormal) earlyLeanMatched.push('A1c < 5.7 (still normal)');
-
-    if (hsCRPPositive && !a1cPositive && earlyLeanMatched.length >= 2 && phenotypes.length === 0) {
-      phenotypes.push({
-        name: 'Early / Lean Insulin Resistance',
-        key: 'early_lean',
-        triggerCriteria: [
-          'TG/HDL 2-3 range',
-          'hs-CRP >= 2',
-          'ApoB mildly elevated',
-          'A1c < 5.7',
-          'Normal BMI possible',
-        ],
-        matchedCriteria: earlyLeanMatched,
-        pathophysiology: 'Early peripheral insulin resistance driven by stress, sleep disruption, genetics, sedentary lifestyle.',
+    // Inflammatory
+    if (hsCRPBorderline) {
+      const matched: string[] = [];
+      matched.push(`hs-CRP ${labs.hsCRP} mg/L (${hsCRPHigh ? 'significant elevation' : 'borderline'})`);
+      candidates.push({
+        name: 'Inflammatory Insulin Resistance',
+        key: 'inflammatory',
+        isPrimary: false,
+        confidenceScore: conf.inflammatory,
+        triggerCriteria: ['hs-CRP ≥1.0 mg/L (borderline); ≥2.0 mg/L (significant)'],
+        matchedCriteria: matched,
+        pathophysiology: 'Systemic inflammation — driven by gut dysbiosis, visceral adipose tissue, sleep disruption, chronic stress, or autoimmune activation — promotes inflammatory cytokine release that impairs insulin receptor signaling.',
         treatmentRecommendations: [
-          'Resistance training emphasis',
-          'Post-meal walks',
-          'Sleep optimization',
-          'Stress regulation',
-          'Consider metformin if strong family history or A1c rising',
+          'Prioritize sleep quality and duration (7–9 hours)',
+          'Stress regulation: HRV training, therapy, mindfulness',
+          'Anti-inflammatory nutrition: Mediterranean pattern, reduce ultra-processed foods',
+          'Screen for underlying inflammatory sources: gut, autoimmune, periodontal',
+          'Repeat hs-CRP in 6–8 weeks if acutely elevated to confirm chronic pattern',
         ],
-        monitoringPlan: 'Recheck metabolic markers in 3-6 months',
-        patientExplanation: `What This Means
-
-Even though your weight and blood sugar may look "normal," some of your markers suggest early changes in how your body handles carbohydrates and fats.
-
-This is often influenced by:
-- Stress
-- Sleep quality
-- Genetics
-- Muscle mass and activity level
-
-Catching this early allows us to intervene before blood sugar or weight become more difficult to manage.`,
+        supplementConsiderations: [
+          'OmegaGenics EPA-DHA — supports healthy inflammatory balance',
+          'UltraInflamX or clinic-approved inflammatory support — consider if inflammatory dietary pattern or gut involvement is suspected',
+        ],
+        monitoringPlan: 'Repeat hs-CRP in 6–8 weeks; reassess inflammatory sources and sleep/stress factors',
+        patientExplanation: `What This Means\n\nYour hs-CRP is elevated, indicating systemic inflammation. Inflammation and insulin resistance are closely linked — each can drive the other in a cycle.\n\nCommon sources of inflammation that impair insulin signaling include:\n- Poor sleep\n- Chronic stress\n- Gut imbalances\n- Visceral adipose tissue\n- Autoimmune activity\n\nAddressing the root cause of the inflammation is the most targeted approach for this pattern.`,
       });
     }
   }
 
+  // ── Select primary phenotype via confidence + tie-breaker hierarchy ────────
+  if (candidates.length > 0) {
+    const sorted = [...candidates].sort((a, b) => {
+      if ((b.confidenceScore ?? 0) !== (a.confidenceScore ?? 0)) return (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0);
+      return TIE_ORDER.indexOf(a.key) - TIE_ORDER.indexOf(b.key);
+    });
+    sorted[0].isPrimary = true;
+    // Return primary first, then secondaries
+    const primary = sorted[0];
+    const secondaries = sorted.slice(1);
+    candidates.length = 0;
+    candidates.push(primary, ...secondaries);
+  }
+
+  // ── Confirmation tests ────────────────────────────────────────────────────
   let confirmationTests = '';
   if (likelihood !== 'none') {
-    confirmationTests = 'Optional Confirmation: Fasting insulin + fasting glucose (HOMA-IR), OR fasting C-peptide + glucose.';
+    if (fastingInsulin === undefined) {
+      confirmationTests = 'Add fasting insulin + fasting glucose (HOMA-IR) to confirm and quantify insulin resistance. Consider fasting C-peptide if insulin secretory capacity is in question.';
+    } else if (homaIRValue !== null && homaIRValue >= 1.5) {
+      confirmationTests = `HOMA-IR ${homaIRValue} confirms insulin resistance. Consider repeat in 3–6 months to track treatment response.`;
+    } else {
+      confirmationTests = 'Repeat fasting insulin and HOMA-IR in 3–6 months to track treatment response.';
+    }
   }
 
+  // ── Provider summary ──────────────────────────────────────────────────────
+  const primaryPhenotype = candidates.find(p => p.isPrimary);
+  const secondaryPhenotypes = candidates.filter(p => !p.isPrimary);
+  const scoreStr = `${score}/${maxScore}`;
+
   let providerSummary = '';
-  if (likelihood === 'moderate') {
-    providerSummary = `INSULIN RESISTANCE SCREENING: MODERATE LIKELIHOOD (${positiveCount}/6 markers positive). This combination points toward hyperinsulinemia physiology. Consider confirmation with fasting insulin + fasting glucose (HOMA-IR).`;
-  } else if (likelihood === 'high') {
-    const phenotypeNames = phenotypes.map(p => p.name).join(', ');
-    providerSummary = `INSULIN RESISTANCE SCREENING: HIGH LIKELIHOOD (${positiveCount}/6 markers positive). Identified phenotype(s): ${phenotypeNames || 'Evaluate clinically'}. Treat according to phenotype-specific protocol.`;
+  if (likelihood === 'none') {
+    providerSummary = `INSULIN RESISTANCE SCREENING: LOW LIKELIHOOD (${scoreStr} points). Available markers do not suggest significant insulin resistance physiology at this time.${missingMarkers.length > 0 ? ` Missing markers: ${missingMarkers.join(', ')}.` : ''}`;
   } else {
-    providerSummary = `INSULIN RESISTANCE SCREENING: LOW LIKELIHOOD (${positiveCount}/6 markers positive). No significant insulin resistance pattern detected at this time.`;
+    const phenotypeLine = primaryPhenotype
+      ? ` Primary phenotype: ${primaryPhenotype.name}.${secondaryPhenotypes.length > 0 ? ` Supporting contributors: ${secondaryPhenotypes.map(p => p.name).join(', ')}.` : ''}`
+      : '';
+    const safetyLine = a1cSafetyNote ? ` ${a1cSafetyNote}` : '';
+    const missingLine = missingMarkers.length > 0 ? ` Missing markers: ${missingMarkers.join(', ')}.` : '';
+    providerSummary = `INSULIN RESISTANCE SCREENING: ${likelihoodLabel} (${scoreStr} points).${phenotypeLine}${safetyLine}${missingLine}`;
   }
 
   return {
     markers,
+    missingMarkers,
+    score,
+    maxScore,
     positiveCount,
     likelihood,
     likelihoodLabel,
-    phenotypes,
+    phenotypes: candidates,
     confirmationTests,
     providerSummary,
+    a1cSafetyNote,
   };
 }

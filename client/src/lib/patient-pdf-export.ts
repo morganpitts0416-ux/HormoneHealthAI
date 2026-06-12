@@ -1358,11 +1358,18 @@ export async function generatePatientWellnessPDF(
     doc.setTextColor(...brandColor);
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    const likelihoodText = ir.likelihood === 'high' ? 'High Likelihood of Insulin Resistance' : 'Moderate Likelihood of Insulin Resistance';
+    const likelihoodText = ir.likelihood === 'high'
+      ? 'High Likelihood of Insulin Resistance'
+      : ir.likelihood === 'early'
+        ? 'Early Insulin Resistance / Emerging Metabolic Dysfunction'
+        : 'Moderate Likelihood of Insulin Resistance';
     doc.text(likelihoodText, margin + 4, yPosition + 6);
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
-    doc.text(`${ir.positiveCount} of 6 screening markers positive`, margin + 4, yPosition + 11);
+    const scoreDisplay = (ir as any).score !== undefined
+      ? `${(ir as any).score} / ${(ir as any).maxScore} points`
+      : `${ir.positiveCount} screening markers positive`;
+    doc.text(scoreDisplay, margin + 4, yPosition + 11);
     yPosition += 18;
 
     if (ir.phenotypes.length > 0) {

@@ -1,0 +1,108 @@
+Update the ClinIQ insulin resistance screening so it produces ONE primary “winning phenotype,” not multiple equal phenotypes.
+
+Keep the weighted insulin resistance score, but change phenotype logic to rank phenotypes by confidence.
+
+Phenotype ranking rules:
+Each phenotype should receive its own internal confidence score based on marker strength.
+
+Possible phenotypes:
+1. Hepatic / liver-driven insulin resistance
+2. Visceral / metabolic insulin resistance
+3. Hyperinsulinemic insulin resistance
+4. Inflammatory insulin resistance
+5. Hormonal / low-SHBG insulin resistance
+
+Only display ONE final phenotype:
+“Primary phenotype: [winning phenotype]”
+
+If more than one phenotype is positive, choose the phenotype with the highest confidence score. Do not display “mixed insulin resistance” as the final phenotype. Instead, secondary contributors can be mentioned in the interpretation as “supporting contributors,” but the patient should only receive one primary phenotype.
+
+Tie-breaker hierarchy:
+1. Hyperinsulinemic IR wins if fasting insulin >12 or HOMA-IR ≥2.5
+2. Hepatic/liver-driven IR wins if ALT is elevated with elevated TG:HDL or elevated A1c
+3. Visceral/metabolic IR wins if TG:HDL ≥3 and/or ApoB ≥90
+4. Hormonal/low-SHBG IR wins if SHBG is low and glucose/A1c are still normal
+5. Inflammatory IR wins only when hs-CRP ≥2 and no stronger metabolic, hepatic, or hyperinsulinemic phenotype is present
+
+Add phenotype-specific recommendations.
+
+Recommendation logic:
+The app should generate lifestyle, nutrition, medication-consideration, and supplement recommendations based on the winning phenotype.
+
+Important:
+Do not hard-code supplement claims that imply treatment/cure of disease. Use structure/function language only.
+Display supplements as “consider” options and allow clinic admins to edit the supplement formulary.
+
+Metagenics supplement mapping:
+
+1. Hyperinsulinemic IR
+Consider:
+- Metagenics Berberine GT
+- Metagenics MetaGlycemX
+- Metagenics Ultra Glucose Control if meal replacement or higher-protein glucose support is appropriate
+
+2. Hepatic / liver-driven IR
+Consider:
+- Metagenics CandiBactin-BR only if gut/microbial balance or detox support is clinically relevant
+- Metagenics Berberine GT if glucose/insulin/lipid pattern is the main issue
+- Add liver-focused lifestyle recommendations: reduce alcohol, reduce fructose/simple carbs, increase protein, resistance training, weight loss if indicated
+
+3. Visceral / metabolic IR
+Consider:
+- Metagenics Berberine GT
+- Metagenics Ultra Glucose Control
+- OmegaGenics EPA-DHA if triglycerides/inflammation are elevated
+- Consider GLP-1/GIP therapy when clinically appropriate
+
+4. Inflammatory IR
+Consider:
+- OmegaGenics EPA-DHA
+- UltraInflamX or other clinic-approved inflammation-focused support if available in formulary
+- Prioritize sleep, stress, inflammatory diet pattern, autoimmune/gut review, and repeat hs-CRP if acutely elevated
+
+5. Hormonal / low-SHBG IR
+Consider:
+- Berberine GT or MetaGlycemX if TG:HDL/ApoB/A1c also support metabolic dysfunction
+- Evaluate androgen excess, PCOS pattern, thyroid status, estradiol/progesterone status, sleep, and visceral adiposity
+
+Supplement accuracy rule:
+Create a supplement recommendation table in the database/admin settings instead of embedding product names only in code. Each supplement should include:
+- product name
+- category
+- intended support area
+- contraindication/caution notes
+- phenotype tags
+- priority level
+- active/inactive status
+- admin editable notes
+
+Do not recommend a supplement if required safety flags are present.
+
+Safety flags:
+- pregnancy/breastfeeding
+- significant liver disease
+- kidney disease
+- anticoagulant use
+- hypoglycemia risk
+- diabetes medications
+- upcoming surgery
+- medication interaction risk
+- allergy/intolerance
+- clinician has marked supplement inactive
+
+Documentation language:
+Generate wording like:
+
+“Insulin Resistance Screening: [score]/[max available points]. Findings suggest [early/moderate/high] likelihood of insulin resistance. Primary phenotype: [winning phenotype]. This phenotype was selected because [key markers]. Supporting contributors include [optional secondary markers]. A1c may remain below the prediabetes threshold despite early insulin resistance physiology.”
+
+Do not say:
+- “No insulin resistance” just because A1c is <5.7
+- “Mixed phenotype” as the final result
+- “This supplement treats insulin resistance”
+- “This supplement cures diabetes”
+
+Instead use:
+- “supports healthy glucose metabolism”
+- “supports insulin response”
+- “supports cardiometabolic health”
+- “consider based on clinician judgment”
