@@ -20865,6 +20865,10 @@ IMPORTANT:
         assignedToStaffId: z.number().int().positive().optional().nullable(),
         notes: z.string().optional().nullable(),
         orderingProviderUserId: z.number().int().positive().optional().nullable(),
+        diagnosisCode: z.string().max(20).optional().nullable(),
+        diagnosisName: z.string().max(300).optional().nullable(),
+        cptCode: z.string().max(20).optional().nullable(),
+        cptDescription: z.string().max(300).optional().nullable(),
       });
       const parsed = schema2.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: "Invalid input", details: parsed.error.format() });
@@ -20903,6 +20907,10 @@ IMPORTANT:
         referringTo: z.string().max(200).optional().nullable(),
         facilityFax: z.string().max(30).optional().nullable(),
         facilityAddress: z.string().optional().nullable(),
+        diagnosisCode: z.string().max(20).optional().nullable(),
+        diagnosisName: z.string().max(300).optional().nullable(),
+        cptCode: z.string().max(20).optional().nullable(),
+        cptDescription: z.string().max(300).optional().nullable(),
       });
       const parsed = patchSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: "Invalid input" });
