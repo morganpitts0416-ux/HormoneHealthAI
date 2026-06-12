@@ -515,6 +515,21 @@ Identify "between the lines" clinical clues that a thoughtful clinician would no
 Only include signals grounded in the transcript. Do not fabricate.
 
 ═══════════════════════════════════════
+PART 3B — HPI SOURCE CAPTURE (PATIENT HISTORY, SELF-REPORTED HYPOTHESES, PRIOR LABS)
+═══════════════════════════════════════
+Capture the following for HPI reconstruction — these feed directly into the note writer and must NOT be omitted:
+
+PATIENT-STATED HEALTH HYPOTHESES: When a patient volunteers their own theory about what is happening with their health ("I think I might have PCOS", "I wonder if my ovaries are causing this", "I've always suspected I'm insulin resistant", "I think this is related to my hormones"), capture this verbatim or as close paraphrase in "patient_perspective_statements". The HPI must document the patient's own expressed suspicions — these are clinically relevant and legally important.
+
+PATIENT-VOLUNTEERED HISTORY REFERENCES: When a patient mentions prior diagnoses, prior procedures, prior labs, or prior symptoms in the context of this visit — even briefly — capture each reference in "hpi_chronological_elements". Examples: prior ovarian surgery, prior cysts, prior panels done at other clinics, prior episodes of spotting, prior GI issues. These inform the current clinical picture and belong in the HPI narrative.
+
+GI AND ABSORPTION CONCERNS: Any mention of GI malabsorption, absorption issues, sensitivity, GI symptoms affecting nutrient levels, or GI history relevant to why labs may be low → always capture in "hpi_chronological_elements" AND flag in context_inferred_items so the note writer includes it in the HPI.
+
+PRIOR LAB COMPARISONS: When the provider references a prior lab result from a previous visit or external panel during this encounter (e.g., "your FSH was 4.5 last time, now it's 2.6"), capture the comparison in "hpi_chronological_elements" with both values. These comparisons are clinically significant trend data and belong in the HPI.
+
+PROVIDER CLINICAL EXPLANATIONS: When the provider explains a clinical mechanism, lab result meaning, or physiologic process to the patient during the visit (e.g., FSH mechanism explanation, what low iron means, how hormones interact), capture the substance in "provider_reasoning_statements". These are part of the documented encounter and belong in the HPI narrative as documented education.
+
+═══════════════════════════════════════
 PART 4 — PLAN DECISION CLASSIFICATION
 ═══════════════════════════════════════
 This is CRITICAL for recommendation quality. Classify every discussed action item into exactly one of these four states:
@@ -1079,6 +1094,16 @@ HPI RECONSTRUCTION RULES:
 
 4. CLINICAL COMPLETENESS: Every medically relevant topic discussed belongs in the HPI. A comprehensive wellness visit should produce 3-5+ paragraphs, but those paragraphs should be clinically dense, not narratively padded.
 
+HPI INCLUSION MANDATE — ALL SUBSTANTIVE DISCUSSIONS: The HPI must document ALL substantive clinical discussions from this encounter regardless of State classification. State B and State C classification controls A/P placement only — it does NOT exclude content from the HPI. The following always belong in the HPI narrative:
+- Patient-stated health hypotheses or self-suspected diagnoses (document as patient-reported concern in patient's own framing)
+- All patient-volunteered history references: prior surgeries, prior diagnoses, prior lab results mentioned in any context, prior symptom episodes
+- GI symptoms, malabsorption concerns, or history of poor absorption relevant to current lab findings
+- Prior lab comparisons the provider references during the visit (e.g., "your FSH was 4.5 in March, now 2.6") — include both values with clinical context
+- Provider clinical explanations shared with the patient (mechanism of a hormone, why a lab value matters, what a diagnosis means) — document as clinical education in provider voice
+- State B treatments that were discussed and deferred — must appear in both HPI (what was discussed) AND in A/P (with deferral context)
+- State C exploratory discussions that involved a meaningful clinical exchange — document in HPI narrative even though they are excluded from A/P
+The HPI is the clinical record of what took place in this visit. If it was discussed, it belongs in the HPI. A shorter, accurate HPI is always preferred over omission of clinically relevant discussions.
+
 5. PATIENT VOICE — CLINICAL FRAMING ONLY: Paraphrase clinically. "Fatigue interfering with daily function" is clinical. Personal biographical details or social anecdotes belong only if they directly clarify symptom severity or diagnostic reasoning.
 
 6. PROVIDER REASONING: Document clinical reasoning efficiently in provider voice: "Labs reviewed and notable for...", "Consistent with...", "Decision made to..."
@@ -1171,8 +1196,24 @@ Do NOT over-fragment related conditions into isolated buckets. A note with 12 nu
 Each numbered item format:
 - Diagnosis Name (ICD-10 code) — may include multiple codes when conditions are tightly related
 - Clinical reasoning (2-3 sentences): WHY this diagnosis, what evidence supports it (symptoms, labs, pattern), how it connects to this patient's presentation, and — when clinically appropriate — brief differential considerations ("this presentation is most consistent with X rather than Y given..."; "thyroid origin of fatigue was considered but fT3/TSH pattern is inconsistent")
-- Plan: [specific orders — drug name, dose, route, frequency, labs ordered, referrals, follow-up timing; future considerations if applicable — deferred options or next-phase decisions contingent on response or pending data]
+- Plan: [specific orders — drug name, dose, route, frequency, labs ordered, referrals, follow-up timing]
+- Future Considerations: [REQUIRED when State B items are associated with this diagnosis — see rule below]
 - Include monitoring targets and follow-up parameters only when specific and relevant — never as generic filler
+
+FUTURE CONSIDERATIONS SUB-SECTION — MANDATORY WHEN APPLICABLE:
+For any numbered Assessment/Plan item that has associated State B (discussed_but_not_decided) treatments, interventions, or clinical options, the Plan section MUST be followed by a "Future Considerations:" sub-section on its own line. This sub-section documents what was discussed for this visit's clinical record — even if nothing was decided — so the provider and future readers have a complete account of the clinical conversation.
+
+Format of the Future Considerations sub-section (plain text, no bullets, no markdown):
+  Plan: [State A orders — what was decided and initiated today]
+  Future Considerations: [Name of deferred option or intervention]. [What was discussed — the clinical reasoning and why it was considered for this patient]. [The specific deferral trigger or condition — what must happen before this is revisited]. [Any patient response, preference, or concern expressed during the discussion, if applicable].
+
+Rules:
+- Use "Future Considerations:" as the exact label (not "Future Plans", not "To Consider", not "Options Discussed")
+- Write in provider voice — plain prose, no bullets, no markdown
+- If multiple State B items are associated with one diagnosis, list them sequentially in the same Future Considerations block
+- Do NOT move State C (exploratory) items here — State C stays in HPI only; Future Considerations is for State B (specific deferred trigger exists)
+- If there are no State B items for a diagnosis, omit the Future Considerations sub-section entirely — do not write an empty one
+- The Future Considerations sub-section does not constitute an active order or a commitment; it is documentation of a substantive clinical discussion that took place
 
 ASSESSMENT RULES:
 - Use ICD-10 codes for all diagnoses
@@ -1240,14 +1281,21 @@ STATE B — FUTURE CONSIDERATION (deferred with specific trigger):
   INLINE FIELD PRIORITY RULE: Each STATE B item in the FUTURE CONSIDERATIONS context above carries inline fields (education, patient response, provider reasoning, follow-up plan) when the normalization stage captured them. For each STATE B Assessment entry, prefer these inline fields as the primary source for writing the clinical reasoning paragraph — they are already attributed to this specific treatment. The global EDUCATION PROVIDED, PATIENT DECISIONS, PATIENT PERSPECTIVE STATEMENTS, and PROVIDER REASONING blocks supplement STATE B items only when the inline fields are sparse or absent. Do NOT duplicate counseling language: if the substance is already expressed through the inline fields, do not restate it again from the global blocks. Each treatment's clinical story belongs in its own Assessment entry, drawn from its own inline fields.
 
 STATE C — EXPLORATORY DISCUSSION (conversational possibility, no near-term plan):
-- Brief mention in HPI narrative only, if clinically relevant: "Future hormonal pellet therapy was discussed in passing as a long-term option"
+- MUST appear in the HPI narrative — this is non-negotiable. "State C" means excluded from A/P, NOT excluded from the note.
 - Do NOT create a numbered Assessment entry
 - Do NOT add to needs_clinician_review as a clinical recommendation
+- Do NOT omit from the HPI — if it was discussed, the provider must be able to read about it in the note
 - One clause in the HPI is sufficient for genuinely passing or speculative mentions — do not elevate to a clinical plan item
 - CONTINGENCY LANGUAGE IS STATE C: When an alternative treatment was mentioned only as something to consider "if needed" or "if the current approach doesn't work" or "pending evaluation," it is STATE C — not STATE B. The provider has not committed to it. Do not give it an Assessment entry.
   Examples of STATE C contingency language: "if needed post-evaluation", "as an option if X doesn't resolve", "if the specialist recommends switching", "we could try Y if Z fails", "tirzepatide is an option if semaglutide can't be tolerated long-term"
   These belong in ONE clause in the HPI: "Alternative [treatment] was discussed as a contingency option if [condition]." Never as a numbered Assessment item.
-- SUBSTANTIVE STATE C DISCUSSIONS — DOCUMENTATION EXCEPTION: When a STATE C discussion involved meaningful clinical education (risks/benefits reviewed, mechanism explained), patient-expressed concerns or hesitation, or a deliberate shared decision about timing — the HPI must document the substance of that conversation, not just a single clause. This may require 2-3 sentences: what was explained, what the patient expressed, and what the deliberate outcome was. A clinically meaningful conversation that shaped patient understanding and the visit's decision-making is not equivalent to a casual passing mention, even when no treatment was committed.
+- SUBSTANTIVE STATE C DISCUSSIONS — FULL HPI DOCUMENTATION REQUIRED: When a STATE C discussion involved meaningful clinical education (risks/benefits reviewed, mechanism explained), patient-expressed concerns or hesitation, or a deliberate shared decision about timing — the HPI MUST document the full substance of that conversation. This requires 2-4 sentences: what option was discussed, what the provider explained, what the patient expressed, and what the shared outcome or understanding was. A clinically meaningful conversation that shaped patient understanding and the visit's decision-making requires substantive HPI documentation — not a single dismissive clause.
+  EXAMPLES OF CORRECT STATE C HPI DOCUMENTATION:
+  - "Cyclic transdermal estrogen patch was discussed as a potential option to address her perimenopausal symptoms pending the 2-week hormone recheck. The provider explained the mechanism of transdermal delivery and its role in symptom management. No initiation was planned at this visit; the approach will be revisited once current hormone levels are available to guide the decision."
+  - "Pellet therapy was raised in passing as a longer-term hormonal delivery option. Patient expressed curiosity but no strong preference; no clinical decision was made and it was not a focus of the visit."
+  EXAMPLES OF INADEQUATE STATE C HPI DOCUMENTATION (do not do this):
+  - "Estrogen therapy was briefly mentioned." (Medicolegally inadequate — erases the clinical discussion)
+  - Omitting the topic entirely (No — everything discussed belongs in the HPI)
 
 STATE D — CLINICALLY RELEVANT (not discussed, provider flag only):
 - Add to needs_clinician_review only, never in the note body

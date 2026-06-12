@@ -10009,7 +10009,7 @@ RULES:
           },
           {
             role: "user",
-            content: `CLINICIAN PREFERENCES TO APPLY:\n${prefBlock}\n\n---\nORIGINAL NOTE:\n${noteText}\n\n---\nVISIT TRANSCRIPT (for context only — do not add facts not in the note unless a preference requires it):\n${transcriptText.slice(0, 6000)}\n\n---\nReturn the complete refined note now.`,
+            content: `CLINICIAN PREFERENCES TO APPLY:\n${prefBlock}\n\n---\nORIGINAL NOTE:\n${noteText}\n\n---\nVISIT TRANSCRIPT (for context only — do not add facts not in the note unless a preference requires it):\n${transcriptText.slice(0, 20000)}\n\n---\nReturn the complete refined note now.`,
           },
         ],
       });
@@ -10040,6 +10040,7 @@ RULES:
     extraction: any,
     diagnosisBundles: Array<{ title: string; codes: { code: string; name: string }[]; aliases: string[] }>,
     openai: OpenAI,
+    patientAgeContext?: string,
   ): Promise<{ note: string; bundlesApplied: string[]; juneTriggersApplied: string[]; changed: boolean }> {
     const noop = { note: noteText, bundlesApplied: [], juneTriggersApplied: [], changed: false };
 
@@ -10094,6 +10095,9 @@ RULES:
         lines.push("\nCONTEXT SNIPPETS (use when a trigger rule calls for them):");
         snippets.forEach((p: schema.JunePreference) => lines.push(`• ${p.label}:\n  ${p.instruction}`));
       }
+      if (patientAgeContext) {
+        lines.push(`\nPATIENT CONTEXT (use to evaluate age-gated or demographic trigger rules):\n• ${patientAgeContext}`);
+      }
       prefBlock = lines.join("\n");
     }
 
@@ -10142,12 +10146,13 @@ FORMAT RULES — NON-NEGOTIABLE
     [number]. [Diagnosis name] ([ICD-10 code])
     [Clinical reasoning paragraph — plain prose, no brackets]
     Plan: [treatment orders: drug name, dose, route, frequency; labs; referrals; follow-up]
-  Do not merge the Plan text into the reasoning paragraph. Do not add any other sub-labels.
+    Future Considerations: [optional — include ONLY if the original note already has a Future Considerations sub-section for this item, or if a fired trigger rule explicitly requires documenting a deferred option; do not add this sub-section speculatively]
+  Do not merge the Plan text into the reasoning paragraph. Do not add sub-labels other than "Plan:" and "Future Considerations:".
 • CARE PLAN SECTION: Must remain a dash-prefixed bullet list (- item). Never convert to prose or numbered list.`,
           },
           {
             role: "user",
-            content: `${bundleBlock}${prefBlock}\n\n---\nORIGINAL NOTE:\n${noteText}\n\n---\nVISIT TRANSCRIPT (context for trigger rules only — do not introduce facts not supported by the note):\n${transcriptText.slice(0, 6000)}\n\n---\nPerform the Provider Personalization Pass now. Return the complete updated note.`,
+            content: `${bundleBlock}${prefBlock}\n\n---\nORIGINAL NOTE:\n${noteText}\n\n---\nVISIT TRANSCRIPT (context for trigger rules only — do not introduce facts not supported by the note):\n${transcriptText.slice(0, 20000)}\n\n---\nPerform the Provider Personalization Pass now. Return the complete updated note.`,
           },
         ],
       });
@@ -11093,6 +11098,26 @@ Return a JSON object:
       // reorganization and June preference rules. Replaces the previous
       // June-only refinement pass for the main SOAP pipeline.
       // Runs silently on failure so the note is never lost.
+
+      // Compute patient age for age-gated June trigger rule evaluation
+      let patientAgeContext: string | undefined;
+      if (encounter.patientId) {
+        try {
+          const patientForAge = await storage.getPatient(encounter.patientId, getClinicianId(req), clinicId);
+          if (patientForAge?.dateOfBirth) {
+            const dob = new Date(patientForAge.dateOfBirth as string);
+            if (!isNaN(dob.getTime())) {
+              const today = new Date();
+              const ageyears = today.getFullYear() - dob.getFullYear() -
+                (today.getMonth() < dob.getMonth() || (today.getMonth() === dob.getMonth() && today.getDate() < dob.getDate()) ? 1 : 0);
+              patientAgeContext = `Patient age: ${ageyears} years (DOB: ${dob.toLocaleDateString("en-US", { timeZone: "UTC", year: "numeric", month: "long", day: "numeric" })})`;
+            }
+          }
+        } catch {
+          // Age unavailable — proceed without it
+        }
+      }
+
       const personalization = await applyProviderPersonalizationPass(
         soapNote.fullNote ?? "",
         getClinicianId(req),
@@ -11101,6 +11126,7 @@ Return a JSON object:
         freshExtraction,
         diagnosisBundles,
         openai,
+        patientAgeContext,
       );
       if (personalization.changed) {
         soapNote = { ...soapNote, fullNote: personalization.note };
