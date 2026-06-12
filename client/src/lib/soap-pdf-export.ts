@@ -201,9 +201,31 @@ export async function exportSoapPdf(opts: SoapPdfOptions): Promise<void> {
   let logoEndX = MARGIN;
   if (opts.clinicLogo) {
     try {
-      const ext = opts.clinicLogo.includes('image/png') ? 'PNG' : 'JPEG';
-      doc.addImage(opts.clinicLogo, ext, MARGIN, y, 36, 18, undefined, 'FAST');
-      logoEndX = MARGIN + 40;
+      await new Promise<void>((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          const nw = img.naturalWidth || 400;
+          const nh = img.naturalHeight || 200;
+          const MAX_LOGO_W = 36; const MAX_LOGO_H = 18;
+          const aspect = nw / (nh || 1);
+          let lw = MAX_LOGO_W; let lh = lw / aspect;
+          if (lh > MAX_LOGO_H) { lh = MAX_LOGO_H; lw = lh * aspect; }
+          // Composite over white so transparent PNGs don't render with black fill
+          const canvas = document.createElement('canvas');
+          canvas.width = nw; canvas.height = nh;
+          const ctx = canvas.getContext('2d')!;
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, nw, nh);
+          ctx.drawImage(img, 0, 0);
+          try {
+            doc.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', MARGIN, y + (MAX_LOGO_H - lh) / 2, lw, lh, undefined, 'FAST');
+            logoEndX = MARGIN + lw + 4;
+          } catch (_) {}
+          resolve();
+        };
+        img.onerror = () => resolve();
+        img.src = opts.clinicLogo!;
+      });
     } catch (_) {
       // logo failed to render — skip it
     }

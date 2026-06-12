@@ -458,14 +458,18 @@ export async function generatePatientWellnessPDF(
   // Load clinic logo — composite over the brand primary color so transparent
   // PNGs render correctly on the colored header (no white-box artifact).
   let logoData: string | null = null;
+  let logoNaturalW = 0;
+  let logoNaturalH = 0;
   if (clinicLogo) {
     try {
       logoData = await new Promise<string>((resolve, reject) => {
         const img = new Image();
         img.onload = () => {
+          logoNaturalW = img.naturalWidth || 400;
+          logoNaturalH = img.naturalHeight || 200;
           const canvas = document.createElement('canvas');
-          canvas.width = img.naturalWidth || 400;
-          canvas.height = img.naturalHeight || 200;
+          canvas.width = logoNaturalW;
+          canvas.height = logoNaturalH;
           const ctx = canvas.getContext('2d')!;
           ctx.fillStyle = brandPrimaryHex;
           ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -497,7 +501,11 @@ export async function generatePatientWellnessPDF(
 
     // Left side: clinic logo (composited on brand primary, no separate white box)
     if (logoData) {
-      doc.addImage(logoData, 'JPEG', margin, 6, 54, 24);
+      const MAX_LOGO_W = 54; const MAX_LOGO_H = 24;
+      const logoAspect = logoNaturalW / (logoNaturalH || 1);
+      let lw = MAX_LOGO_W; let lh = lw / logoAspect;
+      if (lh > MAX_LOGO_H) { lh = MAX_LOGO_H; lw = lh * logoAspect; }
+      doc.addImage(logoData, 'JPEG', margin, 6 + (MAX_LOGO_H - lh) / 2, lw, lh);
     } else {
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(12);

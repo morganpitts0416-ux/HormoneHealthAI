@@ -56,6 +56,8 @@ export async function generateLabReportPDF(
     : [31, 78, 121];
   // Load clinic logo for PDF — composite over white to avoid jsPDF alpha-channel corruption
   let logoData: string | null = null;
+  let logoNaturalW = 0;
+  let logoNaturalH = 0;
   try {
     const src = clinicLogo || null;
     if (src) {
@@ -63,9 +65,11 @@ export async function generateLabReportPDF(
         const img = new Image();
         img.crossOrigin = 'anonymous';
         img.onload = () => {
+          logoNaturalW = img.naturalWidth || 400;
+          logoNaturalH = img.naturalHeight || 200;
           const canvas = document.createElement('canvas');
-          canvas.width = img.naturalWidth;
-          canvas.height = img.naturalHeight;
+          canvas.width = logoNaturalW;
+          canvas.height = logoNaturalH;
           const ctx = canvas.getContext('2d')!;
           ctx.fillStyle = '#ffffff';
           ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -90,7 +94,11 @@ export async function generateLabReportPDF(
 
   // Clinic logo on left, report title and clinic info on right
   if (logoData) {
-    doc.addImage(logoData, 'JPEG', 14, 8, 52, 22);
+    const MAX_LOGO_W = 52; const MAX_LOGO_H = 22;
+    const logoAspect = logoNaturalW / (logoNaturalH || 1);
+    let lw = MAX_LOGO_W; let lh = lw / logoAspect;
+    if (lh > MAX_LOGO_H) { lh = MAX_LOGO_H; lw = lh * logoAspect; }
+    doc.addImage(logoData, 'JPEG', 14, 8 + (MAX_LOGO_H - lh) / 2, lw, lh);
   }
   doc.setFontSize(16);
   doc.setFont('helvetica', 'bold');
