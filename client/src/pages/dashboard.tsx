@@ -140,6 +140,7 @@ interface ClinicUser {
   firstName: string;
   lastName: string;
   title: string | null;
+  clinicalRole: string | null;
   kind: "provider" | "staff";
   displayName: string;
 }
@@ -415,9 +416,9 @@ export default function Dashboard() {
     appointmentSpruceRequests.length + urgentSpruceRequests.length +
     pendingSubmissions.length;
 
-  // ── Open SOAP Notes (unsigned encounters) — provider-scoped, switchable.
-  // Defaults to the signed-in user; the Select lets you view another
-  // clinician's open notes (e.g. an MA reviewing a provider's queue).
+  // ── Open SOAP Notes (unsigned encounters) — scoped to any staff member.
+  // Defaults to the signed-in user; the Select lets anyone view any other
+  // clinic member's open notes (providers, nurses, MAs, etc.).
   const [openNotesProviderId, setOpenNotesProviderId] = useState<number | null>(null);
   const effectiveOpenNotesProviderId = openNotesProviderId ?? user?.id ?? null;
 
@@ -523,21 +524,21 @@ export default function Dashboard() {
               )}
             </div>
             <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
-              <span className="text-xs" style={{ color: "#7a8a64" }}>Provider</span>
+              <span className="text-xs" style={{ color: "#7a8a64" }}>Staff member</span>
               <Select
                 value={String(effectiveOpenNotesProviderId ?? "")}
                 onValueChange={(v) => setOpenNotesProviderId(v ? Number(v) : null)}
               >
                 <SelectTrigger
-                  className="w-44 h-8 text-xs"
+                  className="w-48 h-8 text-xs"
                   style={{ backgroundColor: "#ffffff", borderColor: "#d4c9b5", color: "#1c2414" }}
-                  data-testid="select-open-notes-provider"
+                  data-testid="select-open-notes-staff"
                 >
-                  <SelectValue placeholder="Select provider" />
+                  <SelectValue placeholder="Select staff member" />
                 </SelectTrigger>
                 <SelectContent>
                   {clinicUsers.map((u) => (
-                    <SelectItem key={u.id} value={String(u.id)} data-testid={`option-provider-${u.id}`}>
+                    <SelectItem key={u.id} value={String(u.id)} data-testid={`option-staff-${u.id}`}>
                       {u.displayName}
                       {u.kind === "staff" ? " · Staff" : ""}
                       {u.id === user?.id ? " (you)" : ""}

@@ -8271,21 +8271,30 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
     }
   });
 
-  // GET /api/clinic/users — list provider members of the requester's clinic for use in
-  // the dashboard "view open notes by provider" selector. Available to any authed user.
-  // Note: clinician_staff rows have no users.id link and cannot own encounters, so they
-  // are intentionally excluded — only entries here are valid encounter clinicianId values.
+  // GET /api/clinic/users — list all active clinic members for the dashboard
+  // "view open notes by staff member" selector. Includes providers, nurses, MAs,
+  // and any other role that has a login account (clinic_memberships row).
+  // clinician_staff rows without a users.id link are excluded — they cannot own encounters.
   app.get("/api/clinic/users", requireAuth, async (req, res) => {
     try {
       const clinicId = getEffectiveClinicId(req);
       const requesterId = getClinicianId(req);
       const me = await storage.getUserById(requesterId);
+
+      // Roles that are clinical staff (non-provider) — used to set kind for display
+      const STAFF_ROLES = new Set(["nurse", "medical_assistant", "ma", "care_coordinator", "admin", "front_desk", "other"]);
+      function resolveKind(clinicalRole: string | null): "provider" | "staff" {
+        if (!clinicalRole) return "provider";
+        return STAFF_ROLES.has(clinicalRole.toLowerCase()) ? "staff" : "provider";
+      }
+
       const meEntry = me ? {
         id: me.id,
         firstName: me.firstName,
         lastName: me.lastName,
         title: me.title ?? null,
-        kind: "provider" as const,
+        clinicalRole: (me as any).clinicalRole ?? null,
+        kind: resolveKind((me as any).clinicalRole ?? null),
         displayName: `${me.title ? me.title + " " : ""}${me.firstName} ${me.lastName}`.trim(),
       } : null;
 
@@ -8299,23 +8308,26 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
           firstName: usersTable.firstName,
           lastName: usersTable.lastName,
           title: usersTable.title,
+          clinicalRole: usersTable.clinicalRole,
         })
         .from(clinicMemberships)
         .innerJoin(usersTable, eq(clinicMemberships.userId, usersTable.id))
         .where(and(eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.isActive, true)));
 
       const seen = new Set<number>();
-      const out: Array<{ id: number; firstName: string; lastName: string; title: string | null; kind: "provider" | "staff"; displayName: string }> = [];
+      const out: Array<{ id: number; firstName: string; lastName: string; title: string | null; clinicalRole: string | null; kind: "provider" | "staff"; displayName: string }> = [];
 
       for (const m of memberRows) {
         if (seen.has(m.userId)) continue;
         seen.add(m.userId);
+        const kind = resolveKind(m.clinicalRole ?? null);
         out.push({
           id: m.userId,
           firstName: m.firstName,
           lastName: m.lastName,
           title: m.title ?? null,
-          kind: "provider",
+          clinicalRole: m.clinicalRole ?? null,
+          kind,
           displayName: `${m.title ? m.title + " " : ""}${m.firstName} ${m.lastName}`.trim(),
         });
       }
