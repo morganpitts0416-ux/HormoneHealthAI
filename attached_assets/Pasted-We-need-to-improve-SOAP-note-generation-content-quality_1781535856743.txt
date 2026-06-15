@@ -1,0 +1,67 @@
+We need to improve SOAP note generation content quality WITHOUT changing the SOAP layout, data extraction structure, medication extraction, PMH/PSH/social/family history extraction, ROS formatting, or the new AI June final-pass provider rules.
+
+The issue is specifically that the generated HPI is too condensed and is losing the patient’s lived experience, timeline, severity, functional impact, and clinical nuance.
+
+Update the SOAP note generation logic so the HPI must preserve the full clinical narrative from the transcript. The HPI should not summarize emotionally significant details into vague phrases like “mood changes” or “she attributes this to hormones.” It should document the patient’s actual account in clinically appropriate language.
+
+HPI requirements:
+
+1. Include a clear symptom timeline using dates or relative timing when provided.
+2. Include the patient’s baseline before the problem started.
+3. Include what changed after interventions such as IUD placement, progesterone changes, testosterone initiation/discontinuation, vaginal estrogen, etc.
+4. Include severity and pattern of bleeding, including frequency, color/character, heaviness, recurrence, cramping, and unpredictability.
+5. Include functional impact: fatigue, emotional distress, feeling mentally overwhelmed, disruption to daily life, intimacy/sexual desire, and relationship/marital strain when stated.
+6. Include patient concerns/fears, such as fear that hysterectomy may worsen hormone instability.
+7. Include patient goals, such as wanting predictable bleeding again, wanting definitive treatment, or wanting to stop “chasing” symptoms.
+8. Preserve uncertainty when the transcript is uncertain. Do not overstate causality.
+9. Do not erase clinically important patient language; translate it into professional documentation.
+10. Keep the HPI thorough enough to give a future clinician the full picture without needing the transcript.
+
+Add an anti-condensation rule:
+If the transcript includes emotional distress, relationship impact, sexual function impact, safety concerns, treatment frustration, fear of a procedure, or major quality-of-life impairment, those details must be included in the HPI and/or Assessment/Plan.
+
+Add a final quality check before saving:
+Ask internally:
+
+* Would a clinician understand why this patient is distressed?
+* Does the HPI explain what happened, when it happened, what worsened/improved, and how it is affecting her life?
+* Did we preserve the patient’s main goal and concern?
+* Did we avoid replacing specific details with vague phrases?
+
+Example improved HPI style:
+“Amy Harvey presents for follow-up regarding persistent abnormal uterine bleeding and difficulty tolerating/assessing her current hormone plan. She reports that prior to this recent course, her cycles were predictable approximately every 24 days, although heavy. Since the period surrounding IUD placement and multiple hormone adjustments, she reports near-continuous or frequently recurrent bleeding, often described as brown blood with intermittent heavier bleeding episodes. She reports a heavy period from approximately the 20th–24th, followed by recurrent heavy bleeding again around the 31st/1st, which led her to stop her hormone medications due to concern that the regimen was worsening or prolonging symptoms.
+
+She reports significant fatigue and feels the ongoing bleeding has become emotionally overwhelming and disruptive to her quality of life. She describes feeling mentally distressed by the unpredictability and persistence of bleeding and notes that it has affected her sexual desire and intimacy with her husband, contributing to relationship strain. She is frustrated by feeling as though she is ‘chasing’ symptoms and side effects and states she would prefer to return to predictable heavy cycles rather than continue with constant bleeding.
+
+She remains interested in hormone support if it can be done safely and effectively, but is concerned about worsening bleeding or destabilizing her symptoms. She is considering hysterectomy more seriously given the severity and persistence of symptoms, though she expresses fear about how hysterectomy could affect her hormones, especially given her history of endometriosis, prior surgeries, and one remaining ovary.”
+
+Add a global SOAP generation principle:
+
+The note must “paint the picture” of the entire encounter for the original provider and any future provider reviewing the chart months later.
+
+The goal is not just to summarize symptoms. The goal is to preserve the clinical story, patient context, provider reasoning, discussed options, concerns, uncertainty, and next steps.
+
+Every generated SOAP note should answer:
+
+1. Why is the patient here today?
+2. What has been happening from the patient’s perspective?
+3. What is the timeline?
+4. What is the patient worried about?
+5. How is this affecting their daily life, function, mood, relationships, work, sleep, sex life, or quality of life?
+6. What has already been tried?
+7. What helped, worsened, or failed?
+8. What was discussed during the visit?
+9. What was the provider thinking clinically?
+10. What plan was made, and what future options were discussed?
+
+Do not generate notes that are merely problem-list summaries.
+
+The HPI should read like a clinically appropriate narrative of the patient’s account.
+The Assessment/Plan should reflect the provider’s clinical reasoning, not just the final diagnosis and generic plan.
+
+When the transcript includes provider discussion, clinical uncertainty, differential considerations, treatment pros/cons, specialist coordination, or future options, those details must be preserved in the Assessment/Plan or Future Considerations.
+
+Add a final review step before output:
+“Could the provider read this note 3–6 months later and remember the encounter, the patient’s concerns, what was discussed, and why the plan was chosen?”
+
+If the answer is no, regenerate the HPI and Assessment/Plan with more encounter-specific detail.

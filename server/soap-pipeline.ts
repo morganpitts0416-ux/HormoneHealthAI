@@ -817,6 +817,26 @@ STYLE STANDARD:
 
 DOCUMENT EVERYTHING — but document it once, where it belongs. Completeness means every clinical decision is captured with its reasoning, dosing, and monitoring. It does not mean repeating the same medication in five separate places or narrating the patient's personal story.
 
+═══════════════════════════════════════
+GLOBAL NOTE QUALITY STANDARD — PAINT THE PICTURE
+═══════════════════════════════════════
+Every generated note must answer the following ten questions for any clinician reading the chart 3–6 months later — without needing to re-read the transcript:
+
+1. Why is this patient here today?
+2. What has been happening from the patient's perspective?
+3. What is the timeline of the current problem?
+4. What is the patient worried about or afraid of?
+5. How is this affecting their daily life, function, mood, relationships, work, sleep, sex life, or quality of life?
+6. What treatments have already been tried, and when?
+7. What helped, what worsened, and what failed?
+8. What was discussed and considered during this visit?
+9. What was the provider's clinical reasoning?
+10. What plan was made, and what future options were discussed?
+
+Pre-finalization self-check: Could the original provider read this note 3–6 months later and remember this encounter, the patient's concerns, what was discussed, and why the plan was chosen? If the answer is no, the HPI and Assessment/Plan require more encounter-specific detail before output.
+
+Do not generate notes that are merely problem-list summaries. The HPI reads as a clinical narrative of the patient's account. The Assessment reflects the provider's reasoning — not just a diagnosis paired with a generic plan.
+
 ════════════════════════════════════════
 FOUR-LOCATION MANDATE — THE OVERARCHING RULE
 ════════════════════════════════════════
@@ -1115,6 +1135,53 @@ The HPI is the clinical record of what took place in this visit. If it was discu
 9. DENIED SYMPTOMS: Weave naturally: "She denies nausea, vomiting, or injection site reactions."
 
 10. PROPORTIONALITY: Long because it contains clinical reasoning = excellent. Long because it narrates the patient's life story = not acceptable.
+
+═══════════════════════════════════════
+HPI NARRATIVE DEPTH REQUIREMENTS — ANTI-CONDENSATION
+═══════════════════════════════════════
+These requirements apply when the transcript provides the relevant information. They do not authorize adding inferred content or fabricated detail not present in the transcript (FF-6 and AD-1 remain in full effect). They require that detail which IS in the transcript is preserved — not silently compressed into a vague phrase.
+
+HPI-D1. SYMPTOM TIMELINE: Include specific timing whenever stated — dates, relative timing ("four weeks after IUD placement"), duration, and pattern changes over time. "She reports bleeding" is incomplete when the transcript describes near-daily bleeding since a specific date or intervention.
+
+HPI-D2. PATIENT BASELINE: Document what the patient's baseline was BEFORE the current problem — prior cycle pattern, prior symptom state, prior medication status. The before/after contrast is clinically essential for any complaint that changed from a prior state.
+
+HPI-D3. INTERVENTION EFFECTS: When a treatment was introduced (IUD, progesterone change, testosterone initiation or discontinuation, vaginal estrogen, etc.), document what changed clinically afterward. Timeline + intervention + outcome change is the minimum three-part structure for any complaint linked to a treatment event.
+
+HPI-D4. SYMPTOM SEVERITY AND PATTERN: For bleeding, pain, or recurrent symptom complaints, include frequency, character (color, heaviness, intermittent vs. continuous), duration of individual episodes, recurrence, and unpredictability when stated. "Abnormal uterine bleeding" without pattern detail is insufficient when the transcript provides that detail.
+
+HPI-D5. FUNCTIONAL AND QUALITY-OF-LIFE IMPACT: When the patient describes how symptoms are affecting her life — fatigue limiting daily function, emotional distress, disruption of intimacy or sexual desire, relationship strain, work or sleep impairment — document these in clinical language. Do not compress specific, multidimensional impact into a single vague phrase like "mood changes" or "quality-of-life impact."
+- WRONG: "She reports mood changes." (when transcript describes emotional overwhelm, tearfulness, functional impairment, and marital strain)
+- RIGHT: "She describes significant emotional distress secondary to persistent, unpredictable bleeding — reports tearfulness, feeling mentally overwhelmed, impact on sexual desire and intimacy, and resulting strain in her marriage."
+
+HPI-D6. PATIENT CONCERNS AND FEARS: When a patient expresses a specific fear about a treatment or outcome (e.g., fear that hysterectomy will destabilize her hormones, concern about long-term effects of a medication), document that concern explicitly and specifically. It is clinically relevant context that explains her treatment preferences and shared decision-making.
+- WRONG: "She is hesitant about surgery."
+- RIGHT: "She expresses concern that hysterectomy could destabilize her hormonal regulation, particularly given her history of endometriosis, prior surgeries, and one remaining ovary."
+
+HPI-D7. PATIENT GOALS: When the patient states what she wants from treatment — predictable cycles, relief from a specific symptom, a definitive solution, wanting to stop chasing symptoms — document those goals. They contextualize the shared decision-making in the A/P.
+
+HPI-D8. PRESERVE UNCERTAINTY: When the transcript reflects uncertainty about causality, preserve it. Do not convert "we're not sure if this is the progesterone or the IUD" into a definitive causal statement. Use language such as "the exact contributor remains uncertain" or "etiology has not been definitively established."
+
+HPI-D9. CLINICAL TRANSLATION OF PATIENT LANGUAGE: Translate patient language into clinical documentation — do not erase meaningful detail by replacing it with a vague shorthand phrase. The goal is clinically appropriate documentation of what the patient actually reported:
+- WRONG: "She attributes symptoms to hormonal changes." (when patient described a specific, detailed fear about what is driving her problem)
+- RIGHT: "She suspects recent hormone adjustments or IUD as the driver of the change in her bleeding pattern, though acknowledges the etiology remains unclear."
+
+HPI-D10. CHART FOR A FUTURE PROVIDER: The completed HPI must give a future clinician the full clinical picture without needing the transcript. If a clinician reading this note six months from now would not understand what happened, when it happened, what was tried, what changed, and why the patient is distressed — the HPI is clinically incomplete regardless of word count.
+
+ANTI-CONDENSATION RULE — MANDATORY:
+If the transcript includes ANY of the following, those details MUST appear in the HPI and/or Assessment/Plan. They cannot be compressed into a single vague phrase or omitted entirely:
+- Emotional distress or psychiatric impact of a physical symptom (not just "mood changes")
+- Relationship strain, marital impact, or family impact described specifically by the patient
+- Sexual function changes or loss of intimacy stated by the patient
+- Patient-expressed fears or concerns about a specific procedure or treatment
+- Treatment frustration, symptom fatigue, or feeling of futility described by the patient
+- Major quality-of-life impairment stated in specific terms by the patient
+
+ANTI-CONDENSATION EXAMPLES:
+WRONG: "She reports mood changes." → when transcript documents emotional overwhelm, relationship strain, tearfulness, and daily functional impairment
+RIGHT: "She describes significant emotional distress secondary to persistent, unpredictable bleeding — reports tearfulness, feeling mentally overwhelmed, impact on sexual desire and intimacy, and resulting strain in her marriage."
+
+WRONG: "Patient is concerned about hormonal stability." → when transcript documents a specific, detailed fear about hysterectomy affecting her hormone status given her surgical history
+RIGHT: "She is considering hysterectomy more seriously given symptom severity, but expresses specific concern that hysterectomy could destabilize her hormones, particularly given her history of endometriosis, prior surgeries, and one remaining ovary."
 
 11. PROVIDER EDUCATION ≠ PATIENT ATTRIBUTION — SPEAKER ATTRIBUTION RULE: When the provider explains a mechanism, cause, or clinical connection during the visit, that belongs to the provider's voice in the note — never to the patient's. Do not convert a provider's educational statement into a patient attribution.
 - WRONG: "Patient reports frequent early morning waking which she attributes to her postmenopausal status." (if the clinician made this connection, not the patient)
@@ -1524,7 +1591,24 @@ PASS 2 — FOUR-LOCATION AUDIT: For every medication/treatment identified in Pas
 
 If ANY medication or treatment is missing from any of its required locations → ADD IT before producing output.
 
-After generating the initial draft, perform both audit passes against the transcript. If anything is missing from any required location, revise automatically. Only return the final revised note — never the initial draft.
+After generating the initial draft, perform all three audit passes against the transcript. If anything is missing from any required location or the HPI fails the narrative quality check, revise automatically. Only return the final revised note — never the initial draft.
+
+PASS 3 — HPI NARRATIVE QUALITY AUDIT:
+Ask these four questions about the completed HPI:
+
+□ Would a clinician reading this note understand WHY this patient is distressed — not just that she is distressed?
+□ Does the HPI explain what happened, when it happened, what worsened or improved, and how it is affecting her life?
+□ Did we preserve the patient's main goal and primary concern in clinically specific language?
+□ Did we avoid replacing specific patient-reported details with vague clinical shorthand (e.g., "mood changes", "quality-of-life impact", "she attributes this to hormones")?
+
+If the answer to any question is NO → REVISE the HPI with the missing clinical narrative before producing output.
+
+CONDENSATION FAILURE SCAN: Before finalizing, scan the HPI for these warning phrases. If any appear, verify the transcript does not contain richer detail that should have been documented instead:
+- "mood changes" or "mood symptoms" — check whether emotional distress, tearfulness, functional impact, or relationship strain was described
+- "she attributes this to [cause]" — verify this was the patient's independent attribution, not a provider education moment
+- "relationship strain" without specific detail — check whether the patient described specific impact
+- "quality-of-life impact" without specifying how — always name the specific affected domain
+- "concerns about [procedure]" without naming the specific fear — always document the patient's stated reasoning
 
 CRITICAL — HANDLING [SUGGESTED] ITEMS FROM CLINICAL INTERPRETATION:
 Items labeled [SUGGESTED — clinician must approve before charting] require careful classification:
