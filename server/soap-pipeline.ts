@@ -1519,6 +1519,80 @@ FORBIDDEN — do not create a separate sub-section:
 If the transcript does NOT contain a given counseling element, do NOT invent it. Only document what actually occurred.
 
 ═══════════════════════════════════════
+SECTION 3D — CLINICAL REASONING PRESERVATION
+═══════════════════════════════════════
+When the transcript includes provider education, clinical explanation, analogies, treatment rationale, risks/benefits, or shared decision-making, preserve the clinically relevant meaning in the HPI and Assessment/Plan. Do not reduce meaningful provider reasoning to a generic action phrase.
+
+REASONING IS PRESENT AND MUST BE PRESERVED WHEN:
+- Provider explains WHY a medication was chosen over alternatives
+- Provider explains the mechanism or expected effect of a treatment in this patient's specific context
+- Provider uses an analogy or patient-friendly explanation that reflects a clinical reasoning process (e.g., estrogen "cushion" for fluctuating drops)
+- Provider discusses why one route, dose, or formulation was selected over another
+- Provider references labs specifically in the context of explaining a treatment decision
+- Provider and patient discuss options and arrive at a shared decision — what was weighed, what was chosen, and why
+
+EXAMPLES — CORRECT REASONING PRESERVATION:
+WRONG: "Estradiol initiated for hormone optimization."
+RIGHT: "Discussed that low-dose transdermal estradiol may help stabilize estrogen fluctuation and reduce symptom variability — targeting the drop/fluctuation pattern driving vasomotor and mood symptoms, not simply to raise a lab value."
+
+WRONG: "Testosterone route changed."
+RIGHT: "Previously trialed [prior route]; switched to [new route] due to [provider's stated reason — inadequate absorption, patient preference, or tolerability]. Reviewed expected onset and administration technique."
+
+WRONG: "GLP-1 dose adjusted."
+RIGHT: "Dose reduced from [X] to [Y] due to [specific side effects, e.g., persistent nausea] — targeting a better-tolerated maintenance dose while preserving efficacy."
+
+PRESERVATION MANDATE:
+For every Assessment item involving a new prescription, dose change, route change, or deferred treatment, the clinical reasoning paragraph MUST capture the provider's stated WHY when it was present in the transcript — not just the WHAT. The goal is that another provider reading the note six months later understands not only what was done but why it was done this way for this patient.
+
+═══════════════════════════════════════
+ANTI-BOILERPLATE RULE — MANDATORY
+═══════════════════════════════════════
+Long default legal/compliance language MUST NOT dominate the Assessment/Plan. Compliance language, if clinically required, must be condensed to 1-2 concise sentences. Standard care templates and generic legal text must not fill Assessment items at the expense of clinical reasoning.
+
+The following Assessment/Plan structures are ALWAYS insufficient:
+- "Start medication. Follow up."
+- "Risks and benefits reviewed. Patient agrees. Continue as prescribed."
+- Any entry where boilerplate language occupies more space than clinical reasoning
+
+The Assessment/Plan must read like clinical thinking — explaining the WHY behind each decision in clinical language specific to this patient and this encounter, not documenting WHAT was done in a generic template form.
+
+═══════════════════════════════════════
+GROUNDED CLINICAL REASONING — TWO ALLOWED TYPES
+═══════════════════════════════════════
+Document provider reasoning when it is present in the transcript. Never fabricate detailed reasoning not stated or reasonably inferable. There are exactly two allowed reasoning types:
+
+ALLOWED TYPE 1 — EXPLICIT REASONING:
+The provider clearly explains why they are recommending something. Preserve the substance of that explanation.
+Example: Provider says estrogen patch may help "cushion" estrogen drops → document: "Discussed that low-dose transdermal estradiol may help stabilize estrogen fluctuation and reduce the symptom burden of hormonal variation — targeting the fluctuation/drop pattern, not a specific lab value threshold."
+
+ALLOWED TYPE 2 — OBVIOUS CLINICAL INFERENCE:
+The reason is medically direct and clearly supported by encounter data. No invented pathophysiology, no speculated differential.
+Example: BP elevated + losartan started → document: "Started losartan for elevated blood pressure."
+Example: A1C elevated + metformin started → document: "Metformin initiated for elevated A1C / insulin resistance."
+Example: Deficiency found + replacement started → document: "Started [X] for documented [Y] deficiency."
+
+PROHIBITED — DO NOT USE UNLESS THE TRANSCRIPT EXPLICITLY SUPPORTS THE STATEMENT:
+- "Provider suspects..."
+- "Likely due to..."
+- "Discussed risks and benefits..." (without naming what was specifically discussed)
+- "This was chosen because..." (without the provider actually stating the reason)
+- "Concern for..." (unless the provider expressed this concern)
+- Invented differential diagnoses not present in the transcript
+- Speculative pathophysiology or nuanced risk reasoning not articulated by the provider
+
+When provider reasoning is not explicit in the transcript, use plain grounded documentation:
+- "Started X for Y."
+- "Adjusted X due to reported side effect Y."
+- "Ordered X to evaluate Y."
+- "Referred to X for Y."
+
+PRE-FINALIZATION REASONING GATE — apply to every Assessment/Plan clinical statement:
+For each explanatory or causal statement in the Assessment/Plan, confirm it passes at least one test:
+1. Was this explicitly stated or explained in the transcript?
+2. Is this an obvious direct clinical inference clearly supported by encounter data?
+If neither applies — remove it before producing output.
+
+═══════════════════════════════════════
 SECTION 4 — RECOMMENDATION DUPLICATE SUPPRESSION
 ═══════════════════════════════════════
 The "needs_clinician_review" array must NEVER include items that duplicate the explicit plan.
@@ -1609,6 +1683,17 @@ CONDENSATION FAILURE SCAN: Before finalizing, scan the HPI for these warning phr
 - "relationship strain" without specific detail — check whether the patient described specific impact
 - "quality-of-life impact" without specifying how — always name the specific affected domain
 - "concerns about [procedure]" without naming the specific fear — always document the patient's stated reasoning
+
+PASS 4 — CLINICAL REASONING QUALITY AUDIT:
+Before finalizing, confirm the Assessment/Plan answers all five questions:
+
+□ Did we capture the provider's thought process for each treatment decision — not just what was ordered, but why?
+□ Did we capture the reason behind each medication change — not just "dose adjusted" but why the dose was changed, what it addresses, and what outcome is expected?
+□ Did we capture options discussed but deferred, including the patient's expressed preference or hesitation if stated?
+□ Did we remove unnecessary boilerplate and compliance language that makes the Assessment/Plan less clinically useful?
+□ Could another provider read this Assessment/Plan and understand the full plan — including the reasoning — without hearing the conversation?
+
+If the answer to any question is NO → REVISE the Assessment/Plan before producing output.
 
 CRITICAL — HANDLING [SUGGESTED] ITEMS FROM CLINICAL INTERPRETATION:
 Items labeled [SUGGESTED — clinician must approve before charting] require careful classification:
@@ -2029,6 +2114,10 @@ CHECK FOR:
    - Writing "which she attributes to [condition]" or "she believes is caused by [X]" when only the provider made that clinical connection — not the patient
    - Converting provider education ("I explained that low progesterone can cause early morning waking") into patient attribution ("patient attributes her waking to low progesterone")
    If found: flag as important. Remove the invented qualifier and restore the patient's actual words. Move the clinical explanation to provider voice: "Discussed [mechanism] as a potential contributor."
+
+27. CLINICAL REASONING PRESERVATION: For each new medication initiated, dose changed, or route changed at this visit — does the Assessment item's clinical reasoning paragraph capture the provider's stated WHY when it was present in the transcript? A reasoning paragraph that only states what was done ("estradiol initiated," "dose reduced," "route switched") without explaining the provider's stated rationale is a documentation failure when that reasoning was captured in the transcript. Specifically check: (a) when the provider used an analogy or patient-facing explanation (e.g., estrogen "cushion" for fluctuating drops), is the underlying clinical reasoning documented in appropriate clinical language? (b) when a route or formulation was selected over alternatives the provider named, is the selection rationale documented? (c) when a dose was changed due to a specific side effect or inadequate response, is that specific reason stated? If reasoning is present in the transcript but absent from the Assessment, flag as important and integrate it into the clinical reasoning paragraph using TYPE 1 (explicit) or TYPE 2 (obvious inference) language only — do not fabricate reasoning not in the transcript.
+
+28. ANTI-BOILERPLATE COMPLIANCE: Does the Assessment/Plan contain long generic legal/compliance language, standard template text, or boilerplate consent phrases that dominate entries at the expense of clinical reasoning? Entries that primarily consist of "Risks and benefits reviewed. Patient agrees. Continue as prescribed." or similar generic language without clinical specificity must be revised — the clinical reasoning must be prominent and specific, and any required compliance language must be compacted to 1-2 sentences. An Assessment/Plan entry that reads like "Start medication. Follow up." when the transcript contains clear provider reasoning is an important omission. If boilerplate language has displaced clinical reasoning, flag as important and revise to restore the provider's actual reasoning with compliance language compacted.
 
 STYLE PRESERVATION — MANDATORY WHEN REVISING:
 If you are writing a revised_fullNote, the following style rules are non-negotiable and apply to your revision exactly as they applied to the original generation. Do not introduce patterns the original generation was specifically trained to avoid.

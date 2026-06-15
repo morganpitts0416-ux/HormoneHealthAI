@@ -1,0 +1,157 @@
+The SOAP note generator is still missing the provider clinical reasoning and shared decision-making layer.
+
+Do not only document the final plan. The note must capture why the provider chose that plan, what options were discussed, what tradeoffs were explained, and what the patient decided.
+
+Add a required “clinical reasoning preservation” rule:
+
+When the transcript includes provider education, clinical explanation, analogies, treatment rationale, risks/benefits, or shared decision-making, preserve the clinically relevant meaning in the HPI and Assessment/Plan.
+
+Examples:
+
+* If estrogen is started to “cushion” estrogen drops, document that the provider suspects symptoms may correlate with fluctuating/dropping estrogen and is using low-dose transdermal estradiol to reduce symptom volatility, not simply to “optimize estrogen.”
+* If the patient has had a hysterectomy but retained ovaries, document that she may still experience perimenopausal hormonal fluctuation despite no uterus.
+* If testosterone options are discussed, document prior routes tried, why they may not have worked, and why the selected route was chosen.
+* If GLP-1 dose reduction is discussed, document the suspected dose-related side effects and the reasoning for reducing to a better-tolerated maintenance dose.
+* If mammogram, supplements, injections, or follow-up labs are discussed, include them in the plan when clinically relevant.
+
+Add an anti-boilerplate rule:
+Do not allow long default legal/compliance language to dominate the Assessment/Plan. If required, place it in a compact medication justification section or collapse it into 1–2 concise sentences unless the provider specifically requires full text.
+
+The Assessment/Plan should not read like:
+“Start medication. Follow up.”
+
+It should read like:
+“Provider suspects symptoms are related to estrogen fluctuation/drop pattern despite estradiol level not being frankly low. Discussed that low-dose transdermal estradiol may provide a stabilizing baseline/cushion to reduce hot flashes, joint pain, mood volatility, and energy crashes. Patient agrees to trial patch.”
+
+Before finalizing, check:
+
+1. Did we capture the provider’s thought process?
+2. Did we capture the reason behind each medication change?
+3. Did we capture options discussed but deferred?
+4. Did we remove unnecessary boilerplate that makes the note less clinically useful?
+5. Could another provider understand the plan without hearing the conversation?
+
+Add a grounded clinical reasoning rule:
+
+The SOAP generator must document provider reasoning when it is present in the transcript, but it must never fabricate detailed reasoning that was not stated or reasonably inferable.
+
+There are two allowed reasoning types:
+
+1. Explicit reasoning
+   Use this when the provider clearly explains why they are recommending something.
+
+Example:
+Provider says estrogen patch may help “cushion” estrogen drops and reduce hot flashes/mood volatility.
+Document: “Provider discussed that low-dose transdermal estradiol may help stabilize estrogen fluctuation/drop symptoms.”
+
+2. Obvious clinical inference
+   Use this only when the reason is medically direct and clearly supported by the encounter data.
+
+Example:
+Blood pressure is elevated and provider says, “Let’s start losartan.”
+Document: “Start losartan for elevated blood pressure.”
+
+Example:
+A1C is elevated and provider says, “Let’s start metformin.”
+Document: “Start metformin for elevated A1C/insulin resistance.”
+
+Do not invent nuanced reasoning, differential diagnoses, risk-benefit analysis, or future concerns unless they were actually discussed.
+
+Avoid phrases like:
+
+* “Provider suspects...”
+* “Likely due to...”
+* “Discussed risks and benefits...”
+* “This was chosen because...”
+* “Concern for...”
+  unless the transcript supports that statement.
+
+When reasoning is not explicit but the medication/problem connection is obvious, use simple grounded language:
+“Started X for Y.”
+“Adjusted X due to reported side effect Y.”
+“Ordered X to evaluate Y.”
+“Referred to X for Y.”
+
+When the provider’s reasoning is explicit, preserve it.
+When the reasoning is obvious, document it simply.
+When the reasoning is unclear, do not guess.
+
+Final check:
+For every Assessment/Plan statement, ask:
+
+1. Was this explicitly stated?
+2. Is this an obvious direct clinical inference?
+3. Or am I making up reasoning?
+
+If the answer is #3, remove it.
+
+CRITICAL PRESERVATION REQUIREMENT
+
+The following systems are functioning correctly and must remain unchanged unless explicitly modified by future development work:
+
+1. SOAP note layout and formatting
+2. Medication extraction logic
+3. Medical history extraction logic
+4. Surgical history extraction logic
+5. Allergy extraction logic
+6. Family history extraction logic
+7. Social history extraction logic
+8. Review of Systems extraction logic
+9. Objective data extraction
+10. Diagnosis generation framework
+11. AI June final-pass processing
+12. Provider-specific AI June custom rules
+13. Custom diagnosis bundles
+14. Custom statement insertion rules
+15. Custom clinic/provider documentation preferences
+16. Existing coding, billing, and compliance workflows
+
+The goal of this update is NOT to redesign the SOAP note generation pipeline.
+
+The goal is ONLY to improve:
+
+* HPI narrative quality
+* Preservation of patient story
+* Preservation of symptom timeline
+* Preservation of functional impact
+* Preservation of patient concerns and goals
+* Preservation of provider education and clinical reasoning when discussed
+* Preservation of shared decision-making
+* Assessment/Plan usefulness and encounter recall
+
+The generator must continue producing the same SOAP structure and extracting the same discrete data elements.
+
+The new narrative enhancement layer should operate AFTER data extraction and BEFORE the final AI June provider-rule pass.
+
+Required processing order:
+
+Step 1:
+Extract structured data exactly as currently implemented.
+
+Step 2:
+Generate HPI and Assessment/Plan narrative using transcript content and encounter context.
+
+Step 3:
+Apply narrative quality checks:
+
+* patient story
+* timeline
+* functional impact
+* provider reasoning
+* shared decision-making
+* encounter recall
+
+Step 4:
+Run AI June final-pass processing.
+
+Step 5:
+Apply provider-specific custom rules, diagnosis bundles, statement insertion rules, and clinic preferences.
+
+Step 6:
+Generate final SOAP output.
+
+Do not allow narrative enhancements to alter, overwrite, remove, or bypass AI June customizations.
+
+Do not allow narrative enhancements to modify extracted medications, medical history, diagnoses, allergies, family history, social history, or objective findings unless the transcript clearly supports a correction.
+
+The AI June pass remains the final authority for provider-specific customization.
