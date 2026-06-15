@@ -2173,6 +2173,8 @@ export default function PatientProfiles() {
   // Tracks the lab ID we have already auto-opened from the URL ?lab= param so
   // we don't re-open it each time `labs` or `selectedPatient` changes.
   const urlLabOpened = useRef<number | null>(null);
+  // Tracks the encounter ID we have already auto-opened from the ?encounter= param.
+  const urlEncounterEditHandled = useRef<number | null>(null);
 
   // Auto-generate patient-specific dietary guidance when the publish dialog opens.
   // The endpoint pulls directly from this lab's interpretations + lab values, so
@@ -2256,6 +2258,34 @@ export default function PatientProfiles() {
     if (tab === "forms") setShowForms(true);
   }, [allPatients, searchStr]);
 
+  // Auto-open the correct note editor when a ?encounter=N param is in the URL.
+  // Fires after encounters data is loaded so noteType is available.
+  useEffect(() => {
+    const params = new URLSearchParams(searchStr);
+    const encParamRaw = params.get("encounter");
+    if (!encParamRaw || !selectedPatient || patientEncounters.length === 0) return;
+    const encId = Number(encParamRaw);
+    if (!Number.isFinite(encId) || encId <= 0) return;
+    if (urlEncounterEditHandled.current === encId) return;
+    urlEncounterEditHandled.current = encId;
+
+    const enc = patientEncounters.find(e => e.id === encId);
+    if (!enc) return;
+
+    const noteType = enc.noteType ?? "soap_provider";
+    const sn = enc.soapNote as any;
+    const hasBlocks = Array.isArray(sn?.blocks);
+
+    setShowEncounters(true);
+    if (noteType === "nurse") {
+      setEditingNurseNoteId(encId);
+    } else if (noteType === "phone") {
+      setEditingPhoneNoteId(encId);
+    } else if (noteType === "soap_provider" && hasBlocks) {
+      setEditingManualSoapId(encId);
+    }
+  }, [patientEncounters, selectedPatient, searchStr]);
+
   // PATIENT-SAFETY: When the user switches patients in the rail while an
   // inline encounter editor is open, close it so we never end up showing
   // Patient A's encounter while the chart is on Patient B. The server
@@ -2263,6 +2293,7 @@ export default function PatientProfiles() {
   // anyway, but this prevents the visual ghost-editor in the first place.
   useEffect(() => {
     setInlineEncounter(null);
+    urlEncounterEditHandled.current = null;
   }, [selectedPatient?.id]);
 
   const { data: labs = [], isLoading: labsLoading } = useQuery<LabResult[]>({
@@ -2708,10 +2739,19 @@ export default function PatientProfiles() {
 
   type EncounterSummary = Pick<ClinicalEncounter, 'id' | 'patientId' | 'visitDate' | 'visitType' | 'chiefComplaint' | 'transcription' | 'soapNote' | 'patientSummary' | 'summaryPublished'> & {
     patientName: string;
+    noteType?: string | null;
+    clinicId?: number | null;
     signedAt?: string | Date | null;
     signedBy?: string | null;
     isAmended?: boolean;
+    amendedAt?: string | Date | null;
+    soapGeneratedAt?: string | Date | null;
+    clinicianNotes?: string | null;
+    phoneContact?: { contactedWith?: string; direction?: 'incoming' | 'outgoing'; durationMinutes?: number } | null;
+    pendingCollabReview?: boolean;
+    lockedAt?: string | Date | null;
     evidenceSuggestions?: { suggestions?: Array<{ title: string; rationale?: string; strength_of_support?: string; level_of_evidence?: string; citations?: Array<{ doi?: string; pmid?: string; journal?: string; year?: number; authors?: string }> }> } | null;
+    diarizedTranscript?: any[] | null;
   };
 
   const { data: patientEncounters = [] } = useQuery<EncounterSummary[]>({

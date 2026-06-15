@@ -614,7 +614,7 @@ export default function Dashboard() {
                         // in the encounter editor where SOAP can be generated/reviewed.
                         const isInlineNote = enc.noteType === "nurse" || enc.noteType === "phone";
                         if (isInlineNote) {
-                          setLocation(`/patients?patient=${enc.patientId}&tab=encounters`);
+                          setLocation(`/patients?patient=${enc.patientId}&tab=encounters&encounter=${enc.id}`);
                         } else {
                           setLocation(`/encounters?encounterId=${enc.id}`);
                         }
