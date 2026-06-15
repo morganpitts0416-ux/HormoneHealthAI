@@ -540,12 +540,34 @@ export default function LabInterpretation() {
                 hasPrefilledBmiRef.current = false;
                 setSelectedPatient(patient);
                 if (patient) {
-                  setLabValues({
-                    patientName: `${patient.firstName} ${patient.lastName}`,
-                    demographics: {
-                      ...(patient.dateOfBirth ? { age: calculateAge(patient.dateOfBirth) } : {}),
-                    },
-                  });
+                  const baseDemographics: Record<string, any> = {};
+                  if (patient.dateOfBirth) {
+                    baseDemographics.age = calculateAge(patient.dateOfBirth);
+                  }
+                  // Fetch vitals to auto-fill systolic BP and BMI, then set all at once
+                  fetch(`/api/patients/${patient.id}/vitals`, { credentials: 'include' })
+                    .then(r => r.ok ? r.json() : [])
+                    .then((vitals: any[]) => {
+                      const cutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
+                      const recent = vitals.filter((v: any) => new Date(v.recordedAt).getTime() >= cutoff);
+                      const bpEntry = recent.find((v: any) => v.systolicBp != null);
+                      const bmiEntry = recent.find((v: any) => v.bmi != null);
+                      if (bmiEntry) hasPrefilledBmiRef.current = true;
+                      setLabValues({
+                        patientName: `${patient.firstName} ${patient.lastName}`,
+                        demographics: {
+                          ...baseDemographics,
+                          ...(bpEntry ? { systolicBP: bpEntry.systolicBp } : {}),
+                          ...(bmiEntry ? { bmi: parseFloat(bmiEntry.bmi) } : {}),
+                        },
+                      });
+                    })
+                    .catch(() => {
+                      setLabValues({
+                        patientName: `${patient.firstName} ${patient.lastName}`,
+                        demographics: baseDemographics,
+                      });
+                    });
                 } else {
                   setLabValues({});
                 }
