@@ -721,6 +721,200 @@ function evaluateBerberineGT(labs: FemaleLabValues, phenotypes: ClinicalPhenotyp
   };
 }
 
+function evaluatePhytoMulti(labs: FemaleLabValues): SupplementCandidate | null {
+  const findings: string[] = [];
+  let score = 0;
+
+  const lowVitD   = labs.vitaminD !== undefined && labs.vitaminD < 50;
+  const lowB12    = labs.vitaminB12 !== undefined && labs.vitaminB12 < 600;
+  const lowFolate = labs.folate !== undefined && labs.folate < 10;
+  const lowFerritin = labs.ferritin !== undefined && labs.ferritin < 75;
+  const hasLowEnergy = labs.lowEnergy === true;
+  const hasBrainFog  = labs.brainFog === true;
+
+  if (lowVitD)     { findings.push(`Vitamin D ${labs.vitaminD} ng/mL — suboptimal for immune, mood, and bone health`); score += 2; }
+  if (lowB12)      { findings.push(`B12 ${labs.vitaminB12} pg/mL — suboptimal methylation and energy metabolism`); score += 2; }
+  if (lowFolate)   { findings.push(`Folate ${labs.folate} ng/mL — borderline one-carbon metabolism support`); score += 2; }
+  if (lowFerritin) { findings.push(`Ferritin ${labs.ferritin} ng/mL — suboptimal iron stores`); score += 1; }
+  if (hasLowEnergy) { findings.push("Low energy / fatigue — micronutrient foundation support indicated"); score += 1; }
+  if (hasBrainFog)  { findings.push("Brain fog — B-vitamin and micronutrient support indicated"); score += 1; }
+
+  const nutrientGaps = [lowVitD, lowB12, lowFolate, lowFerritin].filter(Boolean).length;
+  if (nutrientGaps < 2 && score < 4) return null;
+
+  return {
+    name: "PhytoMulti® Multivitamin",
+    dose: "2 tablets daily with meals",
+    category: 'general',
+    score,
+    priority: nutrientGaps >= 3 ? 'high' : 'medium',
+    confidenceLevel: nutrientGaps >= 3 ? 'high' : 'moderate',
+    supportingFindings: findings,
+    phenotypes: [],
+    clinicalRationale: "PhytoMulti provides a comprehensive multivitamin and phytonutrient complex with 13 vitamins, essential minerals, and 13 standardized plant extracts with clinically measured DNA protection activity. Indicated when multiple micronutrient gaps are identified — supports methylation, cellular energy, immune function, and hormonal balance. Provides bioavailable forms of folate (methylfolate), B12 (methylcobalamin), and vitamin D3 as a comprehensive foundational supplement alongside targeted single-nutrient products.",
+    patientExplanation: "Your results show multiple nutrient gaps. PhytoMulti is a comprehensive multivitamin that fills these gaps with vitamins, minerals, and plant nutrients in highly absorbable forms — supporting your energy, immune system, and overall health from the inside out.",
+  };
+}
+
+function evaluateStayStrongBrainBody(labs: FemaleLabValues, phenotypes: ClinicalPhenotype[]): SupplementCandidate | null {
+  const findings: string[] = [];
+  let score = 0;
+  const matchedPhenotypes: string[] = [];
+
+  const lowB12       = labs.vitaminB12 !== undefined && labs.vitaminB12 < 600;
+  const lowFolate    = labs.folate !== undefined && labs.folate < 10;
+  const lowVitD      = labs.vitaminD !== undefined && labs.vitaminD < 40;
+  const hasLowEnergy = labs.lowEnergy === true;
+  const hasBrainFog  = labs.brainFog === true;
+  const hasMoodChanges = labs.moodChanges === true;
+  const hasSleepDisruption = labs.sleepDisruption === true;
+
+  const thyroidPhenotype = phenotypes.find(p => p.name === "Thyroid Dysfunction" || p.name.includes("Thyroid"));
+  const stressPhenotype  = phenotypes.find(p => p.name === "Stress / Cortisol Dysregulation");
+
+  if (lowB12)         { findings.push(`B12 ${labs.vitaminB12} pg/mL — suboptimal neurological and methylation support`); score += 3; }
+  if (lowFolate)      { findings.push(`Folate ${labs.folate} ng/mL — one-carbon metabolism impaired`); score += 2; }
+  if (lowVitD)        { findings.push(`Vitamin D ${labs.vitaminD} ng/mL — cognitive and mood support indicated`); score += 2; }
+  if (hasBrainFog)    { findings.push("Brain fog / cognitive symptoms reported"); score += 3; }
+  if (hasLowEnergy)   { findings.push("Low energy / fatigue reported"); score += 2; }
+  if (hasMoodChanges) { findings.push("Mood changes reported — B-vitamin and adaptogenic support indicated"); score += 2; }
+  if (hasSleepDisruption) { findings.push("Sleep disruption — supports sleep-wake neurochemistry"); score += 1; }
+  if (thyroidPhenotype) { matchedPhenotypes.push(thyroidPhenotype.name); score += 2; }
+  if (stressPhenotype)  { matchedPhenotypes.push(stressPhenotype.name); score += 2; }
+
+  if (score < 4) return null;
+
+  return {
+    name: "StayStrong+® Brain & Body",
+    dose: "2 capsules daily",
+    category: 'general',
+    score,
+    priority: score >= 8 ? 'high' : score >= 5 ? 'medium' : 'low',
+    confidenceLevel: score >= 8 ? 'high' : score >= 5 ? 'moderate' : 'supportive',
+    supportingFindings: findings,
+    phenotypes: matchedPhenotypes,
+    clinicalRationale: "StayStrong+ Brain & Body combines targeted nutrients including methylated B-vitamins, adaptogenic botanicals, and mitochondrial cofactors to support cognitive clarity, mental energy, and physical vitality. Particularly indicated when B12, folate, or vitamin D are suboptimal and patients report cognitive symptoms, fatigue, or mood changes. Supports neurological function, stress resilience, and the neuroendocrine-mitochondrial axis critical for sustained energy and cognitive performance.",
+    patientExplanation: "This supplement supports both your brain and body energy systems — particularly relevant given the B-vitamin and nutrient patterns in your results that affect how your cells make energy for cognitive function, mood stability, and physical vitality.",
+  };
+}
+
+function evaluateStayStrongJointMuscle(labs: FemaleLabValues, phenotypes: ClinicalPhenotype[]): SupplementCandidate | null {
+  const findings: string[] = [];
+  let score = 0;
+  const matchedPhenotypes: string[] = [];
+
+  const elevatedCRP  = labs.hsCRP !== undefined && labs.hsCRP >= 1.0;
+  const lowVitD      = labs.vitaminD !== undefined && labs.vitaminD < 40;
+  const lowFerritin  = labs.ferritin !== undefined && labs.ferritin < 50;
+  const hasLowEnergy = labs.lowEnergy === true;
+  const hasHairLoss  = labs.hairLoss === true;
+
+  const inflammatoryPhenotype = phenotypes.find(p => p.name === "Inflammatory / Oxidative Stress" || p.name.includes("Inflam"));
+
+  if (elevatedCRP)   { findings.push(`hs-CRP ${labs.hsCRP} mg/L — systemic inflammation impairs musculoskeletal recovery`); score += 3; }
+  if (lowVitD)       { findings.push(`Vitamin D ${labs.vitaminD} ng/mL — insufficient for optimal muscle function and bone strength`); score += 2; }
+  if (lowFerritin)   { findings.push(`Ferritin ${labs.ferritin} ng/mL — reduced iron availability impairs physical endurance`); score += 2; }
+  if (hasLowEnergy && elevatedCRP) { findings.push("Fatigue with elevated inflammation — muscle recovery support indicated"); score += 2; }
+  if (hasHairLoss && elevatedCRP)  { findings.push("Hair changes with inflammation — collagen/structural support indicated"); score += 1; }
+  if (inflammatoryPhenotype)       { matchedPhenotypes.push(inflammatoryPhenotype.name); score += 2; }
+
+  if (score < 4) return null;
+
+  return {
+    name: "StayStrong+® Joint & Muscle Powder",
+    dose: "1 scoop daily mixed in water or smoothie",
+    category: 'general',
+    score,
+    priority: elevatedCRP && score >= 7 ? 'medium' : 'low',
+    confidenceLevel: elevatedCRP && score >= 7 ? 'moderate' : 'supportive',
+    supportingFindings: findings,
+    phenotypes: matchedPhenotypes,
+    clinicalRationale: "StayStrong+ Joint & Muscle Powder provides collagen peptides, branched-chain amino acids, and joint-support compounds to support musculoskeletal integrity, joint comfort, and muscle tissue maintenance. Particularly indicated when labs show elevated inflammation (hs-CRP), low vitamin D (impairs muscle function and calcium metabolism), or low ferritin (reduced physical endurance). Supports anabolic tissue recovery in the context of systemic inflammatory burden.",
+    patientExplanation: "This powder supports your joint comfort and muscle health. Based on the inflammation markers in your labs, your body has a harder time recovering and maintaining muscle and joint tissue — this supplement provides the building blocks to support that process.",
+  };
+}
+
+function evaluateStayStrongCollagen(labs: FemaleLabValues, phenotypes: ClinicalPhenotype[]): SupplementCandidate | null {
+  const findings: string[] = [];
+  let score = 0;
+  const matchedPhenotypes: string[] = [];
+
+  const elevatedCRP   = labs.hsCRP !== undefined && labs.hsCRP >= 1.0;
+  const hasHairLoss   = labs.hairLoss === true;
+  const hasMoodChanges = labs.moodChanges === true;
+  const lowVitD       = labs.vitaminD !== undefined && labs.vitaminD < 40;
+
+  const inflammatoryPhenotype = phenotypes.find(p => p.name === "Inflammatory / Oxidative Stress" || p.name.includes("Inflam"));
+  const menoPhenotype         = phenotypes.find(p => p.name === "Menopausal Transition");
+
+  if (elevatedCRP) { findings.push(`hs-CRP ${labs.hsCRP} mg/L — systemic inflammation accelerates collagen degradation`); score += 2; }
+  if (hasHairLoss) { findings.push("Hair changes — Types I and III collagen support follicle structure and scalp integrity"); score += 3; }
+  if (lowVitD)     { findings.push(`Vitamin D ${labs.vitaminD} ng/mL — connective tissue and skin support indicated`); score += 1; }
+  if (inflammatoryPhenotype) { matchedPhenotypes.push(inflammatoryPhenotype.name); score += 2; }
+  if (menoPhenotype) {
+    matchedPhenotypes.push(menoPhenotype.name);
+    findings.push("Menopausal transition — estrogen decline accelerates collagen loss at 1–2% per year");
+    score += 4;
+  }
+
+  if (score < 4) return null;
+
+  return {
+    name: "StayStrong+® 4in1 Collagen Whole Body Chews",
+    dose: "2 chews daily",
+    category: 'general',
+    score,
+    priority: menoPhenotype ? 'medium' : 'low',
+    confidenceLevel: menoPhenotype || (hasHairLoss && elevatedCRP) ? 'moderate' : 'supportive',
+    supportingFindings: findings,
+    phenotypes: matchedPhenotypes,
+    clinicalRationale: "StayStrong+ 4in1 Collagen Whole Body Chews provide four types of collagen peptides (Type I for skin/hair/nails, Type II for joint cartilage, Type III for skin elasticity and gut lining, and marine-sourced collagen) in a convenient chewable format. In women, estrogen decline during perimenopause and menopause accelerates collagen degradation at a rate of 1–2% per year, making supplemental collagen peptides clinically relevant for skin, joint, hair, and gut structural integrity. Also indicated when elevated hs-CRP suggests inflammatory collagen breakdown.",
+    patientExplanation: "These collagen chews support your skin, joints, gut, and hair from the inside. They provide four types of collagen so your body has everything it needs for comprehensive tissue support — especially important as natural collagen production declines with age and hormonal changes.",
+  };
+}
+
+function evaluateUltraFloraNightRest(labs: FemaleLabValues, phenotypes: ClinicalPhenotype[]): SupplementCandidate | null {
+  const findings: string[] = [];
+  let score = 0;
+  const matchedPhenotypes: string[] = [];
+
+  const hasSleepDisruption = labs.sleepDisruption === true;
+  const hasNightSweats     = labs.nightSweats === true;
+  const elevatedCRP        = labs.hsCRP !== undefined && labs.hsCRP >= 1.0;
+  const glucoseBorderline  = labs.glucose !== undefined && labs.glucose >= 90;
+  const a1cBorderline      = labs.a1c !== undefined && labs.a1c >= 5.4;
+  const hasWeightGain      = labs.weightGain === true;
+
+  const gutPhenotype  = phenotypes.find(p => p.name === "Gut-Microbiome Support");
+  const irPhenotype   = phenotypes.find(p => p.name === "Insulin Resistance / Visceral Adiposity");
+  const stressPhenotype = phenotypes.find(p => p.name === "Stress / Cortisol Dysregulation");
+
+  if (hasSleepDisruption) { findings.push("Sleep disruption — evening postbiotic supports gut-brain axis and overnight repair"); score += 3; }
+  if (hasNightSweats)     { findings.push("Night sweats — gut barrier support aids systemic thermoregulation"); score += 1; }
+  if (elevatedCRP)        { findings.push(`hs-CRP ${labs.hsCRP} mg/L — postbiotic immune modulation supports inflammation resolution`); score += 2; }
+  if (glucoseBorderline)  { findings.push(`Glucose ${labs.glucose} mg/dL — gut microbiome modulates glucose metabolism`); score += 2; }
+  if (a1cBorderline)      { findings.push(`A1c ${labs.a1c}% — dysbiosis contributes to metabolic dysregulation`); score += 2; }
+  if (hasWeightGain)      { findings.push("Weight gain — postbiotic supports gut barrier integrity and metabolic signaling"); score += 1; }
+  if (gutPhenotype)       { matchedPhenotypes.push(gutPhenotype.name); score += 3; }
+  if (irPhenotype)        { matchedPhenotypes.push(irPhenotype.name); score += 2; }
+  if (stressPhenotype)    { matchedPhenotypes.push(stressPhenotype.name); score += 1; }
+
+  if (score < 4) return null;
+
+  return {
+    name: "UltraFlora® Night Rest & Digest Postbiotic",
+    dose: "1–2 capsules at bedtime",
+    category: 'probiotic',
+    score,
+    priority: hasSleepDisruption && (gutPhenotype || irPhenotype) ? 'high' : score >= 6 ? 'medium' : 'low',
+    confidenceLevel: hasSleepDisruption && gutPhenotype ? 'high' : score >= 7 ? 'moderate' : 'supportive',
+    supportingFindings: findings,
+    phenotypes: matchedPhenotypes,
+    clinicalRationale: "UltraFlora Night Rest & Digest Postbiotic combines heat-inactivated probiotic strains (postbiotics) with overnight digestive and sleep-support compounds. Postbiotics provide immune modulation and gut barrier support without the instability or colonization variability of live organisms. Evening dosing aligns with overnight gut repair and the circadian gut-brain axis. Particularly indicated in patients with sleep disruption, elevated hs-CRP, metabolic dysregulation, or gut-microbiome phenotype — addressing the gut–sleep–immune–metabolic nexus.",
+    patientExplanation: "Taken at bedtime, this postbiotic supports your gut health and sleep quality overnight. Based on your results, it addresses the connection between your gut microbiome, inflammation levels, and metabolic health — all of which benefit from this overnight gut support.",
+  };
+}
+
 function prioritizeAndCap(candidates: SupplementCandidate[]): SupplementRecommendation[] {
   candidates.sort((a, b) => {
     const priorityOrder = { high: 0, medium: 1, low: 2 };
@@ -782,6 +976,11 @@ export function evaluateSupplements(labs: FemaleLabValues, irScreening?: Insulin
     () => evaluateOmegaGenics(labs, phenotypes),
     () => evaluateCoQ10(labs, phenotypes),
     () => evaluateBerberineGT(labs, phenotypes, irScreening),
+    () => evaluatePhytoMulti(labs),
+    () => evaluateStayStrongBrainBody(labs, phenotypes),
+    () => evaluateStayStrongJointMuscle(labs, phenotypes),
+    () => evaluateStayStrongCollagen(labs, phenotypes),
+    () => evaluateUltraFloraNightRest(labs, phenotypes),
   ];
 
   const candidates: SupplementCandidate[] = [];

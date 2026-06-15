@@ -8,7 +8,7 @@
  * 11 domains scored. Only available markers are scored.
  * Score = patient points ÷ max available points × 100
  */
-import type { LabValues, FemaleLabValues, MitoScoreResult, MitoScoreDomain, InsulinResistanceScreening } from "@shared/schema";
+import type { LabValues, FemaleLabValues, MitoScoreResult, MitoScoreDomain, InsulinResistanceScreening, SupplementRecommendation } from "@shared/schema";
 
 type AnyLabs = LabValues | FemaleLabValues;
 
@@ -455,6 +455,11 @@ export function calculateMitoScore(
     ...(PATTERN_RECS[primaryPattern] || []),
   ];
 
+  // Supplement recommendations based on mito patterns and domain findings
+  const supplementRecommendations = getMitoSupplementRecommendations(
+    domains, primaryPattern, secondaryPatterns, percentage
+  );
+
   // Provider summary
   const interpretLabel = interpretPct(percentage);
   const providerSummary = [
@@ -475,5 +480,120 @@ export function calculateMitoScore(
     secondaryPatterns,
     recommendations,
     providerSummary,
+    supplementRecommendations,
   };
+}
+
+// ── Mito-Pattern → Supplement Mapping ──────────────────────────────────────
+
+function getMitoSupplementRecommendations(
+  domains: MitoScoreDomain[],
+  primaryPattern: string,
+  secondaryPatterns: string[],
+  percentage: number,
+): SupplementRecommendation[] {
+  const allPatterns = [primaryPattern, ...secondaryPatterns];
+  const hasPattern  = (p: string) => allPatterns.some(a => a.includes(p));
+
+  const hasNutrientDepletion = hasPattern('Nutrient Depletion');
+  const hasInflammatory      = hasPattern('Inflammatory');
+  const hasMetabolic         = hasPattern('Metabolic');
+  const hasThyroidHormonal   = hasPattern('Thyroid') || hasPattern('Hormonal');
+  const hasOxygenDelivery    = hasPattern('Oxygen Delivery');
+
+  const impairedCount = domains.filter(d => d.available && d.points > 0).length;
+  const recs: SupplementRecommendation[] = [];
+
+  // ── PhytoMulti: broadbase foundation ─────────────────────────────────────
+  // Fires when Nutrient Depletion is present OR 3+ domains are impaired
+  if (hasNutrientDepletion || impairedCount >= 3) {
+    const indication = hasNutrientDepletion
+      ? `Nutrient Depletion Pattern — multiple micronutrient gaps impair cellular energy enzyme function`
+      : `${impairedCount} Mito Score domains impaired — broadbase micronutrient foundation indicated`;
+    recs.push({
+      name: "PhytoMulti® Multivitamin",
+      dose: "2 tablets daily with meals",
+      indication,
+      rationale: "PhytoMulti provides a comprehensive multivitamin and phytonutrient complex with 13 vitamins, essential minerals, and 13 standardized plant extracts with DNA protection activity. Mitochondrial enzyme complexes (I–IV) require B1, B2, B3, coenzyme Q10 precursors, iron, and magnesium as cofactors — all supplied in bioavailable forms. Indicated when the Mito Score identifies a Nutrient Depletion Pattern or when multiple domains are impaired, signaling broad micronutrient insufficiency as a driver of impaired cellular energy production.",
+      priority: hasNutrientDepletion ? 'high' : 'medium',
+      category: 'general',
+      patientExplanation: "Your Mito Score results show multiple nutrient gaps affecting your cells' ability to produce energy. PhytoMulti provides a comprehensive foundation of vitamins, minerals, and plant nutrients in highly absorbable forms — supporting cellular energy, immune function, and overall health.",
+      confidenceLevel: hasNutrientDepletion ? 'high' : 'moderate',
+    });
+  }
+
+  // ── StayStrong+ Brain & Body: cognitive/energy ───────────────────────────
+  // Fires when Nutrient Depletion or Thyroid/Hormonal pattern is present
+  if (hasNutrientDepletion || hasThyroidHormonal) {
+    const drivers: string[] = [];
+    if (hasNutrientDepletion) drivers.push('Nutrient Depletion Pattern — B-vitamin and mitochondrial cofactor gaps impair neurological energy');
+    if (hasThyroidHormonal)   drivers.push('Thyroid/Hormonal Pattern — metabolic rate dysregulation reduces brain and body energy availability');
+    recs.push({
+      name: "StayStrong+® Brain & Body",
+      dose: "2 capsules daily",
+      indication: drivers.slice(0, 2).join('; '),
+      rationale: "StayStrong+ Brain & Body combines methylated B-vitamins, adaptogenic botanicals, and mitochondrial cofactors to support cognitive clarity, mental energy, and physical vitality. The Mito Score Nutrient Depletion and Thyroid/Hormonal patterns both converge on reduced neurological energy availability — B12 and folate support methylation and myelin integrity, while adaptogens support HPA and HPT axis resilience. Addresses the neuroendocrine-mitochondrial axis that drives sustained cognitive and physical energy.",
+      priority: 'medium',
+      category: 'general',
+      patientExplanation: "Based on your Mito Score pattern, your brain and body aren't getting the energy support they need. This supplement combines B-vitamins, adaptogens, and mitochondrial nutrients to support cognitive clarity, mood, and physical energy.",
+      confidenceLevel: hasNutrientDepletion ? 'moderate' : 'supportive',
+    });
+  }
+
+  // ── UltraFlora Night Rest & Digest: gut-sleep-metabolic axis ─────────────
+  // Fires when Metabolic or Inflammatory pattern is present
+  if (hasMetabolic || hasInflammatory) {
+    const drivers: string[] = [];
+    if (hasInflammatory) drivers.push('Inflammatory Pattern — gut dysbiosis is a primary driver of systemic inflammatory burden');
+    if (hasMetabolic)   drivers.push('Metabolic Pattern — gut microbiome integrity supports insulin sensitivity and metabolic regulation');
+    recs.push({
+      name: "UltraFlora® Night Rest & Digest Postbiotic",
+      dose: "1–2 capsules at bedtime",
+      indication: drivers.slice(0, 2).join('; '),
+      rationale: "UltraFlora Night Rest & Digest Postbiotic provides heat-inactivated probiotic strains (postbiotics) with overnight digestive and sleep-support compounds. Postbiotics deliver immune modulation, gut barrier reinforcement, and anti-inflammatory short-chain fatty acid signaling without live organism variability. Mitochondrial function is directly impacted by gut-derived endotoxemia (LPS) and inflammatory cytokines — gut microbiome support reduces this burden. Evening dosing aligns with the circadian gut-repair cycle.",
+      priority: (hasMetabolic && hasInflammatory) ? 'high' : 'medium',
+      category: 'probiotic',
+      patientExplanation: "Taken at bedtime, this postbiotic helps your gut recover overnight — reducing the inflammation and metabolic stress that the Mito Score identified as impairing your cellular energy production.",
+      confidenceLevel: hasInflammatory ? 'moderate' : 'supportive',
+    });
+  }
+
+  // ── StayStrong+ Joint & Muscle Powder: musculoskeletal ───────────────────
+  // Fires when Inflammatory or Oxygen Delivery pattern, or score >= 40%
+  if (hasInflammatory || hasOxygenDelivery || percentage >= 40) {
+    const drivers: string[] = [];
+    if (hasInflammatory)    drivers.push('Inflammatory Pattern — systemic inflammation impairs musculoskeletal anabolic recovery');
+    if (hasOxygenDelivery)  drivers.push('Oxygen Delivery Pattern — reduced cellular oxygen availability impairs muscle tissue recovery');
+    if (percentage >= 40)   drivers.push(`Mito Score ${percentage}% — moderate-to-high cellular energy dysfunction limits physical resilience`);
+    recs.push({
+      name: "StayStrong+® Joint & Muscle Powder",
+      dose: "1 scoop daily mixed in water or smoothie",
+      indication: drivers.slice(0, 2).join('; '),
+      rationale: "StayStrong+ Joint & Muscle Powder provides collagen peptides, amino acids, and joint-support compounds to support musculoskeletal integrity, joint comfort, and muscle tissue maintenance. Inflammatory and Oxygen Delivery Mito Score patterns both impair physical recovery — inflammation suppresses anabolic signaling while reduced oxygen availability limits mitochondrial ATP for muscle repair. Collagen peptides and amino acid substrates provide structural building blocks when the cellular energy environment is compromised.",
+      priority: hasInflammatory ? 'medium' : 'low',
+      category: 'general',
+      patientExplanation: "Your Mito Score shows patterns that make it harder for your muscles and joints to recover properly. This powder provides structural nutrients — collagen and amino acids — to support physical resilience when cellular energy is under stress.",
+      confidenceLevel: hasInflammatory ? 'moderate' : 'supportive',
+    });
+  }
+
+  // ── StayStrong+ 4in1 Collagen Chews: connective tissue ───────────────────
+  // Fires when Inflammatory pattern or score >= 35%
+  if (hasInflammatory || percentage >= 35) {
+    const drivers: string[] = [];
+    if (hasInflammatory) drivers.push('Inflammatory Pattern — elevated systemic inflammation degrades collagen matrix and connective tissue integrity');
+    if (percentage >= 35) drivers.push(`Mito Score ${percentage}% — cellular energy dysfunction impairs collagen synthesis capacity`);
+    recs.push({
+      name: "StayStrong+® 4in1 Collagen Whole Body Chews",
+      dose: "2 chews daily",
+      indication: drivers.slice(0, 2).join('; '),
+      rationale: "StayStrong+ 4in1 Collagen Whole Body Chews provide four types of bioavailable collagen peptides (Type I for skin and tendons, Type II for joint cartilage, Type III for skin elasticity and gut lining, and marine-sourced) in a convenient chewable format. When the Mito Score identifies elevated inflammatory burden, reactive oxygen species from mitochondrial dysfunction directly degrade collagen cross-links. Supplemental collagen peptides provide the substrates for structural repair that is otherwise impaired under inflammatory and cellular energy stress.",
+      priority: 'low',
+      category: 'general',
+      patientExplanation: "These collagen chews support your skin, joints, gut, and connective tissue — areas where inflammation and cellular energy stress (as shown in your Mito Score) make it harder for your body to maintain its structural integrity.",
+      confidenceLevel: 'supportive',
+    });
+  }
+
+  return recs;
 }

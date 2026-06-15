@@ -930,6 +930,48 @@ export function MitoScoreCard({ mitoScore }: { mitoScore: MitoScoreResult }) {
           </>
         )}
 
+        {/* Mito-pattern supplement recommendations */}
+        {mitoScore.supplementRecommendations && mitoScore.supplementRecommendations.length > 0 && (
+          <>
+            <Separator />
+            <div>
+              <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                <span className="inline-block w-2 h-2 rounded-full bg-primary" />
+                Targeted Supplement Support
+              </h4>
+              <div className="space-y-2">
+                {mitoScore.supplementRecommendations.map((supp, i) => {
+                  const priorityColor =
+                    supp.priority === 'high'   ? 'bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-800' :
+                    supp.priority === 'medium' ? 'bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-800' :
+                                                 'bg-blue-50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-800';
+                  const priorityBadge =
+                    supp.priority === 'high'   ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400' :
+                    supp.priority === 'medium' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' :
+                                                 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400';
+                  return (
+                    <div key={i} className={`p-3 rounded-lg border text-xs ${priorityColor}`} data-testid={`mito-supplement-${i}`}>
+                      <div className="flex items-start justify-between gap-2 mb-1 flex-wrap">
+                        <p className="font-semibold text-foreground">{supp.name}</p>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${priorityBadge}`}>
+                            {supp.priority}
+                          </span>
+                        </div>
+                      </div>
+                      <p className="text-muted-foreground mb-1"><span className="font-medium text-foreground/80">Dose:</span> {supp.dose}</p>
+                      <p className="text-muted-foreground mb-1"><span className="font-medium text-foreground/80">Why:</span> {supp.indication}</p>
+                      {supp.patientExplanation && (
+                        <p className="text-muted-foreground italic mt-1">{supp.patientExplanation}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        )}
+
         {/* Provider summary */}
         <div className="p-3 rounded-lg bg-muted/40 text-xs text-muted-foreground" data-testid="text-mito-summary">
           <span className="font-semibold text-foreground">Provider Note: </span>

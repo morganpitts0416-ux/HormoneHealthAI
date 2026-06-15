@@ -526,6 +526,7 @@ export const mitoScoreResultSchema = z.object({
   secondaryPatterns: z.array(z.string()),
   recommendations: z.array(z.string()),
   providerSummary: z.string(),
+  supplementRecommendations: z.array(supplementRecommendationSchema).optional(),
 });
 
 export type MitoScoreDomain = z.infer<typeof mitoScoreDomainSchema>;

@@ -436,8 +436,151 @@ const supplementRules: SupplementRule[] = [
       };
     }
   },
-];
 
+  // PHYTOMULTI MULTIVITAMIN - Multiple micronutrient gaps
+  {
+    supplement: {
+      name: "PhytoMulti® Multivitamin",
+      dose: "2 tablets daily with meals",
+      priority: 'medium',
+      category: 'general',
+      caution: "Comprehensive multivitamin with phytonutrients. Contains vitamin K — consult provider if on blood thinners. Take with food to minimize GI effects."
+    },
+    evaluate: (labs) => {
+      const lowVitD   = labs.vitaminD !== undefined && labs.vitaminD < 50;
+      const lowB12    = (labs as any).vitaminB12 !== undefined && (labs as any).vitaminB12 < 600;
+      const lowFolate = (labs as any).folate !== undefined && (labs as any).folate < 10;
+      const nutrientGaps = [lowVitD, lowB12, lowFolate].filter(Boolean).length;
+      if (nutrientGaps < 2) return null;
+      const indications: string[] = [];
+      if (lowVitD)   indications.push(`Vitamin D ${labs.vitaminD} ng/mL (suboptimal)`);
+      if (lowB12)    indications.push(`B12 suboptimal — methylation support`);
+      if (lowFolate) indications.push(`Folate borderline — one-carbon metabolism`);
+      return {
+        shouldRecommend: true,
+        indication: indications.join('; '),
+        rationale: "PhytoMulti provides a comprehensive multivitamin and phytonutrient complex with 13 vitamins, essential minerals, and 13 standardized plant extracts with DNA protection activity. Indicated when multiple micronutrient gaps are identified — supports methylation, cellular energy production, cardiovascular health, immune function, and hormonal balance. Provides methylfolate, methylcobalamin B12, and vitamin D3 in bioavailable forms as a foundational supplement."
+      };
+    }
+  },
+
+  // STAYSTRONG+ BRAIN & BODY - Cognitive and energy support
+  {
+    supplement: {
+      name: "StayStrong+® Brain & Body",
+      dose: "2 capsules daily",
+      priority: 'medium',
+      category: 'general',
+      caution: "Contains adaptogenic botanicals and B-complex. May interact with MAOIs. Consult provider if on psychiatric medications."
+    },
+    evaluate: (labs) => {
+      const lowB12    = (labs as any).vitaminB12 !== undefined && (labs as any).vitaminB12 < 600;
+      const lowFolate = (labs as any).folate !== undefined && (labs as any).folate < 10;
+      const lowVitD   = labs.vitaminD !== undefined && labs.vitaminD < 40;
+      const suboptimalT = labs.testosterone !== undefined && labs.testosterone < 500;
+      const suboptimalThyroid = labs.tsh !== undefined && (labs.tsh < 0.5 || labs.tsh > 3.0);
+      const triggers = [lowB12, lowFolate, lowVitD, suboptimalT, suboptimalThyroid].filter(Boolean).length;
+      if (triggers < 2) return null;
+      const indications: string[] = [];
+      if (lowB12) indications.push("B12 suboptimal — neurological and cognitive support");
+      if (lowFolate) indications.push("Folate borderline — methylation and brain energy");
+      if (lowVitD) indications.push(`Vitamin D ${labs.vitaminD} ng/mL — cognitive and mood support`);
+      if (suboptimalT) indications.push(`Testosterone ${labs.testosterone} ng/dL — energy and mental clarity support`);
+      if (suboptimalThyroid) indications.push(`TSH ${labs.tsh} (suboptimal) — metabolic energy support`);
+      return {
+        shouldRecommend: true,
+        indication: indications.slice(0, 2).join('; '),
+        rationale: "StayStrong+ Brain & Body combines methylated B-vitamins, adaptogenic botanicals, and mitochondrial cofactors to support cognitive clarity, mental energy, and physical vitality. Particularly indicated when B12, folate, or vitamin D are suboptimal and lab patterns suggest reduced neurological or hormonal energy support. Addresses the neuroendocrine-mitochondrial axis critical for sustained cognitive performance and physical energy."
+      };
+    }
+  },
+
+  // STAYSTRONG+ JOINT & MUSCLE POWDER - Musculoskeletal support
+  {
+    supplement: {
+      name: "StayStrong+® Joint & Muscle Powder",
+      dose: "1 scoop daily mixed in water or smoothie",
+      priority: 'low',
+      category: 'general',
+      caution: "Collagen-based powder with joint-support compounds. Check for fish/shellfish allergy if marine collagen is present."
+    },
+    evaluate: (labs) => {
+      const elevatedCRP  = labs.hsCRP !== undefined && labs.hsCRP >= 1.0;
+      const lowVitD      = labs.vitaminD !== undefined && labs.vitaminD < 40;
+      const lowT         = labs.testosterone !== undefined && labs.testosterone < 400;
+      const age          = labs.demographics?.age;
+      const olderPatient = age !== undefined && age >= 50;
+      const triggers = [elevatedCRP, lowVitD, lowT, olderPatient].filter(Boolean).length;
+      if (triggers < 2) return null;
+      const indications: string[] = [];
+      if (elevatedCRP)  indications.push(`hs-CRP ${labs.hsCRP} mg/L — inflammation impairs musculoskeletal recovery`);
+      if (lowVitD)      indications.push(`Vitamin D ${labs.vitaminD} ng/mL — muscle function and bone health support`);
+      if (lowT)         indications.push(`Testosterone ${labs.testosterone} ng/dL — muscle maintenance support`);
+      if (olderPatient) indications.push(`Age ${age} — musculoskeletal structural support indicated`);
+      return {
+        shouldRecommend: true,
+        indication: indications.slice(0, 2).join('; '),
+        rationale: "StayStrong+ Joint & Muscle Powder provides collagen peptides, amino acids, and joint-support compounds to support musculoskeletal integrity, joint comfort, and muscle tissue maintenance. Particularly indicated when labs show elevated hs-CRP, low vitamin D, suboptimal testosterone (reduces anabolic muscle maintenance), or in older patients where structural decline is a clinical priority. Supports recovery and musculoskeletal resilience in the context of systemic inflammatory or hormonal burden."
+      };
+    }
+  },
+
+  // STAYSTRONG+ 4IN1 COLLAGEN CHEWS - Whole body collagen support
+  {
+    supplement: {
+      name: "StayStrong+® 4in1 Collagen Whole Body Chews",
+      dose: "2 chews daily",
+      priority: 'low',
+      category: 'general',
+      caution: "Multi-type collagen in chewable form. Check for marine-derived allergens if applicable."
+    },
+    evaluate: (labs) => {
+      const elevatedCRP  = labs.hsCRP !== undefined && labs.hsCRP >= 1.0;
+      const age          = labs.demographics?.age;
+      const olderPatient = age !== undefined && age >= 45;
+      const suboptimalT  = labs.testosterone !== undefined && labs.testosterone < 500;
+      if (!elevatedCRP && !(olderPatient && suboptimalT)) return null;
+      const indications: string[] = [];
+      if (elevatedCRP)  indications.push(`hs-CRP ${labs.hsCRP} mg/L — inflammation degrades collagen matrix`);
+      if (olderPatient) indications.push(`Age ${age} — collagen synthesis declines with age`);
+      if (suboptimalT)  indications.push(`Testosterone ${labs.testosterone} ng/dL — androgen decline reduces collagen cross-linking`);
+      return {
+        shouldRecommend: true,
+        indication: indications.slice(0, 2).join('; '),
+        rationale: "StayStrong+ 4in1 Collagen Whole Body Chews provide four types of collagen peptides (Type I for skin/tendons, Type II for joint cartilage, Type III for skin and gut lining, and marine-sourced) in convenient chewable form. In men, testosterone decline reduces collagen cross-linking and structural tissue integrity; elevated CRP accelerates collagen degradation. Supports skin, joint integrity, tendon strength, and gut lining structure across multiple systems."
+      };
+    }
+  },
+
+  // ULTRAFLORA NIGHT REST & DIGEST POSTBIOTIC - Sleep and gut support
+  {
+    supplement: {
+      name: "UltraFlora® Night Rest & Digest Postbiotic",
+      dose: "1–2 capsules at bedtime",
+      priority: 'low',
+      category: 'probiotic',
+      caution: "Heat-inactivated postbiotic strains — stable at room temperature. Generally well tolerated. No live organism concerns."
+    },
+    evaluate: (labs) => {
+      const elevatedCRP       = labs.hsCRP !== undefined && labs.hsCRP >= 1.0;
+      const glucoseBorderline = labs.glucose !== undefined && labs.glucose >= 95;
+      const a1cBorderline     = labs.a1c !== undefined && labs.a1c >= 5.4;
+      const trigsElevated     = labs.triglycerides !== undefined && labs.triglycerides > 150;
+      const metabolicLoad     = [elevatedCRP, glucoseBorderline, a1cBorderline, trigsElevated].filter(Boolean).length;
+      if (metabolicLoad < 2) return null;
+      const indications: string[] = [];
+      if (elevatedCRP)       indications.push(`hs-CRP ${labs.hsCRP} mg/L — gut dysbiosis drives systemic inflammation`);
+      if (glucoseBorderline) indications.push(`Glucose ${labs.glucose} mg/dL — gut microbiome modulates glucose metabolism`);
+      if (a1cBorderline)     indications.push(`A1c ${labs.a1c}% — dysbiosis contributes to metabolic dysregulation`);
+      if (trigsElevated)     indications.push(`Triglycerides ${labs.triglycerides} mg/dL — gut bacteria influence lipid metabolism`);
+      return {
+        shouldRecommend: true,
+        indication: indications.slice(0, 2).join('; '),
+        rationale: "UltraFlora Night Rest & Digest Postbiotic combines heat-inactivated probiotic strains (postbiotics) with overnight digestive and sleep-support compounds. Postbiotics provide immune modulation and gut barrier support without live organism instability. Evening dosing aligns with overnight gut repair and the circadian gut-brain axis. Indicated when metabolic markers (glucose, A1c, triglycerides) and inflammatory markers suggest gut dysbiosis is contributing to the overall metabolic and inflammatory burden."
+      };
+    }
+  },
+];
 export function evaluateMaleSupplements(labs: LabValues): SupplementRecommendation[] {
   const supplementMap = new Map<string, SupplementRecommendation>();
   const priorityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
