@@ -526,6 +526,7 @@ export default function Dashboard() {
             <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
               <span className="text-xs" style={{ color: "#7a8a64" }}>Staff member</span>
               <Select
+                key={clinicUsers.length}
                 value={String(effectiveOpenNotesProviderId ?? "")}
                 onValueChange={(v) => setOpenNotesProviderId(v ? Number(v) : null)}
               >
