@@ -1200,6 +1200,7 @@ function PatientChartPanel({
   const [showAddMed, setShowAddMed] = useState(false);
   const [editingMed, setEditingMed] = useState<PatientMedication | null>(null);
   const [medSectionOpen, setMedSectionOpen] = useState(true);
+  const [detailMedId, setDetailMedId] = useState<number | null>(null);
   const { data: structuredMeds = [], refetch: refetchMeds } = useQuery<PatientMedication[]>({
     queryKey: ["/api/patients", patientId, "medications"],
     queryFn: async () => {
@@ -1329,16 +1330,44 @@ function PatientChartPanel({
                 <div className="px-3 pb-3 space-y-1.5">
                   {activeMeds.length === 0 && <span className="text-xs text-muted-foreground italic">No medications recorded</span>}
                   {activeMeds.map(med => (
-                    <div key={med.id} className="text-xs rounded-md px-2 py-1.5 flex items-start justify-between gap-2" style={{ backgroundColor: "#edf2e6", border: "1px solid #c4d4a8" }}>
-                      <div className="min-w-0 flex-1">
-                        <p className="font-mono font-medium truncate" style={{ color: "#2e3a20" }}>{formatMedSig(med)}</p>
-                        {med.indication && <p className="text-muted-foreground truncate mt-0.5">{med.indication}</p>}
-                        {!med.reviewedByProvider && <span className="text-[10px] text-amber-600 font-medium">Patient-reported</span>}
+                    <div key={med.id} className="text-xs rounded-md overflow-hidden" style={{ backgroundColor: "#edf2e6", border: "1px solid #c4d4a8" }}>
+                      {/* Compact header row — click to expand details */}
+                      <div
+                        className="px-2 py-1.5 flex items-center justify-between gap-1 cursor-pointer hover-elevate"
+                        onClick={() => setDetailMedId(v => v === med.id ? null : med.id)}
+                        data-testid={`med-row-${med.id}`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <span className="font-medium" style={{ color: "#2e3a20" }}>{med.drugName}</span>
+                          {(med.strength || med.strengthUnit || med.form) && (
+                            <span className="text-muted-foreground ml-1.5">
+                              {[med.strength, med.strengthUnit, med.form].filter(Boolean).join(" ")}
+                            </span>
+                          )}
+                          {!med.reviewedByProvider && <span className="ml-1.5 text-[10px] text-amber-600 font-medium">Patient-reported</span>}
+                        </div>
+                        <div className="flex items-center gap-0.5 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                          <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => { setEditingMed(med); setShowAddMed(true); }} title="Edit" data-testid={`button-edit-med-${med.id}`}><Pencil className="w-2.5 h-2.5" /></Button>
+                          <Button size="icon" variant="ghost" className="h-5 w-5 text-destructive" onClick={() => discontinueMedMutation.mutate(med.id)} title="Discontinue" data-testid={`button-discontinue-med-${med.id}`}><X className="w-2.5 h-2.5" /></Button>
+                          <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform flex-shrink-0 ${detailMedId === med.id ? "rotate-180" : ""}`} />
+                        </div>
                       </div>
-                      <div className="flex items-center gap-0.5 flex-shrink-0">
-                        <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => { setEditingMed(med); setShowAddMed(true); }} title="Edit" data-testid={`button-edit-med-${med.id}`}><Pencil className="w-2.5 h-2.5" /></Button>
-                        <Button size="icon" variant="ghost" className="h-5 w-5 text-destructive" onClick={() => discontinueMedMutation.mutate(med.id)} title="Discontinue" data-testid={`button-discontinue-med-${med.id}`}><X className="w-2.5 h-2.5" /></Button>
-                      </div>
+                      {/* Expanded detail panel */}
+                      {detailMedId === med.id && (
+                        <div className="px-2 pb-2 space-y-0.5 border-t" style={{ borderColor: "#c4d4a8", color: "#3d5228" }}>
+                          {med.sig && <p className="pt-1"><span className="text-muted-foreground">Sig: </span><span className="font-mono">{med.sig}</span></p>}
+                          {(med.quantity || med.daysSupply != null || med.refills != null) && (
+                            <p>
+                              {med.quantity && <><span className="text-muted-foreground">Qty: </span>{med.quantity}</>}
+                              {med.daysSupply != null && <><span className="text-muted-foreground ml-2">Days: </span>{med.daysSupply}</>}
+                              {med.refills != null && <><span className="text-muted-foreground ml-2">Refills: </span>{med.refills}</>}
+                            </p>
+                          )}
+                          {med.prescribingProvider && <p><span className="text-muted-foreground">Provider: </span>{med.prescribingProvider}</p>}
+                          {med.startDate && <p><span className="text-muted-foreground">Started: </span>{new Date(med.startDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>}
+                          {med.indication && <p><span className="text-muted-foreground">Indication: </span>{med.indication}</p>}
+                        </div>
+                      )}
                     </div>
                   ))}
                   {local.currentMedications.length > 0 && (
@@ -1549,19 +1578,58 @@ function PatientChartPanel({
           <div className="space-y-1.5">
             {activeMeds.length === 0 && <p className="text-xs text-muted-foreground italic">No structured medications recorded</p>}
             {activeMeds.map(med => (
-              <div key={med.id} className="text-xs rounded-md px-3 py-2 flex items-start justify-between gap-3" style={{ backgroundColor: "#edf2e6", border: "1px solid #c4d4a8" }}>
-                <div className="min-w-0 flex-1">
-                  <p className="font-mono font-medium" style={{ color: "#2e3a20" }}>{formatMedSig(med)}</p>
-                  <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-                    {med.indication && <span className="text-muted-foreground">{med.indication}</span>}
-                    {med.startDate && <span className="text-muted-foreground">Started {new Date(med.startDate).toLocaleDateString("en-US", { month: "short", year: "numeric" })}</span>}
-                    {!med.reviewedByProvider && <span className="text-amber-600 font-medium">Patient-reported</span>}
+              <div key={med.id} className="text-xs rounded-md overflow-hidden" style={{ backgroundColor: "#edf2e6", border: "1px solid #c4d4a8" }}>
+                {/* Compact header row — click to expand */}
+                <div
+                  className="px-3 py-2 flex items-center justify-between gap-2 cursor-pointer hover-elevate"
+                  onClick={() => setDetailMedId(v => v === med.id ? null : med.id)}
+                  data-testid={`med-row-std-${med.id}`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <span className="font-medium" style={{ color: "#2e3a20" }}>{med.drugName}</span>
+                    {(med.strength || med.strengthUnit || med.form) && (
+                      <span className="text-muted-foreground ml-2">
+                        {[med.strength, med.strengthUnit, med.form].filter(Boolean).join(" ")}
+                      </span>
+                    )}
+                    {!med.reviewedByProvider && <span className="ml-2 text-[10px] text-amber-600 font-medium">Patient-reported</span>}
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                    <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => { setEditingMed(med); setShowAddMed(true); }} title="Edit" data-testid={`button-edit-med-${med.id}`}><Pencil className="w-3 h-3" /></Button>
+                    <Button size="icon" variant="ghost" className="h-6 w-6 text-destructive" onClick={() => discontinueMedMutation.mutate(med.id)} title="Discontinue" data-testid={`button-discontinue-med-${med.id}`}><X className="w-3 h-3" /></Button>
+                    <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform flex-shrink-0 ${detailMedId === med.id ? "rotate-180" : ""}`} />
                   </div>
                 </div>
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => { setEditingMed(med); setShowAddMed(true); }} title="Edit" data-testid={`button-edit-med-${med.id}`}><Pencil className="w-3 h-3" /></Button>
-                  <Button size="icon" variant="ghost" className="h-6 w-6 text-destructive" onClick={() => discontinueMedMutation.mutate(med.id)} title="Discontinue" data-testid={`button-discontinue-med-${med.id}`}><X className="w-3 h-3" /></Button>
-                </div>
+                {/* Expanded detail card */}
+                {detailMedId === med.id && (
+                  <div className="px-3 pb-3 pt-2 border-t space-y-1" style={{ borderColor: "#c4d4a8", backgroundColor: "#f5f9f0" }}>
+                    {med.sig && (
+                      <div>
+                        <span className="text-muted-foreground font-medium">Sig: </span>
+                        <span className="font-mono" style={{ color: "#2e3a20" }}>{med.sig}</span>
+                      </div>
+                    )}
+                    {(med.quantity || med.daysSupply != null || med.refills != null) && (
+                      <div className="flex items-center gap-4 flex-wrap">
+                        {med.quantity && <span><span className="text-muted-foreground">Qty: </span><span style={{ color: "#2e3a20" }}>{med.quantity}</span></span>}
+                        {med.daysSupply != null && <span><span className="text-muted-foreground">Days supply: </span><span style={{ color: "#2e3a20" }}>{med.daysSupply}</span></span>}
+                        {med.refills != null && <span><span className="text-muted-foreground">Refills: </span><span style={{ color: "#2e3a20" }}>{med.refills}</span></span>}
+                      </div>
+                    )}
+                    {med.prescribingProvider && (
+                      <div><span className="text-muted-foreground">Prescribing provider: </span><span style={{ color: "#2e3a20" }}>{med.prescribingProvider}</span></div>
+                    )}
+                    {med.startDate && (
+                      <div><span className="text-muted-foreground">Start date: </span><span style={{ color: "#2e3a20" }}>{new Date(med.startDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</span></div>
+                    )}
+                    {med.indication && (
+                      <div><span className="text-muted-foreground">Indication: </span><span style={{ color: "#2e3a20" }}>{med.indication}</span></div>
+                    )}
+                    {med.route && (
+                      <div><span className="text-muted-foreground">Route: </span><span style={{ color: "#2e3a20" }}>{med.route}</span></div>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>

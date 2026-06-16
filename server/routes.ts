@@ -3594,20 +3594,34 @@ Rules:
       if (!patient) return res.status(404).json({ error: "Patient not found" });
       const parsed = medSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: "Invalid input", details: parsed.error.format() });
-      const effectiveClinicId = clinicId ?? patient.clinicId!;
-      const med = await storage.createPatientMedication({
-        ...parsed.data,
+      const effectiveClinicId = clinicId ?? patient.clinicId ?? null;
+      if (!effectiveClinicId) return res.status(400).json({ error: "No clinic context — cannot save medication" });
+      const insertData = {
+        drugName: parsed.data.drugName,
+        genericName: parsed.data.genericName ?? null,
+        strength: parsed.data.strength ?? null,
+        strengthUnit: parsed.data.strengthUnit ?? null,
+        form: parsed.data.form ?? null,
+        route: parsed.data.route ?? null,
+        sig: parsed.data.sig ?? null,
+        quantity: parsed.data.quantity ?? null,
+        daysSupply: parsed.data.daysSupply ?? null,
+        refills: parsed.data.refills ?? null,
+        prescribingProvider: parsed.data.prescribingProvider ?? null,
+        startDate: parsed.data.startDate ? new Date(parsed.data.startDate) : null,
+        indication: parsed.data.indication ?? null,
+        status: (parsed.data.status ?? "active") as "active" | "inactive" | "discontinued",
+        source: (parsed.data.source ?? "staff") as "staff" | "patient_form" | "patient_portal" | "migrated",
+        reviewedByProvider: parsed.data.reviewedByProvider ?? true,
         patientId,
         clinicId: effectiveClinicId,
-        startDate: parsed.data.startDate ? new Date(parsed.data.startDate) : null,
         createdByUserId: clinicianId,
-        reviewedByProvider: parsed.data.reviewedByProvider ?? true,
-        source: parsed.data.source ?? "staff",
-      });
+      };
+      const med = await storage.createPatientMedication(insertData);
       res.status(201).json(med);
-    } catch (e) {
-      console.error("[POST patient medication]", e);
-      res.status(500).json({ error: "Failed to create medication" });
+    } catch (e: any) {
+      console.error("[POST patient medication] error:", e?.message ?? e, "| code:", e?.code, "| detail:", e?.detail);
+      res.status(500).json({ error: "Failed to create medication", detail: e?.message ?? String(e) });
     }
   });
 
