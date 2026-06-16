@@ -1811,7 +1811,7 @@ ALTER TABLE patients ADD COLUMN IF NOT EXISTS emergency_contact_phone        VAR
 CREATE TABLE IF NOT EXISTS patient_medications (
   id                             SERIAL PRIMARY KEY,
   patient_id                     INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
-  clinic_id                      INTEGER NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
+  clinic_id                      INTEGER NOT NULL,
   drug_name                      VARCHAR(200) NOT NULL,
   generic_name                   VARCHAR(200),
   strength                       VARCHAR(50),
@@ -1823,7 +1823,7 @@ CREATE TABLE IF NOT EXISTS patient_medications (
   days_supply                    INTEGER,
   refills                        INTEGER,
   prescribing_provider           VARCHAR(200),
-  start_date                     DATE,
+  start_date                     TIMESTAMP,
   indication                     TEXT,
   status                         VARCHAR(20) NOT NULL DEFAULT 'active',
   discontinued_at                TIMESTAMP,
@@ -1831,6 +1831,8 @@ CREATE TABLE IF NOT EXISTS patient_medications (
   discontinued_by_user_id        INTEGER REFERENCES users(id) ON DELETE SET NULL,
   discontinued_by_staff_id       INTEGER REFERENCES clinician_staff(id) ON DELETE SET NULL,
   source                         VARCHAR(30) NOT NULL DEFAULT 'staff',
+  source_raw_text                TEXT,
+  form_submission_id             INTEGER,
   reviewed_by_provider           BOOLEAN NOT NULL DEFAULT TRUE,
   reviewed_by_provider_id        INTEGER,
   last_reviewed_at               TIMESTAMP,
@@ -1841,7 +1843,15 @@ CREATE TABLE IF NOT EXISTS patient_medications (
   updated_by_user_id             INTEGER REFERENCES users(id) ON DELETE SET NULL,
   updated_by_staff_id            INTEGER REFERENCES clinician_staff(id) ON DELETE SET NULL
 );
+CREATE INDEX IF NOT EXISTS patient_medications_patient_id_idx
+  ON patient_medications (patient_id);
+CREATE INDEX IF NOT EXISTS patient_medications_clinic_id_idx
+  ON patient_medications (clinic_id);
 CREATE INDEX IF NOT EXISTS patient_medications_patient_clinic_idx
   ON patient_medications (patient_id, clinic_id);
 CREATE INDEX IF NOT EXISTS patient_medications_status_idx
-  ON patient_medications (clinic_id, patient_id, status);
+  ON patient_medications (status);
+CREATE INDEX IF NOT EXISTS patient_medications_source_idx
+  ON patient_medications (source);
+CREATE INDEX IF NOT EXISTS patient_medications_form_submission_id_idx
+  ON patient_medications (form_submission_id);
