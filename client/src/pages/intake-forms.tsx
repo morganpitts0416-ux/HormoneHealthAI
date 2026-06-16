@@ -1009,7 +1009,15 @@ function FieldPreview({ field, isSelected, onClick, onMoveUp, onMoveDown, canMov
       case "medication_list":
         return (
           <div className="space-y-1.5">
-            <div className="border rounded-md p-2 bg-muted/30 text-sm text-muted-foreground">{field.placeholder || "Medication name, dosage, frequency"}</div>
+            <div className="rounded-md border overflow-hidden text-xs">
+              <div className="grid grid-cols-[1fr_80px_70px_70px] bg-muted/30 border-b">
+                <div className="px-2 py-1.5 font-medium text-muted-foreground">Drug name</div>
+                <div className="px-2 py-1.5 font-medium text-muted-foreground text-center">Strength</div>
+                <div className="px-2 py-1.5 font-medium text-muted-foreground text-center">Form</div>
+                <div className="px-2 py-1.5 font-medium text-muted-foreground text-center">Route</div>
+              </div>
+              <div className="px-2 py-1.5 text-muted-foreground/70 italic">Patient enters each medication with name, dose, sig, quantity, refills, and more</div>
+            </div>
             <button type="button" className="text-xs text-primary font-medium">+ Add medication</button>
           </div>
         );

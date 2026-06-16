@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { MedicationListField } from "@/components/medication-list-field";
 import { RichTextView } from "@/components/rich-text-editor";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -371,18 +372,28 @@ function PortalFormField({ field, value, onChange }: {
           <FileUploadField value={value} onChange={onChange} fieldId={String(field.id)} />
         </div>
       );
-    case "medication_list":
+    case "medication_list": {
+      const medItems = Array.isArray(value) ? value.filter((e: any) => e && typeof e === "object") : [];
+      return (
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium" style={{ color: "#2e3a20" }}>
+            {field.label}{field.isRequired && <span className="text-red-500 ml-0.5">*</span>}
+          </label>
+          {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
+          <MedicationListField value={medItems} onChange={onChange} />
+        </div>
+      );
+    }
     case "allergy_list":
     case "medical_history_list":
     case "surgical_history_list": {
       const listItems = Array.isArray(value) ? value : [];
       const listLabels: Record<string, { placeholder: string; addLabel: string }> = {
-        medication_list: { placeholder: "Medication name, dosage, frequency", addLabel: "Add medication" },
         allergy_list: { placeholder: "Allergy (include reaction type if known)", addLabel: "Add allergy" },
         medical_history_list: { placeholder: "Condition or diagnosis", addLabel: "Add condition" },
         surgical_history_list: { placeholder: "Surgery name and approximate date", addLabel: "Add surgery" },
       };
-      const cfg = listLabels[field.fieldType] || listLabels.medication_list;
+      const cfg = listLabels[field.fieldType] || listLabels.allergy_list;
       return (
         <div className="space-y-1.5">
           <label className="text-sm font-medium" style={{ color: "#2e3a20" }}>

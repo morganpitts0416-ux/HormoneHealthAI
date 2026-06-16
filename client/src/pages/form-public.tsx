@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { MedicationListField } from "@/components/medication-list-field";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -1052,15 +1053,21 @@ function FieldRenderer({ field, value, onChange, error }: {
         />
       )}
 
-      {(field.fieldType === "medication_list" || field.fieldType === "allergy_list" || field.fieldType === "medical_history_list" || field.fieldType === "surgical_history_list") && (() => {
+      {field.fieldType === "medication_list" && (
+        <MedicationListField
+          value={Array.isArray(value) ? value.filter((e: any) => e && typeof e === "object") : []}
+          onChange={onChange}
+        />
+      )}
+
+      {(field.fieldType === "allergy_list" || field.fieldType === "medical_history_list" || field.fieldType === "surgical_history_list") && (() => {
         const listItems = Array.isArray(value) ? value : [];
         const listLabels: Record<string, { placeholder: string; addLabel: string }> = {
-          medication_list: { placeholder: "Medication name, dosage, frequency", addLabel: "Add medication" },
           allergy_list: { placeholder: "Allergy (include reaction type if known)", addLabel: "Add allergy" },
           medical_history_list: { placeholder: "Condition or diagnosis", addLabel: "Add condition" },
           surgical_history_list: { placeholder: "Surgery name and approximate date", addLabel: "Add surgery" },
         };
-        const cfg = listLabels[field.fieldType] || listLabels.medication_list;
+        const cfg = listLabels[field.fieldType] || listLabels.allergy_list;
         return (
           <div className="space-y-2">
             {listItems.map((item: string, i: number) => (

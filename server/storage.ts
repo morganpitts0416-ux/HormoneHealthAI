@@ -281,6 +281,7 @@ export interface IStorage {
 
   // Patient Medications (structured — Phase A)
   getPatientMedications(patientId: number, clinicId: number): Promise<schema.PatientMedication[]>;
+  getPatientMedicationsByFormSubmission(formSubmissionId: number): Promise<schema.PatientMedication[]>;
   createPatientMedication(data: schema.InsertPatientMedication & { createdByUserId?: number | null; createdByStaffId?: number | null }): Promise<schema.PatientMedication>;
   updatePatientMedication(id: number, patientId: number, clinicId: number, data: Partial<schema.InsertPatientMedication> & { updatedByUserId?: number | null; updatedByStaffId?: number | null }): Promise<schema.PatientMedication | null>;
   discontinuePatientMedication(id: number, patientId: number, clinicId: number, opts: { discontinuedByUserId?: number | null; discontinuedByStaffId?: number | null; discontinuedReason?: string | null }): Promise<schema.PatientMedication | null>;
@@ -2338,6 +2339,13 @@ export class DbStorage implements IStorage {
         eq(schema.patientMedications.clinicId, clinicId),
       ))
       .orderBy(schema.patientMedications.createdAt);
+  }
+
+  async getPatientMedicationsByFormSubmission(formSubmissionId: number): Promise<schema.PatientMedication[]> {
+    return db
+      .select()
+      .from(schema.patientMedications)
+      .where(eq(schema.patientMedications.formSubmissionId, formSubmissionId));
   }
 
   async createPatientMedication(data: schema.InsertPatientMedication & { createdByUserId?: number | null; createdByStaffId?: number | null }): Promise<schema.PatientMedication> {

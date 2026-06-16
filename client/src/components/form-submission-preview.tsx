@@ -1149,7 +1149,9 @@ function PreviewFieldGroup({ fields, data, signatureFallback }: { fields: Submis
               : isSymptomChart
               ? (Object.entries(value).filter(([, v]) => v && String(v).trim()).map(([k, v]) => `${k}: ${v}`).join("; ") || "—")
               : isList
-                ? (value.filter(Boolean).join("; ") || "—")
+                ? field.fieldType === "medication_list" && value.length > 0 && typeof value[0] === "object"
+                  ? (value as any[]).map((e: any) => [e.drugName, e.strength && e.strengthUnit ? `${e.strength} ${e.strengthUnit}` : e.strength, e.form, e.sig ? `— ${e.sig}` : null].filter(Boolean).join(" ")).filter(Boolean).join("; ") || "—"
+                  : (value.filter(Boolean).join("; ") || "—")
                 : Array.isArray(value)
                   ? (value.filter(v => v !== undefined && v !== null && String(v).trim() !== "").join(", ") || "—")
                   : typeof value === "boolean"

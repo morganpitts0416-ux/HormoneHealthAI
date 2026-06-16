@@ -14944,6 +14944,41 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
             if (genderFromSync && resolvedPatientId) {
               await storage.updatePatient(resolvedPatientId, { gender: genderFromSync as "male" | "female" }, form.clinicianId!);
             }
+            // medication_list fields → insert structured rows directly into patient_medications
+            if (resolvedPatientId && form.clinicId) {
+              for (const field of fields) {
+                if ((field as any).fieldType !== "medication_list") continue;
+                const val = (responses as Record<string, any>)[(field as any).fieldKey];
+                if (!Array.isArray(val) || val.length === 0) continue;
+                const medEntries = val.filter((e: any) => e && typeof e === "object" && typeof e.drugName === "string" && e.drugName.trim());
+                for (const entry of medEntries) {
+                  try {
+                    await storage.createPatientMedication({
+                      patientId: resolvedPatientId!,
+                      clinicId: form.clinicId!,
+                      drugName: entry.drugName.trim(),
+                      genericName: entry.genericName?.trim() || null,
+                      strength: entry.strength?.trim() || null,
+                      strengthUnit: entry.strengthUnit || null,
+                      form: entry.form || null,
+                      route: entry.route || null,
+                      sig: entry.sig?.trim() || null,
+                      quantity: entry.quantity?.trim() || null,
+                      daysSupply: entry.daysSupply ? parseInt(String(entry.daysSupply)) : null,
+                      refills: (entry.refills !== undefined && String(entry.refills) !== "") ? parseInt(String(entry.refills)) : null,
+                      startDate: entry.startDate ? new Date(entry.startDate) : null,
+                      indication: entry.indication?.trim() || null,
+                      status: "active" as const,
+                      source: "patient_form" as const,
+                      reviewedByProvider: false,
+                      formSubmissionId: submission.id,
+                    });
+                  } catch (medErr) {
+                    console.error("[FormSubmit] medication_list insert failed:", medErr);
+                  }
+                }
+              }
+            }
           } catch (syncErr) {
             console.error("[FormSubmit] smart-field sync error:", syncErr);
           }
@@ -15595,6 +15630,52 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
           if (!isDuplicate) {
             (merged[domain as keyof typeof merged] as string[]).push(item);
             seenNorms[domain]?.add(itemNorm);
+          }
+        }
+      }
+
+      // medication_list fields → insert structured rows into patient_medications (dedup by formSubmissionId)
+      const existingMedRows = await storage.getPatientMedicationsByFormSubmission(id);
+      const medAlreadySynced = existingMedRows.length > 0;
+      for (const field of fields) {
+        if ((field as any).fieldType !== "medication_list") continue;
+        const val = responses[(field as any).fieldKey];
+        if (!Array.isArray(val) || val.length === 0) continue;
+        const medEntries = val.filter((e: any) => e && typeof e === "object" && typeof e.drugName === "string" && e.drugName.trim());
+        if (medEntries.length === 0) continue;
+        if (medAlreadySynced) {
+          syncResults.push({ domain: "medications", item: `${medEntries.length} structured medication(s) already synced`, action: "skipped_duplicate", duplicate: true });
+          continue;
+        }
+        const effClinicId = clinicId ?? (submission as any).clinicId ?? null;
+        if (!effClinicId) continue;
+        for (const entry of medEntries) {
+          try {
+            await storage.createPatientMedication({
+              patientId,
+              clinicId: effClinicId,
+              drugName: entry.drugName.trim(),
+              genericName: entry.genericName?.trim() || null,
+              strength: entry.strength?.trim() || null,
+              strengthUnit: entry.strengthUnit || null,
+              form: entry.form || null,
+              route: entry.route || null,
+              sig: entry.sig?.trim() || null,
+              quantity: entry.quantity?.trim() || null,
+              daysSupply: entry.daysSupply ? parseInt(String(entry.daysSupply)) : null,
+              refills: (entry.refills !== undefined && String(entry.refills) !== "") ? parseInt(String(entry.refills)) : null,
+              startDate: entry.startDate ? new Date(entry.startDate) : null,
+              indication: entry.indication?.trim() || null,
+              status: "active" as const,
+              source: "patient_form" as const,
+              reviewedByProvider: false,
+              formSubmissionId: id,
+              createdByUserId: req.user.id,
+            });
+            syncResults.push({ domain: "medications", item: `${entry.drugName}${entry.strength ? ` ${entry.strength}` : ""}${entry.strengthUnit ? ` ${entry.strengthUnit}` : ""} (structured)`, action: "added", duplicate: false });
+          } catch (medErr: any) {
+            console.error("[FormSync] medication_list insert failed:", medErr?.message ?? medErr);
+            syncResults.push({ domain: "medications", item: entry.drugName, action: "error", duplicate: false });
           }
         }
       }
