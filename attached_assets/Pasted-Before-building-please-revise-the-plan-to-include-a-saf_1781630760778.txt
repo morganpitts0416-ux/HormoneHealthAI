@@ -1,0 +1,54 @@
+Before building, please revise the plan to include a safe production rollout strategy.
+
+Key requirements:
+
+1. Do not modify or delete the existing medication fields/data yet.
+
+   * Add the new patient_medications table as additive-only.
+   * Existing medication data should remain untouched.
+   * If migrating old free-text meds into the new table, make it a non-destructive backfill and preserve the original source text.
+
+2. Add database migration defensively.
+
+   * Use CREATE TABLE IF NOT EXISTS.
+   * Use ALTER TABLE ADD COLUMN IF NOT EXISTS for new patient demographics fields.
+   * Do not rename/drop existing columns.
+   * Do not add NOT NULL constraints without safe defaults/backfill.
+   * Add indexes for patient_id, clinic_id, status, source, and formSubmissionId if appropriate.
+
+3. Add rollback-safe behavior.
+
+   * If patient_medications is empty for a patient, the UI should fall back to the existing medication data so no chart appears blank after deploy.
+   * The patient portal adherence tracker should support both old and new medication sources during transition.
+   * PDFs should not fail if optional demographic fields are null.
+
+4. Add access-control validation.
+
+   * All patient_medications queries must be scoped by clinic_id/patient ownership.
+   * Staff should only see/edit medications for patients in their clinic.
+   * Form-submitted medications must attach to the correct patient and clinic.
+
+5. Add audit/safety fields if not already included.
+
+   * createdAt, updatedAt
+   * createdByUserId / createdByStaffId
+   * discontinuedAt, discontinuedByUserId/discontinuedByStaffId
+   * discontinuedReason
+   * lastReviewedAt, reviewedByProviderId
+   * sourceRawText for migrated/free-text meds if applicable
+
+6. Add production deploy checklist.
+
+   * Run migration first.
+   * Confirm table/columns exist in realdata.
+   * Deploy app.
+   * Smoke test login, patient profile load, add/edit medication, discontinue medication, patient form medication submit, demographics PDF, referral PDF, hard-copy Rx PDF, and portal medication display.
+   * Confirm existing patients still load and old medication data is still visible.
+
+7. Build behind a safe compatibility layer.
+
+   * Existing charts should not break if the new table has no rows.
+   * New structured meds should be used preferentially when present.
+   * Old medication display can be deprecated only after confirming migration is complete and stable.
+
+Please update the implementation plan with these safeguards before coding.
