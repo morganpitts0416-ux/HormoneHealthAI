@@ -9,6 +9,8 @@ export interface ClinicBrandingResponse {
   clinicLogo: string | null;
   /** Optional custom footer text for patient-facing PDFs. */
   footerText: string | null;
+  /** Clinic fax number printed on all order PDFs so facilities can fax results back. */
+  clinicFax: string | null;
 }
 
 /**

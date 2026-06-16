@@ -1608,6 +1608,8 @@ export const clinics = pgTable("clinics", {
   // Optional custom footer text printed at the bottom of patient-facing PDFs.
   // When null the default ClinIQ footer is used.
   footerText: text("footer_text"),
+  // Clinic fax number — printed on all outbound orders so facilities can fax results back.
+  fax: varchar("fax", { length: 30 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

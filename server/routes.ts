@@ -7034,6 +7034,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
             formBackgroundColor: clinics.formBackgroundColor,
             clinicLogo: clinics.clinicLogo,
             footerText: clinics.footerText,
+            fax: clinics.fax,
           })
           .from(clinics)
           .where(eq(clinics.id, clinicId))
@@ -7052,7 +7053,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
           )
           .limit(1),
       ]);
-      const c = clinicRows[0] ?? { primaryColor: null, accentColor: null, formBackgroundColor: null, clinicLogo: null, footerText: null };
+      const c = clinicRows[0] ?? { primaryColor: null, accentColor: null, formBackgroundColor: null, clinicLogo: null, footerText: null, fax: null };
       // Use clinic-level logo first; fall back to legacy user-level logo
       const clinicLogo = c.clinicLogo ?? legacyLogoRows[0]?.clinicLogo ?? null;
       res.json({
@@ -7061,6 +7062,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
         formBackgroundColor: c.formBackgroundColor,
         clinicLogo,
         footerText: c.footerText ?? null,
+        clinicFax: c.fax ?? null,
       });
     } catch (err) {
       console.error('[API] Error fetching clinic branding:', err);
@@ -7121,6 +7123,16 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
         }
       }
 
+      // Fax number — plain string, max 30 chars
+      if ("fax" in incoming) {
+        const fv = incoming.fax;
+        if (fv === null || fv === undefined || fv === "") {
+          updates.fax = null;
+        } else if (typeof fv === "string") {
+          updates.fax = fv.slice(0, 30);
+        }
+      }
+
       if (Object.keys(updates).length === 0) {
         return res.status(400).json({ message: "No branding fields provided." });
       }
@@ -7132,11 +7144,13 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
           formBackgroundColor: clinics.formBackgroundColor,
           clinicLogo: clinics.clinicLogo,
           footerText: clinics.footerText,
+          fax: clinics.fax,
         })
         .from(clinics)
         .where(eq(clinics.id, clinicId))
         .limit(1);
-      res.json(rows[0] ?? {});
+      const r = rows[0] ?? {};
+      res.json({ ...r, clinicFax: (r as any).fax ?? null });
     } catch (err) {
       console.error('[API] Error updating clinic branding:', err);
       res.status(500).json({ message: "Failed to update branding" });

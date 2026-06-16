@@ -617,6 +617,8 @@ export default function Account() {
   const [accentColorInput, setAccentColorInput] = useState<string>("");
   const [formBgColorInput, setFormBgColorInput] = useState<string>("");
   const [footerTextInput, setFooterTextInput] = useState<string>("");
+  const [clinicFaxInput, setClinicFaxInput] = useState<string>("");
+  const [clinicFaxSaved, setClinicFaxSaved] = useState(false);
   const [brandColorsSaved, setBrandColorsSaved] = useState(false);
   useEffect(() => {
     if (clinicBrandingData) {
@@ -624,6 +626,7 @@ export default function Account() {
       setAccentColorInput(clinicBrandingData.accentColor ?? "");
       setFormBgColorInput(clinicBrandingData.formBackgroundColor ?? "");
       setFooterTextInput(clinicBrandingData.footerText ?? "");
+      setClinicFaxInput(clinicBrandingData.clinicFax ?? "");
       // Prefer the clinic-level logo over the legacy user-level one. Only
       // update if not already showing a freshly-uploaded (unsaved) image.
       if (clinicBrandingData.clinicLogo && clinicBrandingData.clinicLogo !== clinicLogoPreview) {
@@ -649,6 +652,21 @@ export default function Account() {
     },
     onError: (err: any) => {
       toast({ title: "Could not save branding", description: err?.message ?? "Please try again.", variant: "destructive" });
+    },
+  });
+
+  const clinicFaxMutation = useMutation({
+    mutationFn: async (fax: string) => {
+      return apiRequest("PATCH", "/api/clinic/branding", { fax: fax.trim() || null });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/clinic/branding"] });
+      setClinicFaxSaved(true);
+      setTimeout(() => setClinicFaxSaved(false), 2500);
+      toast({ title: "Fax number saved" });
+    },
+    onError: () => {
+      toast({ title: "Could not save fax number", variant: "destructive" });
     },
   });
   const effectiveBrandPreview = resolveBranding(null, {
@@ -1124,6 +1142,30 @@ export default function Account() {
                           <FormMessage />
                         </FormItem>
                       )} />
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium leading-none">Fax</label>
+                        <div className="flex gap-2">
+                          <Input
+                            data-testid="input-fax"
+                            value={clinicFaxInput}
+                            onChange={(e) => setClinicFaxInput(e.target.value)}
+                            placeholder="(555) 000-0000"
+                            className="max-w-xs"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={clinicFaxMutation.isPending || clinicFaxInput.trim() === (clinicBrandingData?.clinicFax ?? "")}
+                            onClick={() => clinicFaxMutation.mutate(clinicFaxInput)}
+                            data-testid="button-save-fax"
+                          >
+                            {clinicFaxSaved ? (
+                              <><CheckCircle className="w-4 h-4 mr-2 text-green-600" />Saved</>
+                            ) : clinicFaxMutation.isPending ? "Saving…" : "Save Fax"}
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">Printed on referral and imaging order PDFs.</p>
+                      </div>
                     </div>
                     <div className="flex items-center justify-between pt-2 flex-wrap gap-3">
                       <div className="h-5">

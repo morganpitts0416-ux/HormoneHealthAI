@@ -151,6 +151,13 @@ function OrderDetailDrawer({
   const [editNotes, setEditNotes] = useState(order.notes ?? "");
   const [savingNotes, setSavingNotes] = useState(false);
   const [printing, setPrinting] = useState(false);
+  const [editDiagnosis, setEditDiagnosis] = useState<{ code: string; label: string } | null>(
+    order.diagnosisCode ? { code: order.diagnosisCode, label: order.diagnosisName ?? "" } : null
+  );
+  const [editCpt, setEditCpt] = useState<{ code: string; label: string } | null>(
+    order.cptCode ? { code: order.cptCode, label: order.cptDescription ?? "" } : null
+  );
+  const [savingCodes, setSavingCodes] = useState(false);
 
   const { data: clinicBranding } = useClinicBranding();
   const printEnabled = ["referral", "imaging", "health_maintenance"].includes(order.orderType);
@@ -220,6 +227,7 @@ function OrderDetailDrawer({
         clinicName: (user as any)?.clinicName ?? "Clinic",
         clinicAddress: (user as any)?.address ?? null,
         clinicPhone: (user as any)?.phone ?? null,
+        clinicFax: clinicBranding?.clinicFax ?? null,
         clinicLogo: clinicBranding?.clinicLogo ?? null,
         footerText: clinicBranding?.footerText ?? null,
         branding: clinicBranding ?? null,
@@ -288,6 +296,28 @@ function OrderDetailDrawer({
       setSavingNotes(false);
     }
   }
+
+  async function saveCodes() {
+    setSavingCodes(true);
+    try {
+      await apiRequest("PATCH", `/api/clinical-orders/${order.id}`, {
+        diagnosisCode: editDiagnosis?.code ?? null,
+        diagnosisName: editDiagnosis?.label ?? null,
+        cptCode: editCpt?.code ?? null,
+        cptDescription: editCpt?.label ?? null,
+      });
+      onOrderChange();
+      toast({ title: "Codes saved" });
+    } catch {
+      toast({ variant: "destructive", title: "Failed to save codes" });
+    } finally {
+      setSavingCodes(false);
+    }
+  }
+
+  const codesChanged =
+    (editDiagnosis?.code ?? null) !== (order.diagnosisCode ?? null) ||
+    (editCpt?.code ?? null) !== (order.cptCode ?? null);
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -361,22 +391,45 @@ function OrderDetailDrawer({
                 </span>
               </div>
             )}
-            {(order.diagnosisCode || order.cptCode) && (
-              <div className="flex flex-wrap gap-2 pt-0.5">
-                {order.diagnosisCode && (
-                  <div className="flex items-center gap-1.5 text-xs bg-blue-50 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-800/40 rounded px-2 py-1">
-                    <span className="font-mono font-semibold text-blue-800 dark:text-blue-300">{order.diagnosisCode}</span>
-                    {order.diagnosisName && <span className="text-blue-700/70 dark:text-blue-400/70 truncate max-w-[140px]">{order.diagnosisName}</span>}
-                  </div>
-                )}
-                {order.cptCode && (
-                  <div className="flex items-center gap-1.5 text-xs bg-purple-50 dark:bg-purple-950/30 border border-purple-200/60 dark:border-purple-800/40 rounded px-2 py-1">
-                    <span className="font-mono font-semibold text-purple-800 dark:text-purple-300">{order.cptCode}</span>
-                    {order.cptDescription && <span className="text-purple-700/70 dark:text-purple-400/70 truncate max-w-[140px]">{order.cptDescription}</span>}
-                  </div>
-                )}
+            {/* ICD-10 / CPT — always editable so codes can be added after creation */}
+            <div className="space-y-1.5 pt-0.5">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Billing Codes</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">ICD-10 Diagnosis</p>
+                  <CodeSearchCombobox
+                    fetchUrl="/api/diagnoses/search"
+                    value={editDiagnosis}
+                    onChange={setEditDiagnosis}
+                    placeholder="Search ICD-10…"
+                    data-testid="input-drawer-icd10"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">CPT Procedure</p>
+                  <CodeSearchCombobox
+                    fetchUrl="/api/cpt/search"
+                    value={editCpt}
+                    onChange={setEditCpt}
+                    placeholder="Search CPT…"
+                    data-testid="input-drawer-cpt"
+                  />
+                </div>
               </div>
-            )}
+              {codesChanged && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs h-7"
+                  onClick={saveCodes}
+                  disabled={savingCodes}
+                  data-testid="button-save-order-codes"
+                >
+                  {savingCodes ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                  Save codes
+                </Button>
+              )}
+            </div>
             {order.targetDate && (
               <div className="flex items-center gap-2 text-sm">
                 <CalendarDays className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />

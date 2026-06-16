@@ -48,6 +48,7 @@ export interface OrderPdfOptions {
   clinicName: string;
   clinicAddress?: string | null;
   clinicPhone?: string | null;
+  clinicFax?: string | null;
   clinicLogo?: string | null;
   footerText?: string | null;
   branding?: PartialBranding | null;
@@ -165,7 +166,8 @@ async function drawLetterhead(
   doc.setTextColor('#555555');
   let lineY = y + 10;
   if (opts.clinicAddress) { doc.text(sanitize(opts.clinicAddress), textX, lineY, { align: 'right' }); lineY += 4.5; }
-  if (opts.clinicPhone)   { doc.text(sanitize(opts.clinicPhone),   textX, lineY, { align: 'right' }); lineY += 4.5; }
+  if (opts.clinicPhone)   { doc.text(`Tel: ${sanitize(opts.clinicPhone)}`, textX, lineY, { align: 'right' }); lineY += 4.5; }
+  if (opts.clinicFax)     { doc.text(`Fax: ${sanitize(opts.clinicFax)}`,   textX, lineY, { align: 'right' }); lineY += 4.5; }
 
   // Provider line
   doc.setFont('helvetica', 'normal');
