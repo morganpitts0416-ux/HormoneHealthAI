@@ -3779,6 +3779,33 @@ export default function PatientProfiles() {
                             variant="inline"
                           />
                         )}
+                        {(selectedPatient as any).race && (
+                          <span className="text-xs text-muted-foreground">
+                            Race: <span className="font-medium text-foreground">{(selectedPatient as any).race}</span>
+                          </span>
+                        )}
+                        {(selectedPatient as any).ethnicity && (
+                          <span className="text-xs text-muted-foreground">
+                            Ethnicity: <span className="font-medium text-foreground">{(selectedPatient as any).ethnicity}</span>
+                          </span>
+                        )}
+                        {(selectedPatient as any).maritalStatus && (
+                          <span className="text-xs text-muted-foreground">
+                            Marital: <span className="font-medium text-foreground">{(selectedPatient as any).maritalStatus}</span>
+                          </span>
+                        )}
+                        {(selectedPatient as any).occupation && (
+                          <span className="text-xs text-muted-foreground">
+                            Occupation: <span className="font-medium text-foreground">{(selectedPatient as any).occupation}</span>
+                          </span>
+                        )}
+                        {(selectedPatient as any).emergencyContactName && (
+                          <span className="text-xs text-muted-foreground">
+                            Emergency: <span className="font-medium text-foreground">{(selectedPatient as any).emergencyContactName}</span>
+                            {(selectedPatient as any).emergencyContactRelationship && <span className="text-foreground"> ({(selectedPatient as any).emergencyContactRelationship})</span>}
+                            {(selectedPatient as any).emergencyContactPhone && <span className="text-foreground"> · {(selectedPatient as any).emergencyContactPhone}</span>}
+                          </span>
+                        )}
                         <Badge variant="outline" className="text-xs">
                           {labs.length} lab result{labs.length !== 1 ? 's' : ''}
                         </Badge>

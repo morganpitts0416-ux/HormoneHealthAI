@@ -199,10 +199,13 @@ function OrderDetailDrawer({
           reason: order.reason,
           priority: order.priority,
           targetDate: order.targetDate,
-          diagnosisCode: order.diagnosisCode,
-          diagnosisName: order.diagnosisName,
-          cptCode: order.cptCode,
-          cptDescription: order.cptDescription,
+          // Prefer live drawer state (editDiagnosis/editCpt) — it reflects
+          // any codes the user has typed or selected since opening the drawer,
+          // even if they haven't clicked "Save codes" yet.
+          diagnosisCode: editDiagnosis?.code ?? order.diagnosisCode,
+          diagnosisName: editDiagnosis?.label ?? order.diagnosisName,
+          cptCode: editCpt?.code ?? order.cptCode,
+          cptDescription: editCpt?.label ?? order.cptDescription,
           notes: order.notes,
           createdAt: order.createdAt,
         },
