@@ -3464,6 +3464,14 @@ Rules:
         insuranceCarrier: z.string().trim().max(150).optional().nullable(),
         insuranceMemberId: z.string().trim().max(100).optional().nullable(),
         address: z.string().trim().max(500).optional().nullable(),
+        // Extended demographics (Phase C)
+        race: z.string().trim().max(60).optional().nullable(),
+        ethnicity: z.string().trim().max(60).optional().nullable(),
+        maritalStatus: z.string().trim().max(30).optional().nullable(),
+        occupation: z.string().trim().max(100).optional().nullable(),
+        emergencyContactName: z.string().trim().max(100).optional().nullable(),
+        emergencyContactRelationship: z.string().trim().max(60).optional().nullable(),
+        emergencyContactPhone: z.string().trim().max(30).optional().nullable(),
       });
       const parsedPatch = patchSchema.safeParse(req.body);
       if (!parsedPatch.success) {
@@ -3474,6 +3482,8 @@ Rules:
         primaryProvider, preferredPharmacy,
         pharmacyName, pharmacyAddress, pharmacyPhone, pharmacyFax, pharmacyNcpdpId, pharmacyPlaceId,
         ssn, driversLicense, insuranceCarrier, insuranceMemberId, address,
+        race, ethnicity, maritalStatus, occupation,
+        emergencyContactName, emergencyContactRelationship, emergencyContactPhone,
       } = parsedPatch.data;
       const updates: Record<string, unknown> = {};
       if (firstName !== undefined) updates.firstName = (firstName ?? "").trim();
@@ -3522,6 +3532,14 @@ Rules:
       if (pharmacyFax !== undefined) updates.pharmacyFax = pharmacyFax?.trim() || null;
       if (pharmacyNcpdpId !== undefined) updates.pharmacyNcpdpId = pharmacyNcpdpId?.trim() || null;
       if (pharmacyPlaceId !== undefined) updates.pharmacyPlaceId = pharmacyPlaceId?.trim() || null;
+      // Extended demographics (Phase C)
+      if (race !== undefined) updates.race = race?.trim() || null;
+      if (ethnicity !== undefined) updates.ethnicity = ethnicity?.trim() || null;
+      if (maritalStatus !== undefined) updates.maritalStatus = maritalStatus?.trim() || null;
+      if (occupation !== undefined) updates.occupation = occupation?.trim() || null;
+      if (emergencyContactName !== undefined) updates.emergencyContactName = emergencyContactName?.trim() || null;
+      if (emergencyContactRelationship !== undefined) updates.emergencyContactRelationship = emergencyContactRelationship?.trim() || null;
+      if (emergencyContactPhone !== undefined) updates.emergencyContactPhone = emergencyContactPhone?.trim() || null;
       if (Object.keys(updates).length === 0) return res.status(400).json({ error: "No fields to update" });
       const updated = await storage.updatePatient(id, updates as any, clinicianId, clinicId);
       if (!updated) return res.status(404).json({ error: "Patient not found" });
@@ -3529,6 +3547,113 @@ Rules:
     } catch (error) {
       console.error("Error updating patient:", error);
       res.status(500).json({ error: "Failed to update patient" });
+    }
+  });
+
+  // ── Patient Medications CRUD (Phase A) ────────────────────────────────────
+  const medSchema = z.object({
+    drugName: z.string().trim().min(1).max(200),
+    genericName: z.string().trim().max(200).optional().nullable(),
+    strength: z.string().trim().max(50).optional().nullable(),
+    strengthUnit: z.string().trim().max(20).optional().nullable(),
+    form: z.string().trim().max(50).optional().nullable(),
+    route: z.string().trim().max(50).optional().nullable(),
+    sig: z.string().trim().optional().nullable(),
+    quantity: z.string().trim().max(50).optional().nullable(),
+    daysSupply: z.number().int().optional().nullable(),
+    refills: z.number().int().optional().nullable(),
+    prescribingProvider: z.string().trim().max(200).optional().nullable(),
+    startDate: z.string().optional().nullable(),
+    indication: z.string().trim().optional().nullable(),
+    status: z.enum(["active", "inactive", "discontinued"]).optional(),
+    source: z.enum(["staff", "patient_form", "patient_portal", "migrated"]).optional(),
+    reviewedByProvider: z.boolean().optional(),
+  });
+
+  app.get("/api/patients/:id/medications", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const patientId = parseInt(req.params.id);
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ error: "Patient not found" });
+      const meds = await storage.getPatientMedications(patientId, clinicId ?? patient.clinicId!);
+      res.json(meds);
+    } catch (e) {
+      console.error("[GET patient medications]", e);
+      res.status(500).json({ error: "Failed to fetch medications" });
+    }
+  });
+
+  app.post("/api/patients/:id/medications", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const patientId = parseInt(req.params.id);
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ error: "Patient not found" });
+      const parsed = medSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "Invalid input", details: parsed.error.format() });
+      const effectiveClinicId = clinicId ?? patient.clinicId!;
+      const med = await storage.createPatientMedication({
+        ...parsed.data,
+        patientId,
+        clinicId: effectiveClinicId,
+        startDate: parsed.data.startDate ? new Date(parsed.data.startDate) : null,
+        createdByUserId: clinicianId,
+        reviewedByProvider: parsed.data.reviewedByProvider ?? true,
+        source: parsed.data.source ?? "staff",
+      });
+      res.status(201).json(med);
+    } catch (e) {
+      console.error("[POST patient medication]", e);
+      res.status(500).json({ error: "Failed to create medication" });
+    }
+  });
+
+  app.patch("/api/patients/:id/medications/:medId", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const patientId = parseInt(req.params.id);
+      const medId = parseInt(req.params.medId);
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ error: "Patient not found" });
+      const parsed = medSchema.partial().safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "Invalid input", details: parsed.error.format() });
+      const effectiveClinicId = clinicId ?? patient.clinicId!;
+      const updated = await storage.updatePatientMedication(medId, patientId, effectiveClinicId, {
+        ...parsed.data,
+        startDate: parsed.data.startDate ? new Date(parsed.data.startDate) : parsed.data.startDate,
+        updatedByUserId: clinicianId,
+      });
+      if (!updated) return res.status(404).json({ error: "Medication not found" });
+      res.json(updated);
+    } catch (e) {
+      console.error("[PATCH patient medication]", e);
+      res.status(500).json({ error: "Failed to update medication" });
+    }
+  });
+
+  app.delete("/api/patients/:id/medications/:medId", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const patientId = parseInt(req.params.id);
+      const medId = parseInt(req.params.medId);
+      const { reason } = req.body ?? {};
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ error: "Patient not found" });
+      const effectiveClinicId = clinicId ?? patient.clinicId!;
+      const result = await storage.discontinuePatientMedication(medId, patientId, effectiveClinicId, {
+        discontinuedByUserId: clinicianId,
+        discontinuedReason: reason ?? null,
+      });
+      if (!result) return res.status(404).json({ error: "Medication not found" });
+      res.json(result);
+    } catch (e) {
+      console.error("[DELETE patient medication]", e);
+      res.status(500).json({ error: "Failed to discontinue medication" });
     }
   });
 

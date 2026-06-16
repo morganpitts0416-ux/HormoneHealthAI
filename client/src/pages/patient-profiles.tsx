@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AppointmentDialog } from "@/components/appointment-dialog";
+import { AddMedicationDialog, formatMedSig, type PatientMedication } from "@/components/add-medication-dialog";
 import { Link, useLocation, useSearch } from "wouter";
 import { cn } from "@/lib/utils";
 import { PatientTrendCharts } from "@/components/patient-trend-charts";
@@ -1195,6 +1196,29 @@ function PatientChartPanel({
     });
   };
 
+  // Structured medications (Phase A)
+  const [showAddMed, setShowAddMed] = useState(false);
+  const [editingMed, setEditingMed] = useState<PatientMedication | null>(null);
+  const [medSectionOpen, setMedSectionOpen] = useState(true);
+  const { data: structuredMeds = [], refetch: refetchMeds } = useQuery<PatientMedication[]>({
+    queryKey: ["/api/patients", patientId, "medications"],
+    queryFn: async () => {
+      const res = await fetch(`/api/patients/${patientId}/medications`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+  const activeMeds = structuredMeds.filter(m => m.status === "active");
+
+  const discontinueMedMutation = useMutation({
+    mutationFn: async (medId: number) => {
+      const res = await apiRequest("DELETE", `/api/patients/${patientId}/medications/${medId}`, {});
+      if (!res.ok) throw new Error("Failed to discontinue");
+    },
+    onSuccess: () => { refetchMeds(); toast({ title: "Medication discontinued" }); },
+    onError: () => toast({ variant: "destructive", title: "Failed to discontinue medication" }),
+  });
+
   return (
     <>
       {accordionMode ? (
@@ -1281,7 +1305,71 @@ function PatientChartPanel({
 
           {/* Accordion sections */}
           <div className="divide-y overflow-y-auto flex-1" style={{ borderColor: "#ede8e0" }}>
-            {CHART_SECTIONS_META.map(({ key, label, icon: Icon }) => {
+            {/* Structured Medications — always first */}
+            <div>
+              <button
+                type="button"
+                className="w-full flex items-center justify-between px-3 py-2.5 text-left hover-elevate"
+                onClick={() => setMedSectionOpen(v => !v)}
+                data-testid="chart-section-toggle-structuredMeds"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <Pill className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#5a7040" }} />
+                  <span className="text-xs font-medium truncate" style={{ color: "#1c2414" }}>Current Medications</span>
+                  <span className="text-[10px] text-muted-foreground flex-shrink-0">({activeMeds.length})</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button size="icon" variant="ghost" className="h-5 w-5" onClick={e => { e.stopPropagation(); setEditingMed(null); setShowAddMed(true); }} title="Add medication" data-testid="button-add-med-accordion">
+                    <Plus className="w-3 h-3" />
+                  </Button>
+                  <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform flex-shrink-0 ${medSectionOpen ? "rotate-180" : ""}`} />
+                </div>
+              </button>
+              {medSectionOpen && (
+                <div className="px-3 pb-3 space-y-1.5">
+                  {activeMeds.length === 0 && <span className="text-xs text-muted-foreground italic">No medications recorded</span>}
+                  {activeMeds.map(med => (
+                    <div key={med.id} className="text-xs rounded-md px-2 py-1.5 flex items-start justify-between gap-2" style={{ backgroundColor: "#edf2e6", border: "1px solid #c4d4a8" }}>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-mono font-medium truncate" style={{ color: "#2e3a20" }}>{formatMedSig(med)}</p>
+                        {med.indication && <p className="text-muted-foreground truncate mt-0.5">{med.indication}</p>}
+                        {!med.reviewedByProvider && <span className="text-[10px] text-amber-600 font-medium">Patient-reported</span>}
+                      </div>
+                      <div className="flex items-center gap-0.5 flex-shrink-0">
+                        <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => { setEditingMed(med); setShowAddMed(true); }} title="Edit" data-testid={`button-edit-med-${med.id}`}><Pencil className="w-2.5 h-2.5" /></Button>
+                        <Button size="icon" variant="ghost" className="h-5 w-5 text-destructive" onClick={() => discontinueMedMutation.mutate(med.id)} title="Discontinue" data-testid={`button-discontinue-med-${med.id}`}><X className="w-2.5 h-2.5" /></Button>
+                      </div>
+                    </div>
+                  ))}
+                  {local.currentMedications.length > 0 && (
+                    <div className="mt-2 pt-2 border-t" style={{ borderColor: "#d4c9b5" }}>
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5">Legacy medication list</p>
+                      <div className="flex flex-wrap gap-1">
+                        {local.currentMedications.map((item: string, idx: number) => (
+                          <span key={idx} className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: "#edf2e6", color: "#2e3a20", border: "1px solid #c4d4a8" }}>
+                            {item}
+                            {editMode && <button onClick={() => removeItem("currentMedications", idx)} className="ml-0.5 opacity-50 hover:opacity-100" aria-label="Remove"><X className="w-2.5 h-2.5" /></button>}
+                          </span>
+                        ))}
+                      </div>
+                      {editMode && (
+                        <div className="flex items-center gap-1 w-full mt-1">
+                          <Input className="h-6 text-xs flex-1" placeholder="Add legacy medication…" value={addInputs.currentMedications} onChange={e => setAddInputs(prev => ({ ...prev, currentMedications: e.target.value }))} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addItem("currentMedications"); } }} data-testid="input-chart-add-currentMedications" />
+                          <Button size="sm" variant="ghost" className="h-6 px-2" onClick={() => addItem("currentMedications")}><Plus className="w-3 h-3" /></Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {editMode && local.currentMedications.length === 0 && (
+                    <div className="flex items-center gap-1 w-full mt-1">
+                      <Input className="h-6 text-xs flex-1" placeholder="Add legacy medication…" value={addInputs.currentMedications} onChange={e => setAddInputs(prev => ({ ...prev, currentMedications: e.target.value }))} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addItem("currentMedications"); } }} data-testid="input-chart-add-currentMedications-empty" />
+                      <Button size="sm" variant="ghost" className="h-6 px-2" onClick={() => addItem("currentMedications")}><Plus className="w-3 h-3" /></Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            {CHART_SECTIONS_META.filter(s => s.key !== "currentMedications").map(({ key, label, icon: Icon }) => {
               const items = local[key];
               const isOpen = openSections.has(key);
               const isAllergies = key === "allergies";
@@ -1438,9 +1526,70 @@ function PatientChartPanel({
           </div>
         )}
 
-        {/* Sections grid */}
-        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
-          {CHART_SECTIONS_META.map(({ key, label, icon: Icon }) => {
+        {/* Structured Medications — full-width section before the 2-col grid */}
+        <div className="px-4 pt-4 pb-2">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-semibold uppercase tracking-wide flex items-center gap-1.5" style={{ color: "#5a7040" }}>
+              <Pill className="w-3 h-3" />
+              Current Medications
+              <span className="font-normal normal-case tracking-normal text-muted-foreground ml-0.5">({activeMeds.length})</span>
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs gap-1"
+              style={{ color: "#5a7040", borderColor: "#c4d4a8" }}
+              onClick={() => { setEditingMed(null); setShowAddMed(true); }}
+              data-testid="button-add-medication"
+            >
+              <Plus className="w-3 h-3" />
+              Add Medication
+            </Button>
+          </div>
+          <div className="space-y-1.5">
+            {activeMeds.length === 0 && <p className="text-xs text-muted-foreground italic">No structured medications recorded</p>}
+            {activeMeds.map(med => (
+              <div key={med.id} className="text-xs rounded-md px-3 py-2 flex items-start justify-between gap-3" style={{ backgroundColor: "#edf2e6", border: "1px solid #c4d4a8" }}>
+                <div className="min-w-0 flex-1">
+                  <p className="font-mono font-medium" style={{ color: "#2e3a20" }}>{formatMedSig(med)}</p>
+                  <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                    {med.indication && <span className="text-muted-foreground">{med.indication}</span>}
+                    {med.startDate && <span className="text-muted-foreground">Started {new Date(med.startDate).toLocaleDateString("en-US", { month: "short", year: "numeric" })}</span>}
+                    {!med.reviewedByProvider && <span className="text-amber-600 font-medium">Patient-reported</span>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => { setEditingMed(med); setShowAddMed(true); }} title="Edit" data-testid={`button-edit-med-${med.id}`}><Pencil className="w-3 h-3" /></Button>
+                  <Button size="icon" variant="ghost" className="h-6 w-6 text-destructive" onClick={() => discontinueMedMutation.mutate(med.id)} title="Discontinue" data-testid={`button-discontinue-med-${med.id}`}><X className="w-3 h-3" /></Button>
+                </div>
+              </div>
+            ))}
+          </div>
+          {/* Legacy list — always visible below structured */}
+          {local.currentMedications.length > 0 && (
+            <div className="mt-3 pt-3 border-t" style={{ borderColor: "#e8ddd0" }}>
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5">Legacy medication list</p>
+              <div className="flex flex-wrap gap-1.5">
+                {local.currentMedications.map((item: string, idx: number) => (
+                  <span key={idx} className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: "#edf2e6", color: "#2e3a20", border: "1px solid #c4d4a8" }}>
+                    {item}
+                    {editMode && <button onClick={() => removeItem("currentMedications", idx)} className="ml-0.5 opacity-50 hover:opacity-100" aria-label="Remove"><X className="w-2.5 h-2.5" /></button>}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {editMode && (
+            <div className="mt-2 flex items-center gap-1 w-full">
+              <Input className="h-6 text-xs flex-1" placeholder="Add legacy medication…" value={addInputs.currentMedications} onChange={e => setAddInputs(prev => ({ ...prev, currentMedications: e.target.value }))} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addItem("currentMedications"); } }} data-testid="input-chart-add-currentMedications-standard" />
+              <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => addItem("currentMedications")}><Plus className="w-3 h-3" /></Button>
+            </div>
+          )}
+        </div>
+
+        {/* Sections grid (excludes currentMedications — shown above) */}
+        <div className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5 border-t pt-4" style={{ borderColor: "#e8ddd0" }}>
+          {CHART_SECTIONS_META.filter(s => s.key !== "currentMedications").map(({ key, label, icon: Icon }) => {
             const items = local[key];
             const isAllergies = key === "allergies";
             return (
@@ -1506,6 +1655,15 @@ function PatientChartPanel({
         )}
       </div>
       )}
+
+      {/* Add / Edit Medication Dialog */}
+      <AddMedicationDialog
+        open={showAddMed}
+        onOpenChange={v => { setShowAddMed(v); if (!v) setEditingMed(null); }}
+        patientId={patientId}
+        editing={editingMed}
+        onSaved={() => refetchMeds()}
+      />
 
       {/* Extract Dialog */}
       <Dialog open={extractOpen} onOpenChange={setExtractOpen}>
@@ -2066,7 +2224,7 @@ export default function PatientProfiles() {
   const [confirmDelete, setConfirmDelete] = useState<LabResult | null>(null);
   const [confirmDeletePatient, setConfirmDeletePatient] = useState(false);
   const [showEditPatient, setShowEditPatient] = useState(false);
-  const [editPatientForm, setEditPatientForm] = useState({ firstName: "", lastName: "", email: "", dateOfBirth: "", phone: "", address: "", gender: "female" as "male" | "female", primaryProvider: "", ssn: "", driversLicense: "", insuranceCarrier: "", insuranceMemberId: "" });
+  const [editPatientForm, setEditPatientForm] = useState({ firstName: "", lastName: "", email: "", dateOfBirth: "", phone: "", address: "", gender: "female" as "male" | "female", primaryProvider: "", ssn: "", driversLicense: "", insuranceCarrier: "", insuranceMemberId: "", race: "", ethnicity: "", maritalStatus: "", occupation: "", emergencyContactName: "", emergencyContactRelationship: "", emergencyContactPhone: "" });
   const [editPatientPharmacy, setEditPatientPharmacy] = useState<PharmacyLookupValue>({ text: "", details: null });
   const [showNewPatientDialog, setShowNewPatientDialog] = useState(false);
   const [newPatientForm, setNewPatientForm] = useState({ firstName: "", lastName: "", dateOfBirth: "", gender: "female" as "male" | "female", email: "", phone: "" });
@@ -2960,7 +3118,7 @@ export default function PatientProfiles() {
   });
 
   const updatePatientMutation = useMutation({
-    mutationFn: async (data: { id: number; firstName: string; lastName: string; email: string; dateOfBirth: string; phone: string; address: string; gender: string; primaryProvider: string; ssn: string; driversLicense: string; insuranceCarrier: string; insuranceMemberId: string; pharmacy: PharmacyLookupValue }) => {
+    mutationFn: async (data: { id: number; firstName: string; lastName: string; email: string; dateOfBirth: string; phone: string; address: string; gender: string; primaryProvider: string; ssn: string; driversLicense: string; insuranceCarrier: string; insuranceMemberId: string; race: string; ethnicity: string; maritalStatus: string; occupation: string; emergencyContactName: string; emergencyContactRelationship: string; emergencyContactPhone: string; pharmacy: PharmacyLookupValue }) => {
       const { id, pharmacy, ...fields } = data;
       const body: Record<string, string | null> = {
         firstName: fields.firstName,
@@ -2975,6 +3133,13 @@ export default function PatientProfiles() {
         driversLicense: fields.driversLicense || null,
         insuranceCarrier: fields.insuranceCarrier || null,
         insuranceMemberId: fields.insuranceMemberId || null,
+        race: fields.race || null,
+        ethnicity: fields.ethnicity || null,
+        maritalStatus: fields.maritalStatus || null,
+        occupation: fields.occupation || null,
+        emergencyContactName: fields.emergencyContactName || null,
+        emergencyContactRelationship: fields.emergencyContactRelationship || null,
+        emergencyContactPhone: fields.emergencyContactPhone || null,
         ...pharmacyValueToPatch(pharmacy),
       };
       const res = await apiRequest("PATCH", `/api/patients/${id}`, body);
@@ -3086,6 +3251,13 @@ export default function PatientProfiles() {
       driversLicense: (selectedPatient as any).driversLicense ?? "",
       insuranceCarrier: (selectedPatient as any).insuranceCarrier ?? "",
       insuranceMemberId: (selectedPatient as any).insuranceMemberId ?? "",
+      race: (selectedPatient as any).race ?? "",
+      ethnicity: (selectedPatient as any).ethnicity ?? "",
+      maritalStatus: (selectedPatient as any).maritalStatus ?? "",
+      occupation: (selectedPatient as any).occupation ?? "",
+      emergencyContactName: (selectedPatient as any).emergencyContactName ?? "",
+      emergencyContactRelationship: (selectedPatient as any).emergencyContactRelationship ?? "",
+      emergencyContactPhone: (selectedPatient as any).emergencyContactPhone ?? "",
     });
     setEditPatientPharmacy(pharmacyValueFromRecord(selectedPatient as any));
     setShowEditPatient(true);
@@ -3679,6 +3851,45 @@ export default function PatientProfiles() {
                   >
                     <CalendarDays className="h-3 w-3" />
                     Appointments
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    data-testid="button-demographics-sheet"
+                    className="text-xs gap-1.5"
+                    style={{ color: "#2e3a20", borderColor: "#c4b9a5" }}
+                    onClick={async () => {
+                      try {
+                        const { generateDemographicsPDF } = await import("@/lib/demographics-pdf-export");
+                        // Fetch structured meds for this patient
+                        let structuredMeds: PatientMedication[] = [];
+                        try {
+                          const medRes = await fetch(`/api/patients/${selectedPatient.id}/medications`, { credentials: "include" });
+                          if (medRes.ok) structuredMeds = await medRes.json();
+                        } catch (_) { /* skip */ }
+                        await generateDemographicsPDF({
+                          patient: selectedPatient as any,
+                          providerName: (user as any)?.displayName ?? (user as any)?.name ?? undefined,
+                          providerTitle: (user as any)?.title ?? undefined,
+                          providerNpi: (user as any)?.npi ?? undefined,
+                          clinicName: (user as any)?.clinicName ?? "Clinic",
+                          clinicAddress: (user as any)?.clinicAddress ?? undefined,
+                          clinicPhone: (user as any)?.clinicPhone ?? undefined,
+                          clinicFax: (user as any)?.clinicFax ?? undefined,
+                          clinicLogo: clinicBrandingFull?.clinicLogo ?? null,
+                          footerText: clinicBrandingFull?.footerText ?? null,
+                          branding: clinicBranding,
+                          structuredMeds,
+                          legacyMeds: (patientChart?.currentMedications as string[] | null) ?? [],
+                        });
+                      } catch (e) {
+                        console.error("[Demographics PDF]", e);
+                        toast({ variant: "destructive", title: "Failed to generate demographics sheet" });
+                      }
+                    }}
+                  >
+                    <FileDown className="h-3 w-3" />
+                    Demographics Sheet
                   </Button>
                 </div>
               </div>
@@ -6335,6 +6546,103 @@ export default function PatientProfiles() {
                     data-testid="input-edit-patient-ssn"
                   />
                 </div>
+              </div>
+            </div>
+            <div className="border-t pt-3 space-y-3">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Additional Demographics</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-race">Race</Label>
+                  <Select value={editPatientForm.race || "__none"} onValueChange={v => setEditPatientForm(f => ({ ...f, race: v === "__none" ? "" : v }))}>
+                    <SelectTrigger id="edit-race" data-testid="select-edit-patient-race"><SelectValue placeholder="Select…" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none">— Not specified —</SelectItem>
+                      <SelectItem value="American Indian or Alaska Native">American Indian or Alaska Native</SelectItem>
+                      <SelectItem value="Asian">Asian</SelectItem>
+                      <SelectItem value="Black or African American">Black or African American</SelectItem>
+                      <SelectItem value="Native Hawaiian or Pacific Islander">Native Hawaiian or Pacific Islander</SelectItem>
+                      <SelectItem value="White">White</SelectItem>
+                      <SelectItem value="Multiracial">Multiracial</SelectItem>
+                      <SelectItem value="Other">Other</SelectItem>
+                      <SelectItem value="Prefer not to say">Prefer not to say</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-ethnicity">Ethnicity</Label>
+                  <Select value={editPatientForm.ethnicity || "__none"} onValueChange={v => setEditPatientForm(f => ({ ...f, ethnicity: v === "__none" ? "" : v }))}>
+                    <SelectTrigger id="edit-ethnicity" data-testid="select-edit-patient-ethnicity"><SelectValue placeholder="Select…" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none">— Not specified —</SelectItem>
+                      <SelectItem value="Hispanic or Latino">Hispanic or Latino</SelectItem>
+                      <SelectItem value="Not Hispanic or Latino">Not Hispanic or Latino</SelectItem>
+                      <SelectItem value="Prefer not to say">Prefer not to say</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-marital-status">Marital Status</Label>
+                  <Select value={editPatientForm.maritalStatus || "__none"} onValueChange={v => setEditPatientForm(f => ({ ...f, maritalStatus: v === "__none" ? "" : v }))}>
+                    <SelectTrigger id="edit-marital-status" data-testid="select-edit-patient-marital-status"><SelectValue placeholder="Select…" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none">— Not specified —</SelectItem>
+                      <SelectItem value="Single">Single</SelectItem>
+                      <SelectItem value="Married">Married</SelectItem>
+                      <SelectItem value="Divorced">Divorced</SelectItem>
+                      <SelectItem value="Widowed">Widowed</SelectItem>
+                      <SelectItem value="Separated">Separated</SelectItem>
+                      <SelectItem value="Domestic Partner">Domestic Partner</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-occupation">Occupation</Label>
+                  <Input
+                    id="edit-occupation"
+                    placeholder="e.g. Teacher"
+                    value={editPatientForm.occupation}
+                    onChange={e => setEditPatientForm(f => ({ ...f, occupation: e.target.value }))}
+                    data-testid="input-edit-patient-occupation"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="border-t pt-3 space-y-3">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Emergency Contact</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-emergency-name">Name</Label>
+                  <Input
+                    id="edit-emergency-name"
+                    placeholder="Full name"
+                    value={editPatientForm.emergencyContactName}
+                    onChange={e => setEditPatientForm(f => ({ ...f, emergencyContactName: e.target.value }))}
+                    data-testid="input-edit-patient-emergency-name"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-emergency-relationship">Relationship</Label>
+                  <Input
+                    id="edit-emergency-relationship"
+                    placeholder="e.g. Spouse"
+                    value={editPatientForm.emergencyContactRelationship}
+                    onChange={e => setEditPatientForm(f => ({ ...f, emergencyContactRelationship: e.target.value }))}
+                    data-testid="input-edit-patient-emergency-relationship"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-emergency-phone">Emergency Phone</Label>
+                <Input
+                  id="edit-emergency-phone"
+                  type="tel"
+                  placeholder="(555) 000-0000"
+                  value={editPatientForm.emergencyContactPhone}
+                  onChange={e => setEditPatientForm(f => ({ ...f, emergencyContactPhone: e.target.value }))}
+                  data-testid="input-edit-patient-emergency-phone"
+                />
               </div>
             </div>
             <div className="space-y-1.5">

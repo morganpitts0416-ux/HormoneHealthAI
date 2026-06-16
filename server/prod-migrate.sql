@@ -1796,3 +1796,51 @@ CREATE UNIQUE INDEX IF NOT EXISTS order_task_completions_order_task_idx
 
 -- ── ordering provider on clinical_orders ──────────────────────────────────────
 ALTER TABLE clinical_orders ADD COLUMN IF NOT EXISTS ordering_provider_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+
+-- ── Phase C: Extended demographic columns on patients ─────────────────────────
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS race                           VARCHAR(80);
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS ethnicity                      VARCHAR(60);
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS marital_status                 VARCHAR(40);
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS occupation                     VARCHAR(100);
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS emergency_contact_name         VARCHAR(100);
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS emergency_contact_relationship VARCHAR(60);
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS emergency_contact_phone        VARCHAR(30);
+
+-- ── Phase A: Structured patient medications ───────────────────────────────────
+CREATE TABLE IF NOT EXISTS patient_medications (
+  id                             SERIAL PRIMARY KEY,
+  patient_id                     INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  clinic_id                      INTEGER NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
+  drug_name                      VARCHAR(200) NOT NULL,
+  generic_name                   VARCHAR(200),
+  strength                       VARCHAR(50),
+  strength_unit                  VARCHAR(20),
+  form                           VARCHAR(50),
+  route                          VARCHAR(50),
+  sig                            TEXT,
+  quantity                       VARCHAR(50),
+  days_supply                    INTEGER,
+  refills                        INTEGER,
+  prescribing_provider           VARCHAR(200),
+  start_date                     DATE,
+  indication                     TEXT,
+  status                         VARCHAR(20) NOT NULL DEFAULT 'active',
+  discontinued_at                TIMESTAMP,
+  discontinued_reason            TEXT,
+  discontinued_by_user_id        INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  discontinued_by_staff_id       INTEGER REFERENCES clinician_staff(id) ON DELETE SET NULL,
+  source                         VARCHAR(30) NOT NULL DEFAULT 'staff',
+  reviewed_by_provider           BOOLEAN NOT NULL DEFAULT TRUE,
+  reviewed_by_provider_id        INTEGER,
+  last_reviewed_at               TIMESTAMP,
+  created_at                     TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at                     TIMESTAMP NOT NULL DEFAULT NOW(),
+  created_by_user_id             INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_by_staff_id            INTEGER REFERENCES clinician_staff(id) ON DELETE SET NULL,
+  updated_by_user_id             INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  updated_by_staff_id            INTEGER REFERENCES clinician_staff(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS patient_medications_patient_clinic_idx
+  ON patient_medications (patient_id, clinic_id);
+CREATE INDEX IF NOT EXISTS patient_medications_status_idx
+  ON patient_medications (clinic_id, patient_id, status);

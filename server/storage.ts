@@ -279,6 +279,12 @@ export interface IStorage {
   getPatientChart(patientId: number, clinicianId: number): Promise<schema.PatientChart | null>;
   upsertPatientChart(patientId: number, clinicianId: number, data: Partial<Omit<schema.PatientChart, 'id' | 'patientId' | 'clinicianId' | 'updatedAt'>>): Promise<schema.PatientChart>;
 
+  // Patient Medications (structured — Phase A)
+  getPatientMedications(patientId: number, clinicId: number): Promise<schema.PatientMedication[]>;
+  createPatientMedication(data: schema.InsertPatientMedication & { createdByUserId?: number | null; createdByStaffId?: number | null }): Promise<schema.PatientMedication>;
+  updatePatientMedication(id: number, patientId: number, clinicId: number, data: Partial<schema.InsertPatientMedication> & { updatedByUserId?: number | null; updatedByStaffId?: number | null }): Promise<schema.PatientMedication | null>;
+  discontinuePatientMedication(id: number, patientId: number, clinicId: number, opts: { discontinuedByUserId?: number | null; discontinuedByStaffId?: number | null; discontinuedReason?: string | null }): Promise<schema.PatientMedication | null>;
+
   // Patient Vitals
   getPatientVitals(patientId: number, clinicianId?: number | null): Promise<schema.PatientVital[]>;
   createPatientVital(data: { patientId: number; clinicianId: number } & schema.InsertPatientVital & { bmi?: number | null }): Promise<schema.PatientVital>;
@@ -2320,6 +2326,69 @@ export class DbStorage implements IStorage {
         .returning();
       return created;
     }
+  }
+
+  // ── Patient Medications (structured — Phase A) ────────────────────────────────
+  async getPatientMedications(patientId: number, clinicId: number): Promise<schema.PatientMedication[]> {
+    return db
+      .select()
+      .from(schema.patientMedications)
+      .where(and(
+        eq(schema.patientMedications.patientId, patientId),
+        eq(schema.patientMedications.clinicId, clinicId),
+      ))
+      .orderBy(schema.patientMedications.createdAt);
+  }
+
+  async createPatientMedication(data: schema.InsertPatientMedication & { createdByUserId?: number | null; createdByStaffId?: number | null }): Promise<schema.PatientMedication> {
+    const [row] = await db
+      .insert(schema.patientMedications)
+      .values({ ...data, updatedAt: new Date() })
+      .returning();
+    return row;
+  }
+
+  async updatePatientMedication(
+    id: number,
+    patientId: number,
+    clinicId: number,
+    data: Partial<schema.InsertPatientMedication> & { updatedByUserId?: number | null; updatedByStaffId?: number | null },
+  ): Promise<schema.PatientMedication | null> {
+    const [row] = await db
+      .update(schema.patientMedications)
+      .set({ ...data, updatedAt: new Date() })
+      .where(and(
+        eq(schema.patientMedications.id, id),
+        eq(schema.patientMedications.patientId, patientId),
+        eq(schema.patientMedications.clinicId, clinicId),
+      ))
+      .returning();
+    return row ?? null;
+  }
+
+  async discontinuePatientMedication(
+    id: number,
+    patientId: number,
+    clinicId: number,
+    opts: { discontinuedByUserId?: number | null; discontinuedByStaffId?: number | null; discontinuedReason?: string | null },
+  ): Promise<schema.PatientMedication | null> {
+    const [row] = await db
+      .update(schema.patientMedications)
+      .set({
+        status: "discontinued",
+        discontinuedAt: new Date(),
+        discontinuedByUserId: opts.discontinuedByUserId ?? null,
+        discontinuedByStaffId: opts.discontinuedByStaffId ?? null,
+        discontinuedReason: opts.discontinuedReason ?? null,
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(schema.patientMedications.id, id),
+        eq(schema.patientMedications.patientId, patientId),
+        eq(schema.patientMedications.clinicId, clinicId),
+      ))
+      .returning();
+    return row ?? null;
   }
 
   // ── Patient Vitals ───────────────────────────────────────────────────────────

@@ -681,6 +681,14 @@ export const patients = pgTable("patients", {
   // null = auto-derive from most recent inbound message (Phase 2 default)
   // 'portal' | 'spruce' | 'email' — explicit clinician/patient override (Phase 3)
   primaryCommunicationChannel: varchar("primary_communication_channel", { length: 20 }),
+  // ── Extended demographics (Phase C — all nullable, ADD COLUMN IF NOT EXISTS) ─
+  race: varchar("race", { length: 60 }),
+  ethnicity: varchar("ethnicity", { length: 60 }),
+  maritalStatus: varchar("marital_status", { length: 30 }),
+  occupation: varchar("occupation", { length: 100 }),
+  emergencyContactName: varchar("emergency_contact_name", { length: 100 }),
+  emergencyContactRelationship: varchar("emergency_contact_relationship", { length: 60 }),
+  emergencyContactPhone: varchar("emergency_contact_phone", { length: 30 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -3346,3 +3354,65 @@ export const opsAuditLog = pgTable("ops_audit_log", {
   targetIdx: index("ops_audit_log_target_idx").on(t.targetType, t.targetId),
 }));
 export type OpsAuditEntry = typeof opsAuditLog.$inferSelect;
+
+// ── Patient Medications (Phase A — structured medication records) ─────────────
+// Additive-only table. Existing patient_charts.currentMedications is preserved
+// and displayed as a fallback "Legacy medication list" until fully migrated.
+export const patientMedications = pgTable("patient_medications", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: "cascade" }),
+  clinicId: integer("clinic_id").notNull(),
+  // ── Drug identification ───────────────────────────────────────────────────
+  drugName: varchar("drug_name", { length: 200 }).notNull(),
+  genericName: varchar("generic_name", { length: 200 }),
+  strength: varchar("strength", { length: 50 }),
+  strengthUnit: varchar("strength_unit", { length: 20 }),
+  form: varchar("form", { length: 50 }),
+  route: varchar("route", { length: 50 }),
+  sig: text("sig"),
+  // ── Rx quantities ─────────────────────────────────────────────────────────
+  quantity: varchar("quantity", { length: 50 }),
+  daysSupply: integer("days_supply"),
+  refills: integer("refills"),
+  // ── Clinical context ──────────────────────────────────────────────────────
+  prescribingProvider: varchar("prescribing_provider", { length: 200 }),
+  startDate: timestamp("start_date"),
+  indication: text("indication"),
+  // ── Status / lifecycle ────────────────────────────────────────────────────
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+  discontinuedAt: timestamp("discontinued_at"),
+  discontinuedByUserId: integer("discontinued_by_user_id"),
+  discontinuedByStaffId: integer("discontinued_by_staff_id"),
+  discontinuedReason: text("discontinued_reason"),
+  // ── Provenance ────────────────────────────────────────────────────────────
+  source: varchar("source", { length: 30 }).notNull().default("staff"),
+  sourceRawText: text("source_raw_text"),
+  formSubmissionId: integer("form_submission_id"),
+  // ── Review tracking ───────────────────────────────────────────────────────
+  reviewedByProvider: boolean("reviewed_by_provider").notNull().default(true),
+  lastReviewedAt: timestamp("last_reviewed_at"),
+  reviewedByProviderId: integer("reviewed_by_provider_id"),
+  // ── Audit fields ─────────────────────────────────────────────────────────
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  createdByUserId: integer("created_by_user_id"),
+  createdByStaffId: integer("created_by_staff_id"),
+  updatedByUserId: integer("updated_by_user_id"),
+  updatedByStaffId: integer("updated_by_staff_id"),
+}, (t) => ({
+  patientIdx: index("patient_medications_patient_id_idx").on(t.patientId),
+  clinicIdx: index("patient_medications_clinic_id_idx").on(t.clinicId),
+  patientClinicIdx: index("patient_medications_patient_clinic_idx").on(t.patientId, t.clinicId),
+  statusIdx: index("patient_medications_status_idx").on(t.status),
+  sourceIdx: index("patient_medications_source_idx").on(t.source),
+  formSubmissionIdx: index("patient_medications_form_submission_id_idx").on(t.formSubmissionId),
+}));
+
+export const insertPatientMedicationSchema = createInsertSchema(patientMedications).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertPatientMedication = z.infer<typeof insertPatientMedicationSchema>;
+export type PatientMedication = typeof patientMedications.$inferSelect;
