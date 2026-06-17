@@ -1864,3 +1864,14 @@ FROM clinics c
 WHERE cm.clinic_id = c.id
   AND cm.user_id = c.owner_user_id
   AND cm.admin_role = 'standard';
+
+-- ── Clinic branding columns (added after initial clinics table creation) ──────
+-- These were missing from the original CREATE TABLE statement, causing
+-- GET /api/clinic/branding and PATCH /api/clinic/branding to 500 in production
+-- with "column does not exist" errors.
+ALTER TABLE clinics ADD COLUMN IF NOT EXISTS primary_color        VARCHAR(7);
+ALTER TABLE clinics ADD COLUMN IF NOT EXISTS accent_color         VARCHAR(7);
+ALTER TABLE clinics ADD COLUMN IF NOT EXISTS form_background_color VARCHAR(7);
+ALTER TABLE clinics ADD COLUMN IF NOT EXISTS clinic_logo          TEXT;
+ALTER TABLE clinics ADD COLUMN IF NOT EXISTS footer_text          TEXT;
+ALTER TABLE clinics ADD COLUMN IF NOT EXISTS fax                  VARCHAR(30);

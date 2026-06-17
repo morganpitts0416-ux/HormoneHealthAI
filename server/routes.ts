@@ -7185,11 +7185,11 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
 
   // GET /api/clinic/branding — any authenticated clinic member can read
   app.get("/api/clinic/branding", requireClinicianOnly, async (req, res) => {
+    const user = req.user as any;
+    const clinicId = user?.defaultClinicId ?? null;
     try {
-      const user = req.user as any;
-      const clinicId = user.defaultClinicId;
       if (!clinicId) {
-        return res.json({ primaryColor: null, accentColor: null, formBackgroundColor: null, clinicLogo: null, footerText: null });
+        return res.json({ primaryColor: null, accentColor: null, formBackgroundColor: null, clinicLogo: null, footerText: null, clinicFax: null });
       }
       // Fetch all branding fields from clinics table. Fall back to the legacy
       // logo stored on the owner user record if clinics.clinicLogo is not yet
@@ -7233,9 +7233,9 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
         footerText: c.footerText ?? null,
         clinicFax: c.fax ?? null,
       });
-    } catch (err) {
-      console.error('[API] Error fetching clinic branding:', err);
-      res.status(500).json({ message: "Failed to fetch branding" });
+    } catch (err: any) {
+      console.error('[branding GET] clinicId=%s error=%s stack=%s', clinicId, err?.message, err?.stack);
+      res.status(500).json({ message: "Failed to fetch branding", detail: err?.message ?? String(err) });
     }
   });
 
@@ -7305,6 +7305,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       if (Object.keys(updates).length === 0) {
         return res.status(400).json({ message: "No branding fields provided." });
       }
+      console.log('[branding PATCH] clinicId=%s fields=%s', clinicId, Object.keys(updates).join(','));
       await storageDb.update(clinics).set({ ...updates, updatedAt: new Date() }).where(eq(clinics.id, clinicId));
       const rows = await storageDb
         .select({
@@ -7320,9 +7321,9 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
         .limit(1);
       const r = rows[0] ?? {};
       res.json({ ...r, clinicFax: (r as any).fax ?? null });
-    } catch (err) {
-      console.error('[API] Error updating clinic branding:', err);
-      res.status(500).json({ message: "Failed to update branding" });
+    } catch (err: any) {
+      console.error('[branding PATCH] clinicId=%s error=%s stack=%s', (req.user as any)?.defaultClinicId, err?.message, err?.stack);
+      res.status(500).json({ message: "Failed to update branding", detail: err?.message ?? String(err) });
     }
   });
 
