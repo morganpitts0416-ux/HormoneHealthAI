@@ -36,6 +36,7 @@ import {
   annotateSupplementsWithContext,
   type TherapyContext,
 } from "./therapy-context";
+import { applySupplementContinuation } from "./supplement-continuation";
 import { PHENOTYPE_KEYS, detectedPhenotypeKeys } from "./phenotype-registry";
 import { screenInsulinResistance } from "./insulin-resistance";
 import { calculateMitoScore } from "./mito-score";
@@ -1257,6 +1258,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       let trendContext = '';
       let therapyContext: TherapyContext | null = null;
+      let patientMedNamesMale: string[] = [];
       if (patientId) {
         const priorLabs = await storage.getLabResultsByPatient(patientId);
         if (priorLabs.length > 0) {
@@ -1274,6 +1276,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (chart && Array.isArray(chart.currentMedications) && chart.currentMedications.length > 0) {
               therapyContext = inferPatientTherapies(chart.currentMedications);
               console.log('[API] Male therapy context: classes=', Array.from(therapyContext.classes.keys()).join(','));
+              patientMedNamesMale = (chart.currentMedications as unknown[]).filter((m): m is string => typeof m === 'string');
             }
           }
         } catch (e) {
@@ -1560,6 +1563,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // the same class as a recommended supplement, mark it [Already on …]
       // and rewrite the rationale to focus on adherence + dose optimization.
       supplements = annotateSupplementsWithContext(supplements, therapyContext);
+      // Continuation layer: acknowledge supplements the patient is already
+      // taking whose associated lab marker is currently optimal.
+      supplements = applySupplementContinuation(supplements, patientMedNamesMale, labs as unknown as Record<string, unknown>);
 
       console.log('[API] Male IR Screening:', insulinResistance ? `score ${insulinResistance.score}/${insulinResistance.maxScore}, ${insulinResistance.likelihoodLabel}` : 'Not calculated (insufficient markers)');
 
@@ -1676,6 +1682,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       let trendContext = '';
       let therapyContext: TherapyContext | null = null;
+      let patientMedNamesFemale: string[] = [];
       if (patientId) {
         const priorLabs = await storage.getLabResultsByPatient(patientId);
         if (priorLabs.length > 0) {
@@ -1689,6 +1696,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (chart && Array.isArray(chart.currentMedications) && chart.currentMedications.length > 0) {
               therapyContext = inferPatientTherapies(chart.currentMedications);
               console.log('[API] Female therapy context: classes=', Array.from(therapyContext.classes.keys()).join(','));
+              patientMedNamesFemale = (chart.currentMedications as unknown[]).filter((m): m is string => typeof m === 'string');
             }
           }
         } catch (e) {
@@ -1970,6 +1978,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Context-aware annotation against patient's chart meds
       supplements = annotateSupplementsWithContext(supplements, therapyContext);
+      // Continuation layer: acknowledge supplements the patient is already
+      // taking whose associated lab marker is currently optimal.
+      supplements = applySupplementContinuation(supplements, patientMedNamesFemale, labs as unknown as Record<string, unknown>);
 
       console.log('[API] Clinical phenotypes detected:', clinicalPhenotypes.map(p => `${p.name} (${p.confidence})`).join(', ') || 'None');
 

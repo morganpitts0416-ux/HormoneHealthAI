@@ -593,7 +593,7 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
     onSuccess: async (wellnessPlan: WellnessPlan) => {
       if (interp) {
         const patientLabs = allLabs.length >= 2 ? allLabs : undefined;
-        const pdfSupps = effectiveSupplements.map(s => ({ name: s.name, dose: s.dose, indication: s.indication, patientExplanation: (s as any).patientExplanation, rationale: (s as any).rationale }));
+        const pdfSupps = effectiveSupplements.map(s => ({ name: s.name, dose: s.dose, indication: s.indication, patientExplanation: (s as any).patientExplanation, rationale: (s as any).rationale, continuationNote: (s as any).continuationNote, continuationOnly: (s as any).continuationOnly }));
         const clinicLogo = clinicBrandingFull?.clinicLogo ?? null;
         const footerText = clinicBrandingFull?.footerText ?? null;
         const hiddenSections = overrides.hiddenSections || [];
@@ -801,20 +801,32 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
                     <div className="space-y-2">
                       {(interp.supplements || []).map((supp, idx) => {
                         const hidden = isSuppHidden(supp.name);
+                        const isContinuationOnly = (supp as any).continuationOnly === true;
+                        const hasContinuationNote = !!(supp as any).continuationNote;
                         return (
                           <div key={idx} className={cn(
-                            `p-3 rounded-md border flex items-start gap-3 ${priorityColor(supp.priority)}`,
+                            `p-3 rounded-md border flex items-start gap-3 ${isContinuationOnly ? 'bg-emerald-50/60 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-800' : priorityColor(supp.priority)}`,
                             hidden && "opacity-50"
                           )}>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap mb-0.5">
                                 <span className={cn("text-sm font-semibold", hidden && "line-through text-muted-foreground")}>{supp.name}</span>
-                                <span className={`text-xs px-2 py-0.5 rounded-full ${priorityBadge(supp.priority)}`}>{supp.priority} priority</span>
+                                {isContinuationOnly ? (
+                                  <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">Continue — optimal</span>
+                                ) : (
+                                  <span className={`text-xs px-2 py-0.5 rounded-full ${priorityBadge(supp.priority)}`}>{supp.priority} priority</span>
+                                )}
+                                {hasContinuationNote && !isContinuationOnly && (
+                                  <span className="text-xs px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-300">Currently taking</span>
+                                )}
                                 {hidden && <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">Hidden</span>}
                               </div>
                               <p className="text-xs text-muted-foreground font-mono">{supp.dose}</p>
                               <p className="text-xs text-muted-foreground mt-0.5">{supp.indication}</p>
-                              {supp.rationale && !hidden && <p className="text-xs text-muted-foreground mt-0.5 italic">{supp.rationale}</p>}
+                              {(supp as any).continuationNote && !hidden && (
+                                <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-0.5 italic">{(supp as any).continuationNote}</p>
+                              )}
+                              {supp.rationale && !hidden && !isContinuationOnly && <p className="text-xs text-muted-foreground mt-0.5 italic">{supp.rationale}</p>}
                             </div>
                             <button
                               type="button"

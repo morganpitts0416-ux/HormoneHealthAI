@@ -1,0 +1,42 @@
+Yes, proceed with the revised plan, but implement this as a post-processing continuation layer only.
+
+The core supplement recommendation engine/scoring logic should not be changed.
+
+Main goal:
+If a patient is already taking a supplement and the related lab marker is currently optimal, the system should still acknowledge it as a “continue current regimen” recommendation, even if the engine would not normally recommend it because the value is already optimal.
+
+Example:
+If Vitamin D = 80 ng/mL and the patient is taking Vitamin D3 5000 IU daily, do not recommend “start Vitamin D.” Instead add:
+“Vitamin D3 — Continue current regimen. Your Vitamin D level is currently optimal at 80 ng/mL while taking Vitamin D3 5000 IU daily. Continue your current regimen unless your provider recommends a dose change.”
+
+Requirements:
+1. Do not modify the core supplement scoring algorithm.
+2. Add this only after normal supplement recommendations are generated.
+3. Add continuationOnly?: boolean and continuationNote?: string as optional fields.
+4. continuationOnly items should not affect scoring, ranking, phenotype logic, or abnormal-lab logic.
+5. Prevent duplicates. If Vitamin D is already recommended by the engine, annotate the existing recommendation instead of adding a second one.
+6. Only create continuation-only recommendations when:
+   - the patient is currently taking the supplement,
+   - the related lab marker is optimal,
+   - and the supplement was not already recommended by the engine.
+7. Use conservative wording. Do not say the supplement “caused” the optimal lab. Say the level is optimal “while taking” the supplement.
+8. For supplements without a reliable lab marker, do not create continuation-only recommendations.
+9. Make all UI/PDF/portal rendering backward-compatible with optional fields and safe fallbacks.
+10. Apply only to the female and male evaluation supplement flows for now.
+
+Start the continuation map with:
+- Vitamin D / D3 / D3+K2 → vitaminD optimal >= 60
+- B12 / methylcobalamin → vitaminB12 optimal >= 500
+- Iron / ferrous / Hemagenics → ferritin optimal >= 50
+- Folate / methylfolate → folate optimal in-range/high-normal
+- Omega / fish oil / EPA/DHA → triglycerides <= 150, ideally with cautious wording
+- Berberine / inositol → A1c, fasting glucose, or fasting insulin if available and optimal
+
+Do not add Scenario B continuation-only entries for magnesium, probiotics, or CoQ10 unless there is a clear lab marker available.
+
+Please also add a small regression check to confirm:
+- Existing supplement recommendations still appear normally.
+- A supplement already recommended by the engine does not duplicate.
+- Vitamin D 80 + patient taking D3 creates a continuation-only item.
+- Vitamin D 80 + patient not taking D3 creates no item.
+- Low Vitamin D still triggers the normal deficiency recommendation.

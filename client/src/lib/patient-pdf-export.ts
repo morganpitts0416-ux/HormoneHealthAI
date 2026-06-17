@@ -418,6 +418,8 @@ export interface PdfSupplement {
   indication: string;
   patientExplanation?: string;
   rationale?: string;
+  continuationNote?: string;
+  continuationOnly?: boolean;
 }
 
 import { hexToRgb, resolveBranding, type PartialBranding } from "@/lib/branding";
@@ -1880,6 +1882,14 @@ export async function generatePatientWellnessPDF(
       return sourceSupplements.map(s => {
         // Find matching Metagenics product for better description
         const normalizedName = normalizeName(s.name);
+        // Continuation-only entries get their note as the patient-facing description
+        if (s.continuationNote) {
+          return [
+            sanitizeForPdf(s.name),
+            sanitizeForPdf(s.continuationNote),
+            sanitizeForPdf(s.dose || 'Continue as directed'),
+          ];
+        }
         let description = (s as any).patientExplanation || s.rationale || s.indication || 'Supports overall health and wellness.';
         
         // Match to our Metagenics catalog for consistent descriptions

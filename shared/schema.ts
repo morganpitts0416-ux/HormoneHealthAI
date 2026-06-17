@@ -353,6 +353,10 @@ export const supplementRecommendationSchema = z.object({
   patientExplanation: z.string().optional(),
   confidenceLevel: z.enum(['high', 'moderate', 'supportive']).optional(),
   phenotypes: z.array(z.string()).optional(),
+  /** Set when the patient is already taking this supplement and the lab marker is optimal. */
+  continuationNote: z.string().optional(),
+  /** True for entries added solely to acknowledge an optimal-lab continuation — not a new engine recommendation. */
+  continuationOnly: z.boolean().optional(),
 });
 
 export type SupplementRecommendation = z.infer<typeof supplementRecommendationSchema>;
