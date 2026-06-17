@@ -265,7 +265,7 @@ const supplementRules: SupplementRule[] = [
 
       const elevatedLpa = labs.lpa !== undefined && labs.lpa > 30;
       const elevatedApoB = labs.apoB !== undefined && labs.apoB > 90;
-      const elevatedHsCRP = labs.hsCRP !== undefined && labs.hsCRP > 0.30;
+      const elevatedHsCRP = labs.hsCRP !== undefined && labs.hsCRP > 1.0;
       const elevatedCVRisk = elevatedLpa || elevatedApoB || elevatedHsCRP;
 
       const age = labs.demographics?.age;
@@ -281,7 +281,7 @@ const supplementRules: SupplementRule[] = [
       if (highTriglycerides) indications.push(`TG ${labs.triglycerides} mg/dL`);
       if (highLDL) indications.push(`LDL ${labs.ldl} mg/dL`);
       if (lowHDL) indications.push(`HDL ${labs.hdl} mg/dL (low)`);
-      if (elevatedHsCRP) indications.push(`hs-CRP ${labs.hsCRP} mg/dL`);
+      if (elevatedHsCRP) indications.push(`hs-CRP ${labs.hsCRP} mg/L`);
       if (elevatedLpa) indications.push(`Lp(a) ${labs.lpa}`);
       if (elevatedApoB) indications.push(`ApoB ${labs.apoB} mg/dL`);
       if (ageOver40 && indications.length === 0) indications.push(`Age ${age} — cardiovascular prevention support`);

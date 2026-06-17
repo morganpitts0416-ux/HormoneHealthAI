@@ -586,11 +586,11 @@ function evaluateOmegaGenics(labs: FemaleLabValues, phenotypes: ClinicalPhenotyp
   const highTC = labs.totalCholesterol !== undefined && labs.totalCholesterol > 200;
   const elevatedLpa = labs.lpa !== undefined && labs.lpa > 30;
   const elevatedApoB = labs.apoB !== undefined && labs.apoB > 90;
-  const elevatedHsCRP = labs.hsCRP !== undefined && labs.hsCRP > 2;
+  const elevatedHsCRP = labs.hsCRP !== undefined && labs.hsCRP > 1.0;
   const hasJointAches = labs.jointAches === true;
 
   if (highTriglycerides) { findings.push(`Triglycerides ${labs.triglycerides} mg/dL (elevated)`); score += 3; }
-  if (elevatedHsCRP) { findings.push(`hs-CRP ${labs.hsCRP} mg/L (inflammatory)`); score += 3; }
+  if (elevatedHsCRP) { findings.push(`hs-CRP ${labs.hsCRP} mg/L (elevated — intermediate/high cardiovascular risk)`); score += 3; }
   if (elevatedApoB) { findings.push(`ApoB ${labs.apoB} mg/dL (elevated)`); score += 2; }
   if (highLDL) { findings.push(`LDL ${labs.ldl} mg/dL (elevated)`); score += 1; }
   if (lowHDL) { findings.push(`HDL ${labs.hdl} mg/dL (low)`); score += 1; }
