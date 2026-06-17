@@ -8,7 +8,6 @@ const PAGE_W = 215.9;
 const PAGE_H = 279.4;
 const MARGIN = 20;
 const CONTENT_W = PAGE_W - MARGIN * 2;
-const PRIMARY = '#1e3a1e';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function sanitize(text: string): string {
@@ -48,10 +47,10 @@ function calcAge(dob: string | null | undefined): string {
   } catch { return ''; }
 }
 
-function drawSectionHeader(doc: jsPDF, title: string, y: number): number {
+function drawSectionHeader(doc: jsPDF, title: string, y: number, primaryColor = '#1e3a1e'): number {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
-  doc.setTextColor(PRIMARY);
+  doc.setTextColor(primaryColor);
   doc.text(title, MARGIN, y);
   y += 2;
   drawHRule(doc, y + 2, '#e5e7eb');
@@ -124,7 +123,7 @@ export interface DemographicsPdfOptions {
 // ── Main Generator ─────────────────────────────────────────────────────────────
 export async function generateDemographicsPDF(opts: DemographicsPdfOptions): Promise<void> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
-  const resolved = resolveBranding(opts.branding ?? null);
+  const resolved = resolveBranding(null, opts.branding ?? null);
   const p = opts.patient;
   const patientFullName = `${p.firstName} ${p.lastName}`.trim();
 
@@ -170,7 +169,7 @@ export async function generateDemographicsPDF(opts: DemographicsPdfOptions): Pro
   // ── Document title ─────────────────────────────────────────────────────────
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(14);
-  doc.setTextColor(PRIMARY);
+  doc.setTextColor(resolved.primaryColor);
   doc.text('PATIENT DEMOGRAPHICS SHEET', PAGE_W / 2, dy, { align: 'center' });
   dy += 4;
 
@@ -183,7 +182,7 @@ export async function generateDemographicsPDF(opts: DemographicsPdfOptions): Pro
   dy += 8;
 
   // ── Core demographics ──────────────────────────────────────────────────────
-  dy = drawSectionHeader(doc, 'PATIENT INFORMATION', dy);
+  dy = drawSectionHeader(doc, 'PATIENT INFORMATION', dy, resolved.primaryColor);
 
   const coreRows: [string, string][] = [
     ['Patient Name:', patientFullName],
@@ -218,7 +217,7 @@ export async function generateDemographicsPDF(opts: DemographicsPdfOptions): Pro
 
   if (addlRows.length > 0) {
     dy = maybeNewPage(doc, dy);
-    dy = drawSectionHeader(doc, 'ADDITIONAL DEMOGRAPHICS', dy);
+    dy = drawSectionHeader(doc, 'ADDITIONAL DEMOGRAPHICS', dy, resolved.primaryColor);
     const addlBoxH = addlRows.length * 5.8 + 8;
     doc.setFillColor(249, 250, 251);
     doc.setDrawColor('#e5e7eb');
@@ -240,7 +239,7 @@ export async function generateDemographicsPDF(opts: DemographicsPdfOptions): Pro
 
   if (ecRows.length > 0) {
     dy = maybeNewPage(doc, dy);
-    dy = drawSectionHeader(doc, 'EMERGENCY CONTACT', dy);
+    dy = drawSectionHeader(doc, 'EMERGENCY CONTACT', dy, resolved.primaryColor);
     const ecBoxH = ecRows.length * 5.8 + 8;
     doc.setFillColor(249, 250, 251);
     doc.setDrawColor('#e5e7eb');
@@ -262,7 +261,7 @@ export async function generateDemographicsPDF(opts: DemographicsPdfOptions): Pro
 
   if (insRows.length > 0) {
     dy = maybeNewPage(doc, dy);
-    dy = drawSectionHeader(doc, 'INSURANCE & ID', dy);
+    dy = drawSectionHeader(doc, 'INSURANCE & ID', dy, resolved.primaryColor);
     const insBoxH = insRows.length * 5.8 + 8;
     doc.setFillColor(249, 250, 251);
     doc.setDrawColor('#e5e7eb');
@@ -279,13 +278,13 @@ export async function generateDemographicsPDF(opts: DemographicsPdfOptions): Pro
   const activeMeds = (opts.structuredMeds ?? []).filter(m => m.status === 'active');
   if (activeMeds.length > 0) {
     dy = maybeNewPage(doc, dy);
-    dy = drawSectionHeader(doc, 'CURRENT MEDICATIONS', dy);
+    dy = drawSectionHeader(doc, 'CURRENT MEDICATIONS', dy, resolved.primaryColor);
     for (const med of activeMeds) {
       dy = maybeNewPage(doc, dy);
       const sig = formatMedSig(med);
       doc.setFont('courier', 'bold');
       doc.setFontSize(8.5);
-      doc.setTextColor('#1e3a1e');
+      doc.setTextColor(resolved.primaryColor);
       const sigWrapped = doc.splitTextToSize(sanitize(sig), CONTENT_W - 8);
       doc.text(sigWrapped, MARGIN + 4, dy);
       dy += sigWrapped.length * 4.8;
@@ -313,7 +312,7 @@ export async function generateDemographicsPDF(opts: DemographicsPdfOptions): Pro
   if (legacyMeds.length > 0) {
     dy = maybeNewPage(doc, dy);
     const legacyTitle = activeMeds.length > 0 ? 'LEGACY MEDICATION LIST' : 'CURRENT MEDICATIONS';
-    dy = drawSectionHeader(doc, legacyTitle, dy);
+    dy = drawSectionHeader(doc, legacyTitle, dy, resolved.primaryColor);
     for (const med of legacyMeds) {
       dy = maybeNewPage(doc, dy);
       doc.setFont('helvetica', 'normal');

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -74,25 +74,30 @@ interface AddMedicationDialogProps {
 
 export function AddMedicationDialog({ open, onOpenChange, patientId, editing, onSaved }: AddMedicationDialogProps) {
   const { toast } = useToast();
-  const [form, setForm] = useState<typeof EMPTY_FORM>(() =>
-    editing
-      ? {
-          drugName: editing.drugName,
-          genericName: editing.genericName ?? "",
-          strength: editing.strength ?? "",
-          strengthUnit: editing.strengthUnit ?? "MG",
-          form: editing.form ?? "Tab",
-          route: editing.route ?? "Oral",
-          sig: editing.sig ?? "",
-          quantity: editing.quantity ?? "",
-          daysSupply: editing.daysSupply != null ? String(editing.daysSupply) : "",
-          refills: editing.refills != null ? String(editing.refills) : "",
-          prescribingProvider: editing.prescribingProvider ?? "",
-          startDate: editing.startDate ? editing.startDate.slice(0, 10) : "",
-          indication: editing.indication ?? "",
-        }
-      : EMPTY_FORM
-  );
+  const [form, setForm] = useState<typeof EMPTY_FORM>(EMPTY_FORM);
+
+  useEffect(() => {
+    if (!open) return;
+    if (editing) {
+      setForm({
+        drugName: editing.drugName,
+        genericName: editing.genericName ?? "",
+        strength: editing.strength ?? "",
+        strengthUnit: editing.strengthUnit ?? "MG",
+        form: editing.form ?? "Tab",
+        route: editing.route ?? "Oral",
+        sig: editing.sig ?? "",
+        quantity: editing.quantity ?? "",
+        daysSupply: editing.daysSupply != null ? String(editing.daysSupply) : "",
+        refills: editing.refills != null ? String(editing.refills) : "",
+        prescribingProvider: editing.prescribingProvider ?? "",
+        startDate: editing.startDate ? editing.startDate.slice(0, 10) : "",
+        indication: editing.indication ?? "",
+      });
+    } else {
+      setForm(EMPTY_FORM);
+    }
+  }, [open, editing?.id]);
 
   const set = (k: keyof typeof EMPTY_FORM, v: string) => setForm(f => ({ ...f, [k]: v }));
 
@@ -127,8 +132,10 @@ export function AddMedicationDialog({ open, onOpenChange, patientId, editing, on
       onOpenChange(false);
       setForm(EMPTY_FORM);
     },
-    onError: () => {
-      toast({ variant: "destructive", title: "Failed to save medication" });
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[AddMedicationDialog] save error:", msg);
+      toast({ variant: "destructive", title: "Failed to save medication", description: msg });
     },
   });
 
