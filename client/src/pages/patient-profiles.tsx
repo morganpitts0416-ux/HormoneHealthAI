@@ -33,6 +33,7 @@ import { generateTrendInsights, generateClinicalSnapshot, type TrendInsight } fr
 import { generateLabReportPDF } from "@/lib/pdf-export";
 import { generateMalePatientWellnessPDF, type MaleWellnessPlan } from "@/lib/patient-pdf-export-male";
 import { generatePatientWellnessPDF } from "@/lib/patient-pdf-export";
+import { METAGENICS_CATALOG } from "@/lib/metagenics-catalog";
 import { exportSoapPdf, nurseBlocksToText } from "@/lib/soap-pdf-export";
 import { useClinicBrandingPartial, useClinicBranding } from "@/hooks/use-clinic-branding";
 import { labsApi, femaleLabsApi, type WellnessPlan } from "@/lib/api";
@@ -493,6 +494,7 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showAddSuppDialog, setShowAddSuppDialog] = useState(false);
+  const [suppDialogSearch, setSuppDialogSearch] = useState('');
 
   const { data: suppLibrary = [] } = useQuery<ClinicianSupplement[]>({
     queryKey: ['/api/clinician/supplements'],
@@ -887,62 +889,122 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
       </div>
 
       {/* Add Supplement from Library Dialog */}
-      {showAddSuppDialog && (
-        <Dialog open onOpenChange={() => setShowAddSuppDialog(false)}>
-          <DialogContent className="max-w-lg">
-            <DialogHeader>
-              <DialogTitle>Add Supplement from Library</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-2 max-h-[50vh] overflow-y-auto py-1 pr-1">
-              {suppLibrary.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-6">
-                  No custom supplements in your library yet. Add supplements in Settings → Supplement Library.
-                </p>
-              ) : (
-                suppLibrary.filter(s => s.isActive).map((s) => {
-                  const alreadyAdded = (overrides.addedSupplements || []).some(a => a.name === s.name);
-                  return (
-                    <div key={s.id} className="flex items-start gap-3 p-3 rounded-md border hover-elevate">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                          <span className="text-sm font-semibold">{s.name}</span>
-                          {s.brand && <span className="text-xs text-muted-foreground">{s.brand}</span>}
-                          {alreadyAdded && <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300">Added</span>}
-                        </div>
-                        <p className="text-xs text-muted-foreground font-mono">{s.dose}</p>
-                        {s.description && <p className="text-xs text-muted-foreground mt-0.5">{s.description}</p>}
-                      </div>
-                      <Button
-                        size="sm"
-                        variant={alreadyAdded ? "outline" : "default"}
-                        disabled={alreadyAdded}
-                        onClick={() => {
-                          if (alreadyAdded) return;
-                          const newSupp: SupplementRecommendation = {
-                            name: s.name,
-                            dose: s.dose,
-                            indication: s.description || s.name,
-                            rationale: s.clinicalRationale || '',
-                            priority: 'medium',
-                            category: (s.category as SupplementRecommendation['category']) || 'general',
-                            patientExplanation: s.description || '',
-                          };
-                          updateOverrides(prev => ({ ...prev, addedSupplements: [...(prev.addedSupplements || []), newSupp] }));
-                        }}
-                      >
-                        {alreadyAdded ? 'Added' : 'Add'}
-                      </Button>
-                    </div>
-                  );
-                })
-              )}
+      {showAddSuppDialog && (() => {
+        const q = suppDialogSearch.trim().toLowerCase();
+        const customActive = suppLibrary.filter(s => s.isActive);
+        const filteredCustom = customActive.filter(s =>
+          !q || s.name.toLowerCase().includes(q) || (s.description || '').toLowerCase().includes(q)
+        );
+        const filteredCatalog = METAGENICS_CATALOG.filter(p =>
+          !q || p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q) || p.aliases.some(a => a.includes(q))
+        );
+        const SuppRow = ({ name, dose, description, brand, category, rationale, onAdd, alreadyAdded, isCustom }: {
+          name: string; dose: string; description: string; brand?: string; category: string;
+          rationale?: string; onAdd: () => void; alreadyAdded: boolean; isCustom?: boolean;
+        }) => (
+          <div className="flex items-start gap-3 p-3 rounded-md border hover-elevate">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                <span className="text-sm font-semibold">{name}</span>
+                {brand && <span className="text-xs text-muted-foreground">{brand}</span>}
+                {isCustom && <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">Custom</span>}
+                {alreadyAdded && <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300">Added</span>}
+              </div>
+              <p className="text-xs text-muted-foreground font-mono">{dose}</p>
+              {description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{description}</p>}
             </div>
-            <div className="flex justify-end pt-2 border-t">
-              <Button variant="outline" size="sm" onClick={() => setShowAddSuppDialog(false)}>Done</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
+            <Button size="sm" variant={alreadyAdded ? "outline" : "default"} disabled={alreadyAdded} onClick={onAdd}>
+              {alreadyAdded ? 'Added' : 'Add'}
+            </Button>
+          </div>
+        );
+        return (
+          <Dialog open onOpenChange={() => { setShowAddSuppDialog(false); setSuppDialogSearch(''); }}>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Add Supplement from Library</DialogTitle>
+              </DialogHeader>
+              <input
+                type="text"
+                placeholder="Search supplements..."
+                value={suppDialogSearch}
+                onChange={e => setSuppDialogSearch(e.target.value)}
+                className="w-full px-3 py-2 text-sm rounded-md border bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                data-testid="input-supplement-search"
+                autoFocus
+              />
+              <div className="space-y-2 max-h-[55vh] overflow-y-auto py-1 pr-1">
+                {/* Custom library section */}
+                {filteredCustom.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1">Your Library</p>
+                    {filteredCustom.map(s => {
+                      const alreadyAdded = (overrides.addedSupplements || []).some(a => a.name === s.name);
+                      return (
+                        <SuppRow
+                          key={`custom-${s.id}`}
+                          name={s.name} dose={s.dose} description={s.description || ''} brand={s.brand || undefined}
+                          category={s.category || 'general'} rationale={s.clinicalRationale || ''}
+                          alreadyAdded={alreadyAdded} isCustom
+                          onAdd={() => {
+                            const newSupp: SupplementRecommendation = {
+                              name: s.name, dose: s.dose,
+                              indication: s.description || s.name,
+                              rationale: s.clinicalRationale || '',
+                              priority: 'medium',
+                              category: (s.category as SupplementRecommendation['category']) || 'general',
+                              patientExplanation: s.description || '',
+                            };
+                            updateOverrides(prev => ({ ...prev, addedSupplements: [...(prev.addedSupplements || []), newSupp] }));
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+                {/* Default Metagenics catalog */}
+                {filteredCatalog.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1">
+                      {filteredCustom.length > 0 ? 'Metagenics Catalog' : 'Default Catalog'}
+                    </p>
+                    {filteredCatalog.map(p => {
+                      const alreadyAdded = (overrides.addedSupplements || []).some(a => a.name === p.name);
+                      return (
+                        <SuppRow
+                          key={`catalog-${p.name}`}
+                          name={p.name} dose={p.defaultDose} description={p.description}
+                          category={p.category}
+                          alreadyAdded={alreadyAdded}
+                          onAdd={() => {
+                            const newSupp: SupplementRecommendation = {
+                              name: p.name, dose: p.defaultDose,
+                              indication: p.description,
+                              rationale: p.description,
+                              priority: 'medium',
+                              category: (p.category as SupplementRecommendation['category']) || 'general',
+                              patientExplanation: p.description,
+                            };
+                            updateOverrides(prev => ({ ...prev, addedSupplements: [...(prev.addedSupplements || []), newSupp] }));
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+                {filteredCustom.length === 0 && filteredCatalog.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-6">
+                    No supplements match "{suppDialogSearch}".
+                  </p>
+                )}
+              </div>
+              <div className="flex justify-end pt-2 border-t">
+                <Button variant="outline" size="sm" onClick={() => { setShowAddSuppDialog(false); setSuppDialogSearch(''); }}>Done</Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
     </div>
   );
 }
