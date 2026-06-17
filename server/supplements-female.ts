@@ -195,20 +195,27 @@ function evaluateMagnesium(labs: FemaleLabValues, phenotypes: ClinicalPhenotype[
 
 function evaluateUltraFloraWomens(labs: FemaleLabValues, phenotypes: ClinicalPhenotype[]): SupplementCandidate | null {
   const findings: string[] = [];
-  let score = 2;
+  let score = 0;
   const matchedPhenotypes: string[] = [];
 
   const hasBloating = labs.bloating === true;
   const hasFrequentUTIs = labs.frequentUTIs === true;
   const hasVaginalDryness = labs.vaginalDryness === true;
+  const age = labs.demographics?.age;
+  const ageOver40 = age !== undefined && age >= 40;
+  const isPostmenopausal = labs.menstrualPhase === 'postmenopausal';
 
-  findings.push("Foundational women's probiotic support");
+  if (hasFrequentUTIs) { findings.push("Frequent UTIs reported (urogenital microbiome — Lactobacillus GR-1 and RC-14 are clinically proven for UTI prevention)"); score += 4; }
   if (hasBloating) { findings.push("Bloating / GI symptoms reported"); score += 2; }
-  if (hasFrequentUTIs) { findings.push("Frequent UTIs reported (urogenital microbiome)"); score += 3; }
-  if (hasVaginalDryness) { findings.push("Vaginal dryness (mucosal barrier support)"); score += 1; }
+  if (hasVaginalDryness) { findings.push("Vaginal dryness (mucosal barrier support)"); score += 2; }
+  if (isPostmenopausal) { findings.push("Postmenopausal — urogenital microbiome support strongly indicated"); score += 2; }
+  else if (ageOver40) { findings.push(`Age ${age} — probiotic support for hormonal transition`); score += 1; }
 
   const gutPhenotype = phenotypes.find(p => p.name === "Gut-Microbiome Support");
-  if (gutPhenotype) { matchedPhenotypes.push(gutPhenotype.name); score += 1; }
+  if (gutPhenotype) { matchedPhenotypes.push(gutPhenotype.name); score += 2; }
+
+  // Require at least one clinical signal — do not recommend for every patient universally
+  if (score < 2) return null;
 
   return {
     name: "UltraFlora\u00AE Complete Women's Probiotic",
@@ -381,9 +388,11 @@ function evaluateAdvaClear(labs: FemaleLabValues, phenotypes: ClinicalPhenotype[
   const inflammatoryPhenotype = phenotypes.find(p => p.name === "Inflammatory Burden");
   const irPhenotype = phenotypes.find(p => p.name === "Insulin Resistance / Visceral Adiposity");
 
-  const borderlineALT = labs.alt !== undefined && labs.alt > 20;
-  const borderlineAST = labs.ast !== undefined && labs.ast > 20;
-  const elevatedALT = labs.alt !== undefined && labs.alt > 32;
+  // ALT > 25 is a meaningful signal in women (normal range 7–35 U/L; >25 warrants attention)
+  // ALT > 20 was previously used but is too close to the lower bound of normal — raised to 25.
+  const borderlineALT = labs.alt !== undefined && labs.alt > 25;
+  const borderlineAST = labs.ast !== undefined && labs.ast > 25;
+  const elevatedALT = labs.alt !== undefined && labs.alt > 35;
   const elevatedCRP = labs.hsCRP !== undefined && labs.hsCRP > 2.0;
   const hasWeightGain = labs.weightGain === true;
   const hasBloating = labs.bloating === true;
@@ -450,12 +459,20 @@ function evaluateGlutaClear(labs: FemaleLabValues, phenotypes: ClinicalPhenotype
 
   const elevatedCRP = labs.hsCRP !== undefined && labs.hsCRP > 3.0;
   const moderateCRP = labs.hsCRP !== undefined && labs.hsCRP > 2.0;
-  const borderlineALT = labs.alt !== undefined && labs.alt > 20;
+  // Raised ALT threshold from 20 to 28 — aligns with AdvaClear threshold change and avoids
+  // triggering on values within the broad-normal range for women.
+  const borderlineALT = labs.alt !== undefined && labs.alt > 28;
   const elevatedA1c = labs.a1c !== undefined && labs.a1c >= 5.7;
   const hasLowEnergy = labs.lowEnergy === true;
   const hasBrainFog = labs.brainFog === true;
   const age = labs.demographics?.age;
   const ageOver45 = age !== undefined && age >= 45;
+
+  // Hard gate: GlutaClear requires confirmed oxidative/inflammatory phenotype OR CRP > 2.0.
+  // Age + fatigue alone are NOT sufficient — those are also covered by StayStrong+ Brain & Body
+  // and Magtein. This prevents GlutaClear co-firing with AdvaClear on every borderline patient.
+  const hasHardGate = !!oxidativePhenotype || moderateCRP;
+  if (!hasHardGate) return null;
 
   if (oxidativePhenotype) {
     matchedPhenotypes.push(oxidativePhenotype.name);
@@ -481,7 +498,9 @@ function evaluateGlutaClear(labs: FemaleLabValues, phenotypes: ClinicalPhenotype
   if (hasBrainFog) { findings.push("Brain fog (CNS oxidative burden)"); score += 1; }
   if (ageOver45) { findings.push(`Age ${age} (declining glutathione production)`); score += 1; }
 
-  if (score < 4) return null;
+  // Raised minimum score from 4 to 5 — GlutaClear + AdvaClear address overlapping territory
+  // (liver detox vs. glutathione), so GlutaClear should require stronger evidence to co-recommend.
+  if (score < 5) return null;
 
   return {
     name: "GlutaClear\u00AE",
@@ -989,6 +1008,17 @@ export function evaluateSupplements(labs: FemaleLabValues, irScreening?: Insulin
     if (result) candidates.push(result);
   }
 
-  const recommendations = prioritizeAndCap(candidates);
+  // Cap UltraFlora brand products at 2 (keep highest-scoring) to prevent 3 probiotics
+  // appearing simultaneously for metabolic + sleep + gynecological patterns.
+  const MAX_ULTRAFORA = 2;
+  const ultraFloraItems = candidates
+    .filter(c => c.name.toLowerCase().includes('ultraflora'))
+    .sort((a, b) => b.score - a.score);
+  const ultraFloraKept = new Set(ultraFloraItems.slice(0, MAX_ULTRAFORA).map(c => c.name));
+  const dedupedCandidates = candidates.filter(
+    c => !c.name.toLowerCase().includes('ultraflora') || ultraFloraKept.has(c.name),
+  );
+
+  const recommendations = prioritizeAndCap(dedupedCandidates);
   return { recommendations, phenotypes };
 }
