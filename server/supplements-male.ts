@@ -6,50 +6,6 @@ interface SupplementRule {
 }
 
 const supplementRules: SupplementRule[] = [
-  // AGE-BASED CARDIAC/NEUROLOGIC SUPPORT - OmegaGenics Fish Oil for patients 40+
-  {
-    supplement: {
-      name: "OmegaGenics® Fish Oil EPA-DHA 1000",
-      dose: "1 softgel 1-2 times daily with meals",
-      priority: 'medium',
-      category: 'cardiovascular',
-      caution: "High-quality omega-3 (500mg EPA, 500mg DHA) for heart and brain health. Lemon-flavored for easy consumption. Contains fish oil."
-    },
-    evaluate: (labs) => {
-      const age = labs.demographics?.age;
-      if (age !== undefined && age >= 40) {
-        return {
-          shouldRecommend: true,
-          indication: `Age ${age} - cardiac/neurologic support for patients 40+`,
-          rationale: "OmegaGenics Fish Oil EPA-DHA 1000 provides balanced omega-3 fatty acids to support cardiovascular health, cognitive function, and reduce inflammation. Recommended for all men 40+ for overall cardiac and neurologic protection."
-        };
-      }
-      return null;
-    }
-  },
-
-  // AGE-BASED CARDIAC/NEUROLOGIC SUPPORT - NutraGems CoQ10 for patients 40+
-  {
-    supplement: {
-      name: "NutraGems® CoQ10 300",
-      dose: "1 chewable gel daily",
-      priority: 'medium',
-      category: 'cardiovascular',
-      caution: "Chewable 300mg CoQ10 in emulsified form for enhanced absorption. Supports heart muscle function, energy production, and antioxidant protection."
-    },
-    evaluate: (labs) => {
-      const age = labs.demographics?.age;
-      if (age !== undefined && age >= 40) {
-        return {
-          shouldRecommend: true,
-          indication: `Age ${age} - cardiac/energy support for patients 40+`,
-          rationale: "NutraGems CoQ10 300 provides high-potency ubiquinone essential for mitochondrial energy production and cardiovascular protection. Recommended for all men 40+ for cardiac and neurologic health maintenance."
-        };
-      }
-      return null;
-    }
-  },
-
   // TESTRALIN - Testosterone Support (Men-specific)
   {
     supplement: {
@@ -83,6 +39,9 @@ const supplementRules: SupplementRule[] = [
   },
 
   // ULTRAFLORA COMPLETE PROBIOTIC - Gut Health Foundation for Men
+  // Requires at least one clinical or metabolic trigger — not for 100% of patients.
+  // Patients already triggered for UltraFlora Night Rest & Digest (metabolic/gut) do NOT
+  // need this as well; Night Rest covers the gut axis more specifically for that phenotype.
   {
     supplement: {
       name: "UltraFlora® Complete Probiotic",
@@ -91,11 +50,28 @@ const supplementRules: SupplementRule[] = [
       category: 'general',
       caution: "Multi-strain probiotic for digestive and immune health. Shelf-stable formula. No refrigeration needed."
     },
-    evaluate: (_labs) => {
+    evaluate: (labs) => {
+      const age           = labs.demographics?.age;
+      const ageOver45     = age !== undefined && age >= 45;
+      const elevatedCRP   = labs.hsCRP !== undefined && labs.hsCRP >= 0.5;
+      const glucoseUp     = labs.glucose !== undefined && labs.glucose >= 95;
+      const a1cUp         = labs.a1c !== undefined && labs.a1c >= 5.4;
+      const trigsUp       = labs.triglycerides !== undefined && labs.triglycerides > 130;
+      const lowT          = labs.testosterone !== undefined && labs.testosterone < 500;
+      // Only recommend when at least one gut-relevant clinical signal is present
+      const triggers = [ageOver45, elevatedCRP, glucoseUp, a1cUp, trigsUp, lowT].filter(Boolean).length;
+      if (triggers < 1) return null;
+      const indications: string[] = [];
+      if (ageOver45)   indications.push(`Age ${age} — gut microbiome diversity declines with age`);
+      if (elevatedCRP) indications.push(`hs-CRP ${labs.hsCRP} mg/L — dysbiosis contributes to systemic inflammation`);
+      if (glucoseUp)   indications.push(`Glucose ${labs.glucose} mg/dL — gut bacteria modulate glucose metabolism`);
+      if (a1cUp)       indications.push(`A1c ${labs.a1c}% — microbiome influences glycemic regulation`);
+      if (trigsUp)     indications.push(`Triglycerides ${labs.triglycerides} mg/dL — gut flora influence lipid metabolism`);
+      if (lowT)        indications.push(`Testosterone ${labs.testosterone} ng/dL — gut health supports hormonal balance`);
       return {
         shouldRecommend: true,
-        indication: "Men's health foundation",
-        rationale: "UltraFlora Complete provides comprehensive multi-strain probiotic support for digestive health, immune function, and overall wellness."
+        indication: indications.slice(0, 2).join('; '),
+        rationale: "UltraFlora Complete provides comprehensive multi-strain probiotic support for digestive health, immune function, and overall wellness. A healthy gut microbiome is foundational for hormone metabolism, inflammation regulation, and metabolic health."
       };
     }
   },
@@ -270,6 +246,8 @@ const supplementRules: SupplementRule[] = [
   },
 
   // OMEGAGENICS FISH OIL NEURO 1000 - Brain, Cardiovascular, and Joint Support
+  // Age ≥ 40 lowers the threshold but is not a standalone trigger — requires at least one
+  // lipid or CV-risk lab finding.
   {
     supplement: {
       name: "OmegaGenics® Fish Oil Neuro 1000",
@@ -284,33 +262,41 @@ const supplementRules: SupplementRule[] = [
       const highTriglycerides = labs.triglycerides !== undefined && labs.triglycerides > 150;
       const highTotalCholesterol = labs.totalCholesterol !== undefined && labs.totalCholesterol > 200;
       const abnormalLipids = highLDL || lowHDL || highTriglycerides || highTotalCholesterol;
-      
+
       const elevatedLpa = labs.lpa !== undefined && labs.lpa > 30;
       const elevatedApoB = labs.apoB !== undefined && labs.apoB > 90;
       const elevatedHsCRP = labs.hsCRP !== undefined && labs.hsCRP > 0.30;
       const elevatedCVRisk = elevatedLpa || elevatedApoB || elevatedHsCRP;
-      
-      if (abnormalLipids || elevatedCVRisk) {
-        let indications: string[] = [];
-        if (highTriglycerides) indications.push(`TG ${labs.triglycerides} mg/dL`);
-        if (highLDL) indications.push(`LDL ${labs.ldl} mg/dL`);
-        if (lowHDL) indications.push(`HDL ${labs.hdl} mg/dL (low)`);
-        if (elevatedHsCRP) indications.push(`hs-CRP ${labs.hsCRP} mg/dL`);
-        if (elevatedLpa) indications.push(`Lp(a) ${labs.lpa}`);
-        if (elevatedApoB) indications.push(`ApoB ${labs.apoB} mg/dL`);
-        
-        return {
-          shouldRecommend: true,
-          indication: indications.join(', '),
-          rationale: "OmegaGenics Fish Oil Neuro 1000 provides concentrated DHA and EPA to reduce triglycerides, support brain function, cardiovascular health, and reduce inflammation."
-        };
+
+      const age = labs.demographics?.age;
+      const ageOver40 = age !== undefined && age >= 40;
+
+      // Require at least one lab-confirmed finding; age lowers threshold for borderline lipids
+      if (!abnormalLipids && !elevatedCVRisk) {
+        // If age ≥ 40 but no lipid/CV labs provided, don't fire
+        return null;
       }
-      
-      return null;
+
+      const indications: string[] = [];
+      if (highTriglycerides) indications.push(`TG ${labs.triglycerides} mg/dL`);
+      if (highLDL) indications.push(`LDL ${labs.ldl} mg/dL`);
+      if (lowHDL) indications.push(`HDL ${labs.hdl} mg/dL (low)`);
+      if (elevatedHsCRP) indications.push(`hs-CRP ${labs.hsCRP} mg/dL`);
+      if (elevatedLpa) indications.push(`Lp(a) ${labs.lpa}`);
+      if (elevatedApoB) indications.push(`ApoB ${labs.apoB} mg/dL`);
+      if (ageOver40 && indications.length === 0) indications.push(`Age ${age} — cardiovascular prevention support`);
+
+      return {
+        shouldRecommend: true,
+        indication: indications.join(', '),
+        rationale: "OmegaGenics Fish Oil Neuro 1000 provides concentrated DHA and EPA to reduce triglycerides, support brain function, cardiovascular health, and reduce inflammation."
+      };
     }
   },
 
   // NUTRAGEMS CoQ10 300 - Cardiovascular and Energy Support
+  // Age ≥ 40 contributes to indication context but requires a clinical lab trigger.
+  // Statins are a hard indication (statin therapy depletes CoQ10).
   {
     supplement: {
       name: "NutraGems® CoQ10 300",
@@ -325,33 +311,36 @@ const supplementRules: SupplementRule[] = [
       const highTriglycerides = labs.triglycerides !== undefined && labs.triglycerides > 150;
       const highTotalCholesterol = labs.totalCholesterol !== undefined && labs.totalCholesterol > 200;
       const abnormalLipids = highLDL || lowHDL || highTriglycerides || highTotalCholesterol;
-      
+
       const elevatedLpa = labs.lpa !== undefined && labs.lpa > 30;
       const elevatedApoB = labs.apoB !== undefined && labs.apoB > 90;
       const elevatedHsCRP = labs.hsCRP !== undefined && labs.hsCRP > 0.30;
       const elevatedCVRisk = elevatedLpa || elevatedApoB || elevatedHsCRP;
-      
+
       const lowTestosterone = labs.testosterone !== undefined && labs.testosterone < 400;
-      
-      if (abnormalLipids || elevatedCVRisk || lowTestosterone) {
-        let indications: string[] = [];
-        if (highLDL) indications.push(`LDL ${labs.ldl} mg/dL`);
-        if (lowHDL) indications.push(`HDL ${labs.hdl} mg/dL (low)`);
-        if (highTriglycerides) indications.push(`TG ${labs.triglycerides} mg/dL`);
-        if (highTotalCholesterol) indications.push(`TC ${labs.totalCholesterol} mg/dL`);
-        if (elevatedLpa) indications.push(`Lp(a) ${labs.lpa}`);
-        if (elevatedApoB) indications.push(`ApoB ${labs.apoB} mg/dL`);
-        if (elevatedHsCRP) indications.push(`hs-CRP ${labs.hsCRP} mg/dL`);
-        if (lowTestosterone) indications.push(`Low T (energy support)`);
-        
-        return {
-          shouldRecommend: true,
-          indication: indications.join(', '),
-          rationale: "NutraGems CoQ10 300 provides high-potency ubiquinone for cardiovascular protection, cellular energy production, and antioxidant support. Essential for patients on statins."
-        };
-      }
-      
-      return null;
+      const onStatins = (labs as any).demographics?.onStatins === true;
+      const age = labs.demographics?.age;
+      const ageOver40 = age !== undefined && age >= 40;
+
+      if (!abnormalLipids && !elevatedCVRisk && !lowTestosterone && !onStatins) return null;
+
+      const indications: string[] = [];
+      if (onStatins) indications.push("On statin therapy — CoQ10 depletion indicated");
+      if (highLDL) indications.push(`LDL ${labs.ldl} mg/dL`);
+      if (lowHDL) indications.push(`HDL ${labs.hdl} mg/dL (low)`);
+      if (highTriglycerides) indications.push(`TG ${labs.triglycerides} mg/dL`);
+      if (highTotalCholesterol) indications.push(`TC ${labs.totalCholesterol} mg/dL`);
+      if (elevatedLpa) indications.push(`Lp(a) ${labs.lpa}`);
+      if (elevatedApoB) indications.push(`ApoB ${labs.apoB} mg/dL`);
+      if (elevatedHsCRP) indications.push(`hs-CRP ${labs.hsCRP} mg/dL`);
+      if (lowTestosterone) indications.push(`Total T ${labs.testosterone} ng/dL (low — mitochondrial support)`);
+      if (ageOver40) indications.push(`Age ${age} — endogenous CoQ10 production declines after 40`);
+
+      return {
+        shouldRecommend: true,
+        indication: indications.slice(0, 3).join('; '),
+        rationale: "NutraGems CoQ10 300 provides high-potency ubiquinone for cardiovascular protection, cellular energy production, and antioxidant support. Essential for patients on statin therapy (which depletes CoQ10) and for men with cardiovascular risk markers or low testosterone requiring mitochondrial energy support."
+      };
     }
   },
   // HEMAGENICS - Iron Deficiency (hemoglobin-triggered for male panel)
@@ -465,6 +454,9 @@ const supplementRules: SupplementRule[] = [
   },
 
   // STAYSTRONG+ BRAIN & BODY - Cognitive and energy support
+  // Requires at least one neurological/methylation marker (B12 or folate) — testosterone
+  // or thyroid alone are NOT sufficient to trigger this; those are covered by Testralin /
+  // Adreset / Exhilarin. This prevents near-universal firing in borderline male patients.
   {
     supplement: {
       name: "StayStrong+® Brain & Body",
@@ -479,18 +471,24 @@ const supplementRules: SupplementRule[] = [
       const lowVitD   = labs.vitaminD !== undefined && labs.vitaminD < 40;
       const suboptimalT = labs.testosterone !== undefined && labs.testosterone < 500;
       const suboptimalThyroid = labs.tsh !== undefined && (labs.tsh < 0.5 || labs.tsh > 3.0);
-      const triggers = [lowB12, lowFolate, lowVitD, suboptimalT, suboptimalThyroid].filter(Boolean).length;
-      if (triggers < 2) return null;
+
+      // Hard gate: at least one B-vitamin / methylation marker must be present
+      if (!lowB12 && !lowFolate) return null;
+
+      // Then require a second supporting signal
+      const supporting = [lowVitD, suboptimalT, suboptimalThyroid].filter(Boolean).length;
+      if (supporting < 1) return null;
+
       const indications: string[] = [];
-      if (lowB12) indications.push("B12 suboptimal — neurological and cognitive support");
-      if (lowFolate) indications.push("Folate borderline — methylation and brain energy");
+      if (lowB12) indications.push(`B12 suboptimal — neurological and methylation support`);
+      if (lowFolate) indications.push(`Folate borderline — one-carbon metabolism and brain energy`);
       if (lowVitD) indications.push(`Vitamin D ${labs.vitaminD} ng/mL — cognitive and mood support`);
       if (suboptimalT) indications.push(`Testosterone ${labs.testosterone} ng/dL — energy and mental clarity support`);
       if (suboptimalThyroid) indications.push(`TSH ${labs.tsh} (suboptimal) — metabolic energy support`);
       return {
         shouldRecommend: true,
         indication: indications.slice(0, 2).join('; '),
-        rationale: "StayStrong+ Brain & Body combines methylated B-vitamins, adaptogenic botanicals, and mitochondrial cofactors to support cognitive clarity, mental energy, and physical vitality. Particularly indicated when B12, folate, or vitamin D are suboptimal and lab patterns suggest reduced neurological or hormonal energy support. Addresses the neuroendocrine-mitochondrial axis critical for sustained cognitive performance and physical energy."
+        rationale: "StayStrong+ Brain & Body combines methylated B-vitamins, adaptogenic botanicals, and mitochondrial cofactors to support cognitive clarity, mental energy, and physical vitality. Indicated when B12 or folate are suboptimal alongside additional hormonal or metabolic stress — addresses the neuroendocrine-mitochondrial axis critical for sustained cognitive performance and physical energy."
       };
     }
   },
