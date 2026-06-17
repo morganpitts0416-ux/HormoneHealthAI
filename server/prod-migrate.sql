@@ -1855,3 +1855,12 @@ CREATE INDEX IF NOT EXISTS patient_medications_source_idx
   ON patient_medications (source);
 CREATE INDEX IF NOT EXISTS patient_medications_form_submission_id_idx
   ON patient_medications (form_submission_id);
+
+-- Fix clinic owners whose membership row was created with admin_role = 'standard'
+-- instead of 'owner'. Idempotent: only updates rows that still need fixing.
+UPDATE clinic_memberships cm
+SET admin_role = 'owner'
+FROM clinics c
+WHERE cm.clinic_id = c.id
+  AND cm.user_id = c.owner_user_id
+  AND cm.admin_role = 'standard';

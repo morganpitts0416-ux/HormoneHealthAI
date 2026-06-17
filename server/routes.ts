@@ -445,7 +445,26 @@ async function getSessionAdminRole(req: Request): Promise<string | null> {
       .from(clinicMemberships)
       .where(and(eq(clinicMemberships.userId, user.id), eq(clinicMemberships.clinicId, clinicId)))
       .limit(1);
-    return membership?.adminRole ?? "owner";
+    const role = membership?.adminRole ?? "owner";
+    // Guard: if the membership shows "standard" but this user is the clinic's
+    // ownerUserId (set at clinic creation), treat them as owner. This covers
+    // accounts created before the admin_role column was backfilled.
+    if (role === "standard") {
+      const [clinic] = await storageDb
+        .select({ ownerUserId: clinics.ownerUserId })
+        .from(clinics)
+        .where(eq(clinics.id, clinicId))
+        .limit(1);
+      if (clinic?.ownerUserId === user.id) {
+        // Also fix the stale membership row so this check isn't needed next time
+        await storageDb
+          .update(clinicMemberships)
+          .set({ adminRole: "owner" })
+          .where(and(eq(clinicMemberships.userId, user.id), eq(clinicMemberships.clinicId, clinicId)));
+        return "owner";
+      }
+    }
+    return role;
   } catch {
     return "owner";
   }
