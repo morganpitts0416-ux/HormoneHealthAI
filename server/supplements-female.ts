@@ -636,6 +636,9 @@ function evaluateCoQ10(labs: FemaleLabValues, phenotypes: ClinicalPhenotype[]): 
   const onStatins = labs.demographics?.onStatins === true;
   const age = labs.demographics?.age;
   const ageOver40 = age !== undefined && age >= 40;
+  // Perimenopause: estrogen withdrawal suppresses CoQ10 biosynthesis and mitochondrial biogenesis
+  const perimeno = labs.fsh !== undefined && labs.fsh > 20 && ageOver40;
+  const hypoestrogenic = labs.estradiol !== undefined && labs.estradiol < 50 && ageOver40;
 
   if (onStatins) { findings.push("On statin therapy (CoQ10 depletion)"); score += 5; }
   if (elevatedApoB) { findings.push(`ApoB ${labs.apoB} mg/dL (cardiovascular support)`); score += 2; }
@@ -647,6 +650,8 @@ function evaluateCoQ10(labs: FemaleLabValues, phenotypes: ClinicalPhenotype[]): 
   if (elevatedLpa) { findings.push(`Lp(a) ${labs.lpa} (elevated)`); score += 1; }
   if (hasLowEnergy) { findings.push("Low energy (mitochondrial support benefit)"); score += 2; }
   if (ageOver40) { findings.push(`Age ${age} (declining CoQ10 production)`); score += 1; }
+  if (perimeno) { findings.push(`FSH ${labs.fsh} mIU/mL — perimenopause transition (estrogen withdrawal accelerates CoQ10 decline)`); score += 2; }
+  if (hypoestrogenic && !perimeno) { findings.push(`Estradiol ${labs.estradiol} pg/mL (low) — hypoestrogenic state (mitochondrial support indicated)`); score += 1; }
 
   const inflammatoryPhenotype = phenotypes.find(p => p.name === "Inflammatory Burden");
   const oxidativePhenotype = phenotypes.find(p => p.name === "Oxidative Stress Burden");
