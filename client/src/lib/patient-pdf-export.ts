@@ -416,6 +416,8 @@ export interface PdfSupplement {
   name: string;
   dose: string;
   indication: string;
+  patientExplanation?: string;
+  rationale?: string;
 }
 
 import { hexToRgb, resolveBranding, type PartialBranding } from "@/lib/branding";
@@ -1871,7 +1873,7 @@ export async function generatePatientWellnessPDF(
 
     const sourceSupplements: Array<{ name: string; dose: string; indication?: string; rationale?: string; patientExplanation?: string }> =
       selectedSupplements && selectedSupplements.length > 0
-        ? selectedSupplements.map(s => ({ name: s.name, dose: s.dose, indication: s.indication }))
+        ? selectedSupplements.map(s => ({ name: s.name, dose: s.dose, indication: s.indication, patientExplanation: s.patientExplanation, rationale: s.rationale }))
         : (interpretation.supplements || []);
 
     if (sourceSupplements.length > 0) {

@@ -593,15 +593,13 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
     onSuccess: async (wellnessPlan: WellnessPlan) => {
       if (interp) {
         const patientLabs = allLabs.length >= 2 ? allLabs : undefined;
-        const pdfSupps = effectiveSupplements.map(s => ({ name: s.name, dose: s.dose, indication: s.indication }));
+        const pdfSupps = effectiveSupplements.map(s => ({ name: s.name, dose: s.dose, indication: s.indication, patientExplanation: (s as any).patientExplanation, rationale: (s as any).rationale }));
         const clinicLogo = clinicBrandingFull?.clinicLogo ?? null;
         const footerText = clinicBrandingFull?.footerText ?? null;
         const hiddenSections = overrides.hiddenSections || [];
         const hiddenInterpCats = overrides.hiddenInterpretationCategories || [];
         if (isFemale) {
-          // hiddenInterpCats covers both regular lab rows and hormone-pattern rows —
-          // the PDF splits them internally using isHormonePatternRowPdf().
-          await generatePatientWellnessPDF(vals as FemaleLabValues, interp, wellnessPlan, patientName, patientLabs, pdfSupps, user?.clinicName, clinicBranding, clinicLogo, hiddenSections, hiddenInterpCats, hiddenInterpCats, footerText);
+          await generatePatientWellnessPDF(vals as FemaleLabValues, interp, wellnessPlan, patientName, patientLabs, pdfSupps, user?.clinicName, clinicBranding, clinicLogo, hiddenSections, hiddenInterpCats, overrides.hiddenHormonePatternCategories || [], footerText);
         } else {
           await generateMalePatientWellnessPDF(vals as LabValues, interp, wellnessPlan as MaleWellnessPlan, patientName, patientLabs, pdfSupps, user?.clinicName, clinicBranding, clinicLogo, hiddenSections, hiddenInterpCats, footerText);
         }
