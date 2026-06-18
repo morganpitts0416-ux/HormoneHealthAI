@@ -55,6 +55,18 @@ export default function FormSubmissionsPage() {
 
   const { data: submissions = [], isLoading } = useQuery<SubmissionRow[]>({
     queryKey: ["/api/intake-forms/submissions/all"],
+    queryFn: async () => {
+      const res = await fetch("/api/intake-forms/submissions/all", {
+        credentials: "include",
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache" },
+      });
+      if (!res.ok) throw new Error(`${res.status}`);
+      return res.json();
+    },
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnMount: "always",
   });
 
   const { toast } = useToast();

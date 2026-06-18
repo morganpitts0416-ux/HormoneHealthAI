@@ -377,7 +377,17 @@ export default function Dashboard() {
 
   const { data: pendingSubmissions = [], isLoading: submissionsLoading } = useQuery<PendingSubmissionRow[]>({
     queryKey: ["/api/intake-forms/submissions/pending"],
+    queryFn: async () => {
+      const res = await fetch("/api/intake-forms/submissions/pending", {
+        credentials: "include",
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache" },
+      });
+      if (!res.ok) throw new Error(`${res.status}`);
+      return res.json();
+    },
     staleTime: 0,
+    gcTime: 0,
     refetchOnMount: "always",
     refetchInterval: 30 * 1000,
   });
