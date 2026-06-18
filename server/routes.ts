@@ -15362,10 +15362,21 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       const clinicId = getEffectiveClinicId(req);
       const submission = await storage.getFormSubmission(id);
       if (!submission) return res.status(404).json({ message: "Submission not found" });
-      if (submission.clinicianId !== clinicianId && (!clinicId || (submission as any).clinicId !== clinicId)) {
-        return res.status(404).json({ message: "Submission not found" });
-      }
+      // Primary checks: direct ownership or same clinic
+      const isOwner = submission.clinicianId === clinicianId;
+      const isClinicMember = clinicId && (submission as any).clinicId === clinicId;
+      // Always fetch the form — needed for auth fallback AND for response payload
       const form = await storage.getIntakeFormById(submission.formId);
+      if (!isOwner && !isClinicMember) {
+        // Fallback: check whether the underlying form belongs to this clinic/clinician
+        // (handles submissions where clinic_id was not backfilled yet, or NULL)
+        if (!form) return res.status(404).json({ message: "Submission not found" });
+        const formInClinic = clinicId && form.clinicId === clinicId;
+        const formOwnedByUser = form.clinicianId === clinicianId;
+        if (!formInClinic && !formOwnedByUser) {
+          return res.status(404).json({ message: "Submission not found" });
+        }
+      }
       const fields = await storage.getFormFields(submission.formId);
       const sections = await storage.getFormSections(submission.formId);
       const syncEvents = await storage.getFormSyncEvents(id);

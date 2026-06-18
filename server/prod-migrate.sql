@@ -1875,3 +1875,19 @@ ALTER TABLE clinics ADD COLUMN IF NOT EXISTS form_background_color VARCHAR(7);
 ALTER TABLE clinics ADD COLUMN IF NOT EXISTS clinic_logo          TEXT;
 ALTER TABLE clinics ADD COLUMN IF NOT EXISTS footer_text          TEXT;
 ALTER TABLE clinics ADD COLUMN IF NOT EXISTS fax                  VARCHAR(30);
+
+-- ── form_submissions.clinic_id (added after initial table creation) ───────────
+-- Without this column dashboard notifications and staff submission viewing both
+-- fail in production: getFormSubmissionsByClinic can't scope by clinic so staff
+-- see 0 results; GET /api/form-submissions/:id returns 404 for clinic members
+-- because the NULL clinicId never matches the session clinic.
+ALTER TABLE form_submissions ADD COLUMN IF NOT EXISTS clinic_id INTEGER REFERENCES clinics(id) ON DELETE CASCADE;
+
+-- Backfill clinic_id for existing submissions that were created before this
+-- column existed, using the owning intake_form's clinic_id.
+UPDATE form_submissions fs
+SET    clinic_id = f.clinic_id
+FROM   intake_forms f
+WHERE  fs.form_id   = f.id
+  AND  fs.clinic_id IS NULL
+  AND  f.clinic_id  IS NOT NULL;

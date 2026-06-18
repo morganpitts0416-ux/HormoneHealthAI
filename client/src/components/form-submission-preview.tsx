@@ -1541,6 +1541,12 @@ export function FormSubmissionPreviewDialog({
             <div className="flex items-center justify-center py-16">
               <Loader2 className="h-6 w-6 animate-spin" style={{ color: "#7a8a64" }} />
             </div>
+          ) : detail && !detail.form && (detail as any).message ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <FileText className="h-10 w-10" style={{ color: "#c0b99a" }} />
+              <p className="text-sm font-medium" style={{ color: "#2e3a20" }}>Unable to load submission</p>
+              <p className="text-xs" style={{ color: "#7a8a64" }}>{(detail as any).message}</p>
+            </div>
           ) : detail ? (
             <div className="flex-1 min-h-0 overflow-y-auto -mx-6 px-6">
               <div className="rounded-lg border overflow-hidden" style={{ borderColor: "#e0ddd6", backgroundColor: "#fff" }}>
