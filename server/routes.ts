@@ -21182,6 +21182,7 @@ IMPORTANT:
         reason: z.string().optional().nullable(),
         priority: z.enum(["routine", "urgent", "stat"]).default("routine"),
         targetDate: z.string().optional().nullable(),
+        notifyDaysBefore: z.number().int().min(0).max(365).optional().nullable(),
         recurrenceMonths: z.number().int().positive().optional().nullable(),
         assignedToUserId: z.number().int().positive().optional().nullable(),
         assignedToStaffId: z.number().int().positive().optional().nullable(),
@@ -21196,15 +21197,31 @@ IMPORTANT:
       if (!parsed.success) return res.status(400).json({ error: "Invalid input", details: parsed.error.format() });
       const { data } = parsed;
       const staffId = sess.staffId ? Number(sess.staffId) : null;
+      // Compute activateOn date and initial status from targetDate + notifyDaysBefore
+      let computedStatus: "active" | "scheduled" = "active";
+      let computedActivateOn: string | null = null;
+      if (data.targetDate) {
+        const notifyDays = data.notifyDaysBefore ?? 3;
+        const target = new Date(data.targetDate + "T00:00:00");
+        const activateDate = new Date(target);
+        activateDate.setDate(activateDate.getDate() - notifyDays);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        activateDate.setHours(0, 0, 0, 0);
+        computedActivateOn = activateDate.toISOString().slice(0, 10);
+        if (activateDate > today) computedStatus = "scheduled";
+      }
+      const { notifyDaysBefore: _notifyDays, ...orderData } = data;
       const order = await (storage as any).createClinicalOrder({
-        ...data,
+        ...orderData,
         clinicId: effectiveClinicId,
         patientId,
         createdByUserId: clinicianId,
         createdByStaffId: staffId,
         // Default ordering provider to the creating clinician if not explicitly set
         orderingProviderUserId: data.orderingProviderUserId ?? clinicianId,
-        status: "active",
+        status: computedStatus,
+        activateOn: computedActivateOn,
         icd10Codes: [],
       });
       res.status(201).json(order);

@@ -1,4 +1,4 @@
-import { eq, ne, desc, asc, ilike, like, or, and, isNull, isNotNull, count, sql, inArray } from "drizzle-orm";
+import { eq, ne, desc, asc, ilike, like, or, and, isNull, isNotNull, count, sql, inArray, lte } from "drizzle-orm";
 import { getSeedAsEntries } from "./medication-seed.js";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
@@ -6768,6 +6768,17 @@ export interface SpruceConversationMessageRow {
 (DbStorage.prototype as any).getActiveClinicalOrders = async function(
   clinicId: number,
 ): Promise<any[]> {
+  // Auto-promote any scheduled orders whose activateOn date has arrived
+  const todayStr = new Date().toISOString().slice(0, 10);
+  await db
+    .update(schema.clinicalOrders)
+    .set({ status: 'active' })
+    .where(and(
+      eq(schema.clinicalOrders.clinicId, clinicId),
+      eq(schema.clinicalOrders.status, 'scheduled'),
+      isNotNull(schema.clinicalOrders.activateOn),
+      lte(schema.clinicalOrders.activateOn, todayStr),
+    ));
   const orders = await db
     .select()
     .from(schema.clinicalOrders)

@@ -58,6 +58,7 @@ interface ClinicalOrderData {
   reason: string | null;
   priority: string;
   targetDate: string | null;
+  activateOn: string | null;
   recurrenceMonths: number | null;
   assignedToUserId: number | null;
   assignedToStaffId: number | null;
@@ -440,6 +441,14 @@ function OrderDetailDrawer({
                 <span>{formatDate(order.targetDate)}</span>
               </div>
             )}
+            {order.status === "scheduled" && order.activateOn && (
+              <div className="flex items-center gap-2 text-sm rounded-md bg-amber-50/60 border border-amber-200/60 dark:bg-amber-950/20 dark:border-amber-800/40 px-2.5 py-1.5">
+                <Clock className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                <span className="text-amber-700 dark:text-amber-400 font-medium text-xs">
+                  Dormant — activates in inbox on {formatDate(order.activateOn)}
+                </span>
+              </div>
+            )}
             {order.recurrenceMonths && (
               <div className="flex items-center gap-2 text-sm">
                 <RotateCcw className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
@@ -718,6 +727,7 @@ function NewOrderDialog({
   const [facilityAddress, setFacilityAddress] = useState("");
   const [reason, setReason] = useState("");
   const [targetDate, setTargetDate] = useState("");
+  const [notifyDaysBefore, setNotifyDaysBefore] = useState("3");
   const [assignedTo, setAssignedTo] = useState("");
   const [orderingProviderId, setOrderingProviderId] = useState<string>("");
   const [recurring, setRecurring] = useState(false);
@@ -756,6 +766,7 @@ function NewOrderDialog({
         reason: reason.trim() || null,
         priority,
         targetDate: targetDate || null,
+        notifyDaysBefore: targetDate ? parseInt(notifyDaysBefore) : undefined,
         recurrenceMonths: recurring ? parseInt(recurrenceMonths) : null,
         assignedToUserId,
         assignedToStaffId,
@@ -776,7 +787,7 @@ function NewOrderDialog({
       // Reset
       setOrderType("referral"); setSubtype(""); setPriority("routine");
       setReferringTo(""); setFacilityFax(""); setFacilityAddress("");
-      setReason(""); setTargetDate(""); setAssignedTo(""); setOrderingProviderId("");
+      setReason(""); setTargetDate(""); setNotifyDaysBefore("3"); setAssignedTo(""); setOrderingProviderId("");
       setRecurring(false); setRecurrenceMonths("12"); setNotes("");
       setDiagnosis(null); setCpt(null);
     },
@@ -871,6 +882,27 @@ function NewOrderDialog({
                   />
                 </div>
               </div>
+              {targetDate && new Date(targetDate + "T00:00:00") > new Date() && (
+                <div className="flex items-center gap-2 rounded-md bg-amber-50/60 border border-amber-200/60 dark:bg-amber-950/20 dark:border-amber-800/40 px-3 py-2">
+                  <Clock className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                  <Label className="text-xs text-amber-700 dark:text-amber-300 font-medium whitespace-nowrap">Activate in inbox</Label>
+                  <Select value={notifyDaysBefore} onValueChange={setNotifyDaysBefore}>
+                    <SelectTrigger className="h-7 text-xs w-36" data-testid="select-notify-days-before">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0">on target date</SelectItem>
+                      <SelectItem value="1">1 day before</SelectItem>
+                      <SelectItem value="2">2 days before</SelectItem>
+                      <SelectItem value="3">3 days before</SelectItem>
+                      <SelectItem value="5">5 days before</SelectItem>
+                      <SelectItem value="7">1 week before</SelectItem>
+                      <SelectItem value="14">2 weeks before</SelectItem>
+                      <SelectItem value="30">1 month before</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label className="text-xs">Facility Address (optional)</Label>
                 <Input
@@ -1035,6 +1067,9 @@ function OrderRow({ order, patientName, onClick }: { order: ClinicalOrderData; p
           {order.priority !== "routine" && (
             <Badge className={cn("text-[10px] px-1.5 py-0", priorityCfg.color)}>{priorityCfg.label}</Badge>
           )}
+          {order.status === "scheduled" && (
+            <Badge className="text-[10px] px-1.5 py-0 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">Scheduled</Badge>
+          )}
         </div>
         <p className="text-xs text-muted-foreground truncate">{order.subtype}{order.referringTo ? ` · ${order.referringTo}` : ""}</p>
       </div>
@@ -1062,6 +1097,7 @@ export function PatientOrdersTab({ patientId, patientName }: { patientId: number
     enabled: !!patientId,
   });
 
+  const scheduled = orders.filter((o) => o.status === "scheduled");
   const active = orders.filter((o) => o.status === "active");
   const completed = orders.filter((o) => o.status === "completed");
   const cancelled = orders.filter((o) => o.status === "cancelled");
@@ -1089,6 +1125,23 @@ export function PatientOrdersTab({ patientId, patientName }: { patientId: number
           <Plus className="w-3.5 h-3.5" /> New Order
         </Button>
       </div>
+
+      {/* Scheduled (dormant) orders */}
+      {scheduled.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5">
+            <Clock className="w-3.5 h-3.5" />
+            {scheduled.length} scheduled — not yet in inbox
+          </p>
+          <Card className="opacity-70">
+            <CardContent className="p-2 space-y-0.5">
+              {scheduled.map((order) => (
+                <OrderRow key={order.id} order={order} onClick={() => setSelectedOrder(order)} />
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Active orders */}
       {active.length === 0 ? (
