@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
@@ -175,6 +175,7 @@ function CollapsibleQueueTile({
   testId,
   isEmpty,
   emptyLabel,
+  autoExpand = false,
   children,
 }: {
   icon: React.ReactNode;
@@ -189,9 +190,17 @@ function CollapsibleQueueTile({
   testId: string;
   isEmpty: boolean;
   emptyLabel: string;
+  autoExpand?: boolean;
   children?: React.ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(true);
+  const didAutoExpand = useRef(false);
+  useEffect(() => {
+    if (autoExpand && !isEmpty && !didAutoExpand.current) {
+      didAutoExpand.current = true;
+      setCollapsed(false);
+    }
+  }, [autoExpand, isEmpty]);
   return (
     <div
       className="rounded-xl overflow-hidden border"
@@ -366,7 +375,7 @@ export default function Dashboard() {
     },
   });
 
-  const { data: pendingSubmissions = [] } = useQuery<PendingSubmissionRow[]>({
+  const { data: pendingSubmissions = [], isLoading: submissionsLoading } = useQuery<PendingSubmissionRow[]>({
     queryKey: ["/api/intake-forms/submissions/pending"],
     staleTime: 0,
     refetchOnMount: "always",
@@ -863,6 +872,10 @@ export default function Dashboard() {
             </CollapsibleQueueTile>
 
             {/* ④ Form Submissions */}
+            {/* DEBUG — remove after confirming data reaches frontend */}
+            <p className="text-[10px] text-muted-foreground px-1 -mb-2" data-testid="debug-pending-submissions-count">
+              Pending form submissions loaded: {pendingSubmissions.length}
+            </p>
             <CollapsibleQueueTile
               icon={<ClipboardList className="w-4 h-4" />}
               label="Form Submissions"
@@ -872,10 +885,11 @@ export default function Dashboard() {
               accentBg="#eef0ff"
               viewAllLabel="View all"
               onViewAll={() => setLocation("/form-submissions")}
-              isLoading={notifLoading}
+              isLoading={submissionsLoading}
               testId="tile-form-submissions"
               isEmpty={pendingSubmissions.length === 0}
               emptyLabel="No pending submissions"
+              autoExpand={true}
             >
               {pendingSubmissions.slice(0, 3).map((sub) => (
                 <div key={`sub-${sub.id}`} data-testid={`notification-submission-${sub.id}`}
