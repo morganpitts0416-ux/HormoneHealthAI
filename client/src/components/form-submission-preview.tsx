@@ -1466,7 +1466,14 @@ export function FormSubmissionPreviewDialog({
   const { toast } = useToast();
   const { data: detail, isLoading } = useQuery<SubmissionDetail>({
     queryKey: ["/api/form-submissions", submissionId],
-    queryFn: () => fetch(`/api/form-submissions/${submissionId}`).then(r => r.json()),
+    queryFn: async () => {
+      const r = await fetch(`/api/form-submissions/${submissionId}`, { credentials: "include" });
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        throw new Error(body.message ?? `HTTP ${r.status}`);
+      }
+      return r.json();
+    },
     enabled: !!submissionId,
   });
 

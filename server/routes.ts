@@ -14305,13 +14305,17 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
     try {
       const clinicId = getEffectiveClinicId(req);
       const clinicianId = getClinicianId(req);
+      const userId = (req.user as any)?.id ?? null;
+      console.log("[DIAG /intake-forms/submissions/all]", { userId, clinicianId, clinicId, sess_staffId: (req.session as any).staffId, sess_activeClinicId: (req.session as any).activeClinicId });
       const submissions = await storage.getFormSubmissionsByClinic(clinicId, clinicianId);
+      console.log("[DIAG /intake-forms/submissions/all] raw count:", submissions.length, "sample clinic_ids:", submissions.slice(0, 3).map((s: any) => ({ id: s.id, clinicId: s.clinicId, clinicianId: s.clinicianId, reviewStatus: s.reviewStatus })));
       const enriched = await Promise.all(submissions.map(async (sub) => {
         const form = await storage.getIntakeFormById(sub.formId);
         return { ...sub, formName: form?.name ?? "Unknown Form" };
       }));
       res.json(enriched);
     } catch (err) {
+      console.error("[DIAG /intake-forms/submissions/all] ERROR:", err);
       res.status(500).json({ message: "Failed to fetch submissions" });
     }
   });
@@ -14321,14 +14325,18 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
     try {
       const clinicId = getEffectiveClinicId(req);
       const clinicianId = getClinicianId(req);
+      const userId = (req.user as any)?.id ?? null;
+      console.log("[DIAG /intake-forms/submissions/pending]", { userId, clinicianId, clinicId, sess_staffId: (req.session as any).staffId, sess_activeClinicId: (req.session as any).activeClinicId });
       const submissions = await storage.getFormSubmissionsByClinic(clinicId, clinicianId);
       const pending = submissions.filter(s => s.reviewStatus === "pending" || s.syncStatus === "not_synced");
+      console.log("[DIAG /intake-forms/submissions/pending] raw count:", submissions.length, "pending count:", pending.length, "sample:", submissions.slice(0, 3).map((s: any) => ({ id: s.id, clinicId: s.clinicId, reviewStatus: s.reviewStatus, syncStatus: s.syncStatus })));
       const enriched = await Promise.all(pending.map(async (sub) => {
         const form = await storage.getIntakeFormById(sub.formId);
         return { ...sub, formName: form?.name ?? "Unknown Form" };
       }));
       res.json(enriched);
     } catch (err) {
+      console.error("[DIAG /intake-forms/submissions/pending] ERROR:", err);
       res.status(500).json({ message: "Failed to fetch pending submissions" });
     }
   });
@@ -15360,20 +15368,32 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       const id = parseInt(req.params.id);
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
+      const userId = (req.user as any)?.id ?? null;
+      console.log("[DIAG /form-submissions/:id] request", { submissionId: id, userId, clinicianId, clinicId, sess_staffId: (req.session as any).staffId });
       const submission = await storage.getFormSubmission(id);
-      if (!submission) return res.status(404).json({ message: "Submission not found" });
+      if (!submission) {
+        console.log("[DIAG /form-submissions/:id] submission not found in DB for id:", id);
+        return res.status(404).json({ message: "Submission not found" });
+      }
+      console.log("[DIAG /form-submissions/:id] submission raw keys:", Object.keys(submission), "clinicId:", (submission as any).clinicId, "clinicianId:", (submission as any).clinicianId, "rawSubmissionJson type:", typeof (submission as any).rawSubmissionJson);
       // Primary checks: direct ownership or same clinic
       const isOwner = submission.clinicianId === clinicianId;
       const isClinicMember = clinicId && (submission as any).clinicId === clinicId;
+      console.log("[DIAG /form-submissions/:id] auth", { isOwner, isClinicMember, submissionClinicId: (submission as any).clinicId, reqClinicId: clinicId, submissionClinicianId: submission.clinicianId, reqClinicianId: clinicianId });
       // Always fetch the form — needed for auth fallback AND for response payload
       const form = await storage.getIntakeFormById(submission.formId);
       if (!isOwner && !isClinicMember) {
         // Fallback: check whether the underlying form belongs to this clinic/clinician
         // (handles submissions where clinic_id was not backfilled yet, or NULL)
-        if (!form) return res.status(404).json({ message: "Submission not found" });
+        if (!form) {
+          console.log("[DIAG /form-submissions/:id] BLOCKED — no form found, id:", submission.formId);
+          return res.status(404).json({ message: "Submission not found" });
+        }
         const formInClinic = clinicId && form.clinicId === clinicId;
         const formOwnedByUser = form.clinicianId === clinicianId;
+        console.log("[DIAG /form-submissions/:id] fallback auth", { formClinicId: form.clinicId, formClinicianId: form.clinicianId, formInClinic, formOwnedByUser });
         if (!formInClinic && !formOwnedByUser) {
+          console.log("[DIAG /form-submissions/:id] BLOCKED — fallback auth denied");
           return res.status(404).json({ message: "Submission not found" });
         }
       }
@@ -15384,8 +15404,11 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       if (submission.patientId) {
         patient = await storage.getPatient(submission.patientId, clinicianId, clinicId);
       }
-      res.json({ ...submission, form, fields, sections, syncEvents, patient: patient ? { id: patient.id, firstName: patient.firstName, lastName: patient.lastName, dateOfBirth: patient.dateOfBirth } : null });
+      const responsePayload = { ...submission, form, fields, sections, syncEvents, patient: patient ? { id: patient.id, firstName: patient.firstName, lastName: patient.lastName, dateOfBirth: patient.dateOfBirth } : null };
+      console.log("[DIAG /form-submissions/:id] response keys:", Object.keys(responsePayload), "rawSubmissionJson type:", typeof responsePayload.rawSubmissionJson, "fields count:", fields.length, "sections count:", sections.length);
+      res.json(responsePayload);
     } catch (err) {
+      console.error("[DIAG /form-submissions/:id] ERROR:", err);
       res.status(500).json({ message: "Failed to fetch submission" });
     }
   });
