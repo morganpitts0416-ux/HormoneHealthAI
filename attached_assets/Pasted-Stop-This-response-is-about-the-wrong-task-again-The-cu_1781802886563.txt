@@ -1,0 +1,36 @@
+Stop. This response is about the wrong task again.
+
+The current bug is NOT medications, demographics, patient_medications, demographics PDF, db:push, or clinical_role.
+
+The current production bug is intake form submissions:
+
+- Dashboard notification box is not showing submitted intake forms.
+- “All Forms” is not showing submitted forms.
+- Patient profile shows the form was submitted.
+- Clicking View opens a blank/empty page.
+
+Production DB has already been verified:
+- form_submissions.clinic_id exists.
+- latest submissions have clinic_id = 10.
+- clinician_id = 12.
+- raw_submission_json and normalized_submission_json are present.
+- user morgan@womenswellnessms.com is id 12 with default_clinic_id = 10.
+- staff rows are active and clinic_id = 10.
+
+You already found relevant issues:
+1. /api/form-submissions/pending is registered AFTER /api/form-submissions/:id, so pending may be shadowed by the wildcard route.
+2. The preview/detail dialog can render blank when the query errors because detail is undefined and no error branch renders.
+3. Storage has a silent catch that may be swallowing the real list-query error.
+4. Need to test GET /api/form-submissions/118 directly.
+
+Please fix ONLY the intake form submission issue.
+
+Required changes:
+1. Move /api/form-submissions/pending ABOVE /api/form-submissions/:id.
+2. Remove or log the silent catch in getFormSubmissionsByClinic so production shows the real error.
+3. Add a clear frontend error state in the submission preview/detail dialog when the query fails or returns invalid data.
+4. Verify the list endpoint for dashboard notifications and All Forms filters by clinic_id = 10 and/or clinician_id = 12 correctly.
+5. Verify GET /api/form-submissions/118 returns a full payload when logged in as morgan@womenswellnessms.com.
+6. Verify the frontend expects the exact response shape returned by the API.
+
+Do not audit or discuss medication/demographics again in this thread. Stay on intake form submissions only.

@@ -14310,8 +14310,12 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       const submissions = await storage.getFormSubmissionsByClinic(clinicId, clinicianId);
       console.log("[DIAG /intake-forms/submissions/all] raw count:", submissions.length, "sample clinic_ids:", submissions.slice(0, 3).map((s: any) => ({ id: s.id, clinicId: s.clinicId, clinicianId: s.clinicianId, reviewStatus: s.reviewStatus })));
       const enriched = await Promise.all(submissions.map(async (sub) => {
-        const form = await storage.getIntakeFormById(sub.formId);
-        return { ...sub, formName: form?.name ?? "Unknown Form" };
+        try {
+          const form = await storage.getIntakeFormById(sub.formId);
+          return { ...sub, formName: form?.name ?? "Unknown Form" };
+        } catch {
+          return { ...sub, formName: "Unknown Form" };
+        }
       }));
       res.json(enriched);
     } catch (err) {
@@ -14331,8 +14335,12 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       const pending = submissions.filter(s => s.reviewStatus === "pending" || s.syncStatus === "not_synced");
       console.log("[DIAG /intake-forms/submissions/pending] raw count:", submissions.length, "pending count:", pending.length, "sample:", submissions.slice(0, 3).map((s: any) => ({ id: s.id, clinicId: s.clinicId, reviewStatus: s.reviewStatus, syncStatus: s.syncStatus })));
       const enriched = await Promise.all(pending.map(async (sub) => {
-        const form = await storage.getIntakeFormById(sub.formId);
-        return { ...sub, formName: form?.name ?? "Unknown Form" };
+        try {
+          const form = await storage.getIntakeFormById(sub.formId);
+          return { ...sub, formName: form?.name ?? "Unknown Form" };
+        } catch {
+          return { ...sub, formName: "Unknown Form" };
+        }
       }));
       res.json(enriched);
     } catch (err) {
@@ -15362,6 +15370,29 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
     }
   });
 
+  // GET /api/form-submissions/pending — clinic-scoped sync queue
+  // NOTE: MUST be registered before /:id so "pending" is not treated as an id param
+  app.get("/api/form-submissions/pending", requireAuth, async (req: any, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      const clinicianId = getClinicianId(req);
+      const submissions = await storage.getFormSubmissionsByClinic(clinicId, clinicianId);
+      const pending = submissions.filter(s => s.reviewStatus === "pending" || s.syncStatus === "not_synced");
+      const enriched = await Promise.all(pending.map(async (sub) => {
+        try {
+          const form = await storage.getIntakeFormById(sub.formId);
+          return { ...sub, formName: form?.name ?? "Unknown Form" };
+        } catch {
+          return { ...sub, formName: "Unknown Form" };
+        }
+      }));
+      res.json(enriched);
+    } catch (err) {
+      console.error("[/api/form-submissions/pending] ERROR:", err);
+      res.status(500).json({ message: "Failed to fetch pending submissions" });
+    }
+  });
+
   // GET /api/form-submissions/:id
   app.get("/api/form-submissions/:id", requireAuth, async (req: any, res) => {
     try {
@@ -15784,24 +15815,6 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       res.status(500).json({ message: "Sync failed", error: err.message });
     }
   });
-
-  // GET /api/form-submissions/pending — clinic-scoped sync queue
-  app.get("/api/form-submissions/pending", requireAuth, async (req: any, res) => {
-    try {
-      const clinicId = getEffectiveClinicId(req);
-      const clinicianId = getClinicianId(req);
-      const submissions = await storage.getFormSubmissionsByClinic(clinicId, clinicianId);
-      const pending = submissions.filter(s => s.reviewStatus === "pending" || s.syncStatus === "not_synced");
-      const enriched = await Promise.all(pending.map(async (sub) => {
-        const form = await storage.getIntakeFormById(sub.formId);
-        return { ...sub, formName: form?.name ?? "Unknown Form" };
-      }));
-      res.json(enriched);
-    } catch (err) {
-      res.status(500).json({ message: "Failed to fetch pending submissions" });
-    }
-  });
-
 
   // PATCH /api/form-submissions/:id/reassign — reassign to different patient (all staff + providers)
   app.patch("/api/form-submissions/:id/reassign", requireAuth, async (req: any, res) => {

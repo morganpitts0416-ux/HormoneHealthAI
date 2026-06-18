@@ -1464,7 +1464,7 @@ export function FormSubmissionPreviewDialog({
 }) {
   const [syncReviewOpen, setSyncReviewOpen] = useState(false);
   const { toast } = useToast();
-  const { data: detail, isLoading } = useQuery<SubmissionDetail>({
+  const { data: detail, isLoading, isError, error } = useQuery<SubmissionDetail>({
     queryKey: ["/api/form-submissions", submissionId],
     queryFn: async () => {
       const r = await fetch(`/api/form-submissions/${submissionId}`, { credentials: "include" });
@@ -1548,11 +1548,11 @@ export function FormSubmissionPreviewDialog({
             <div className="flex items-center justify-center py-16">
               <Loader2 className="h-6 w-6 animate-spin" style={{ color: "#7a8a64" }} />
             </div>
-          ) : detail && !detail.form && (detail as any).message ? (
+          ) : isError ? (
             <div className="flex flex-col items-center justify-center py-16 gap-3">
               <FileText className="h-10 w-10" style={{ color: "#c0b99a" }} />
               <p className="text-sm font-medium" style={{ color: "#2e3a20" }}>Unable to load submission</p>
-              <p className="text-xs" style={{ color: "#7a8a64" }}>{(detail as any).message}</p>
+              <p className="text-xs" style={{ color: "#7a8a64" }}>{(error as Error)?.message ?? "Unknown error"}</p>
             </div>
           ) : detail ? (
             <div className="flex-1 min-h-0 overflow-y-auto -mx-6 px-6">
@@ -1628,6 +1628,26 @@ export function FormSubmissionPreviewDialog({
                       </div>
                     );
                   })}
+
+                  {/* Fallback: render rawSubmissionJson when no structured fields exist */}
+                  {sortedFields.length === 0 && Object.keys(data).length > 0 && (
+                    <div className="space-y-2">
+                      {Object.entries(data).map(([key, val]) => (
+                        <div key={key} className="flex gap-3 text-sm">
+                          <span className="font-medium min-w-[140px] flex-shrink-0" style={{ color: "#2e3a20" }}>
+                            {key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
+                          </span>
+                          <span style={{ color: "#4a5568" }}>
+                            {typeof val === "object" ? JSON.stringify(val) : String(val ?? "")}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {sortedFields.length === 0 && Object.keys(data).length === 0 && (
+                    <p className="text-sm text-center py-4" style={{ color: "#a0a880" }}>No form responses recorded</p>
+                  )}
                 </div>
 
                 {detail.syncEvents?.length > 0 && (

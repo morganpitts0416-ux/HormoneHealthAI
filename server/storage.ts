@@ -3054,7 +3054,8 @@ export class DbStorage implements IStorage {
       try {
         const result = await db.execute(sql`SELECT * FROM form_submissions WHERE clinic_id = ${clinicId} OR clinician_id = ${clinicianId} ORDER BY submitted_at DESC`);
         return rawRows(result) as schema.FormSubmission[];
-      } catch {
+      } catch (err) {
+        console.error("[storage] getFormSubmissionsByClinic primary query error — falling back to clinician-only query:", err);
         return this.getFormSubmissionsByClinician(clinicianId);
       }
     }
