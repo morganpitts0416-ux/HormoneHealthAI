@@ -80,6 +80,42 @@ function maybeNewPage(doc: jsPDF, y: number, logoBase64?: string | null, clinicN
   return y;
 }
 
+// Render a titled bullet-list section. Returns updated y.
+function drawBulletSection(
+  doc: jsPDF,
+  title: string,
+  items: string[],
+  dy: number,
+  primaryColor: string,
+  bulletColor = '#111827',
+  emptyLabel?: string,
+): number {
+  const clean = items.filter(Boolean);
+  if (clean.length === 0 && !emptyLabel) return dy;
+  dy = maybeNewPage(doc, dy);
+  dy = drawSectionHeader(doc, title, dy, primaryColor);
+  if (clean.length === 0 && emptyLabel) {
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(8);
+    doc.setTextColor('#9ca3af');
+    doc.text(sanitize(emptyLabel), MARGIN + 4, dy);
+    dy += 6;
+    return dy;
+  }
+  for (const item of clean) {
+    dy = maybeNewPage(doc, dy);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(bulletColor);
+    doc.text('\u2022', MARGIN + 2, dy);
+    const wrapped = doc.splitTextToSize(sanitize(item), CONTENT_W - 10);
+    doc.text(wrapped, MARGIN + 8, dy);
+    dy += wrapped.length * 4.8 + 1.2;
+  }
+  dy += 5;
+  return dy;
+}
+
 // ── Types ──────────────────────────────────────────────────────────────────────
 export interface DemographicsPatient {
   firstName: string;
@@ -118,6 +154,11 @@ export interface DemographicsPdfOptions {
   branding?: PartialBranding | null;
   structuredMeds?: PatientMedication[];
   legacyMeds?: string[];
+  medicalHistory?: string[];
+  allergies?: string[];
+  surgicalHistory?: string[];
+  familyHistory?: string[];
+  socialHistory?: string[];
 }
 
 // ── Main Generator ─────────────────────────────────────────────────────────────
@@ -273,6 +314,53 @@ export async function generateDemographicsPDF(opts: DemographicsPdfOptions): Pro
     }
     dy += 8;
   }
+
+  // ── Medical History / Current Diagnoses ───────────────────────────────────
+  dy = drawBulletSection(
+    doc,
+    'MEDICAL HISTORY & CURRENT DIAGNOSES',
+    opts.medicalHistory ?? [],
+    dy,
+    resolved.primaryColor,
+    '#111827',
+    'None on file',
+  );
+
+  // ── Allergies & Sensitivities ──────────────────────────────────────────────
+  {
+    const allergyItems = opts.allergies ?? [];
+    dy = maybeNewPage(doc, dy);
+    dy = drawSectionHeader(doc, 'ALLERGIES & SENSITIVITIES', dy, resolved.primaryColor);
+    if (allergyItems.filter(Boolean).length === 0) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor('#065f46');
+      doc.text('NKDA — No Known Drug Allergies', MARGIN + 4, dy);
+      dy += 6;
+    } else {
+      for (const item of allergyItems.filter(Boolean)) {
+        dy = maybeNewPage(doc, dy);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.setTextColor('#991b1b');
+        doc.text('\u26A0', MARGIN + 2, dy);
+        const wrapped = doc.splitTextToSize(sanitize(item), CONTENT_W - 10);
+        doc.setTextColor('#111827');
+        doc.text(wrapped, MARGIN + 8, dy);
+        dy += wrapped.length * 4.8 + 1.2;
+      }
+      dy += 5;
+    }
+  }
+
+  // ── Surgical History ───────────────────────────────────────────────────────
+  dy = drawBulletSection(
+    doc,
+    'SURGICAL HISTORY',
+    opts.surgicalHistory ?? [],
+    dy,
+    resolved.primaryColor,
+  );
 
   // ── Structured Medications ─────────────────────────────────────────────────
   const activeMeds = (opts.structuredMeds ?? []).filter(m => m.status === 'active');

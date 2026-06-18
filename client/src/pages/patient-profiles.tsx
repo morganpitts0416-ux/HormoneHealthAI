@@ -4048,6 +4048,9 @@ export default function PatientProfiles() {
                           branding: clinicBranding,
                           structuredMeds,
                           legacyMeds: (patientChart?.currentMedications as string[] | null) ?? [],
+                          medicalHistory: (patientChart?.medicalHistory as string[] | null) ?? [],
+                          allergies: (patientChart?.allergies as string[] | null) ?? [],
+                          surgicalHistory: (patientChart?.surgicalHistory as string[] | null) ?? [],
                         });
                       } catch (e) {
                         console.error("[Demographics PDF]", e);
