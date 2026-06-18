@@ -3052,7 +3052,25 @@ export class DbStorage implements IStorage {
   async getFormSubmissionsByClinic(clinicId: number | null, clinicianId: number): Promise<schema.FormSubmission[]> {
     if (clinicId) {
       try {
-        const result = await db.execute(sql`SELECT * FROM form_submissions WHERE clinic_id = ${clinicId} OR clinician_id = ${clinicianId} ORDER BY submitted_at DESC`);
+        // Three ways a submission belongs to this clinic:
+        // 1. clinic_id matches directly (new submissions)
+        // 2. clinician_id matches the logged-in user (legacy single-tenant submissions)
+        // 3. patient_id belongs to a patient in this clinic (covers portal submissions
+        //    created before clinic_id was backfilled on form_submissions)
+        const result = await db.execute(sql`
+          SELECT DISTINCT fs.*
+          FROM form_submissions fs
+          WHERE fs.clinic_id = ${clinicId}
+             OR fs.clinician_id = ${clinicianId}
+             OR (
+               fs.patient_id IS NOT NULL
+               AND EXISTS (
+                 SELECT 1 FROM patients p
+                 WHERE p.id = fs.patient_id AND p.clinic_id = ${clinicId}
+               )
+             )
+          ORDER BY fs.submitted_at DESC
+        `);
         return rawRows(result) as schema.FormSubmission[];
       } catch (err) {
         console.error("[storage] getFormSubmissionsByClinic primary query error — falling back to clinician-only query:", err);
