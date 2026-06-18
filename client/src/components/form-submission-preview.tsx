@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, Component } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -114,6 +114,46 @@ function sanitizeForPdf(text: string): string {
 }
 
 const DECORATIVE_TYPES = new Set(["heading", "paragraph", "divider", "section_break", "spacer"]);
+
+// Per-field error boundary — catches React render errors from individual fields so one bad
+// field type or unexpected value shape never blanks the entire submission preview.
+class FieldCellBoundary extends Component<
+  { field: SubmissionField; value: unknown; children: React.ReactNode },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(error: Error) {
+    console.error("[FieldCellBoundary] field render error", {
+      fieldId: this.props.field.id,
+      fieldKey: this.props.field.fieldKey,
+      fieldType: this.props.field.fieldType,
+      valueType: typeof this.props.value,
+      value: this.props.value,
+      error,
+    });
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div
+          className="rounded-md px-2.5 py-1.5"
+          style={{ backgroundColor: "#fff5f5", border: "1px solid #fca5a5" }}
+        >
+          <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#b91c1c" }}>
+            {this.props.field.label}
+          </p>
+          <pre className="text-[10px] break-all whitespace-pre-wrap mt-0.5" style={{ color: "#7f1d1d" }}>
+            {typeof this.props.value === "object"
+              ? JSON.stringify(this.props.value, null, 2)
+              : String(this.props.value ?? "")}
+          </pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function isDataField(field: SubmissionField): boolean {
   return !DECORATIVE_TYPES.has(field.fieldType);
@@ -316,7 +356,7 @@ async function generateSubmissionPdf(detail: SubmissionDetail, clinic: ClinicInf
 
   const sortedSections = [...(detail.sections ?? [])].sort((a, b) => a.orderIndex - b.orderIndex);
   const sortedFields = [...(detail.fields ?? [])].sort((a, b) => a.orderIndex - b.orderIndex);
-  const unsectionedFields = sortedFields.filter(f => !f.sectionId);
+  const unsectionedFields = sortedSections.length === 0 ? sortedFields : sortedFields.filter(f => !f.sectionId);
   const data = detail.rawSubmissionJson ?? {};
 
   // Identify fields with option lists so we can render bullets for every option (selected or not)
@@ -1156,11 +1196,13 @@ function PreviewFieldGroup({ fields, data, signatureFallback }: { fields: Submis
                   ? (value.filter(v => v !== undefined && v !== null && String(v).trim() !== "").join(", ") || "—")
                   : typeof value === "boolean"
                     ? (value ? "Yes" : "No")
-                    : String(value);
+                    : (typeof value === "object" && value !== null)
+                      ? JSON.stringify(value)
+                      : String(value ?? "");
 
             return (
+              <FieldCellBoundary key={field.id} field={field} value={value}>
               <div
-                key={field.id}
                 className="rounded-md px-2.5 py-1.5"
                 style={{
                   flex: `0 0 ${widthCalc}`,
@@ -1249,12 +1291,29 @@ function PreviewFieldGroup({ fields, data, signatureFallback }: { fields: Submis
                   </ul>
                 ) : isList ? (
                   <ul className="text-sm mt-0.5 space-y-0.5" style={{ color: "#1c2414" }}>
-                    {(value as string[]).filter(Boolean).map((item: string, ii: number) => (
-                      <li key={ii} className="flex items-start gap-1.5">
-                        <span className="text-muted-foreground mt-1">-</span>
-                        <span className="break-words">{item}</span>
-                      </li>
-                    ))}
+                    {(value as any[]).filter(Boolean).map((item: any, ii: number) => {
+                      let label: string;
+                      if (typeof item === "object" && item !== null) {
+                        if (field.fieldType === "medication_list") {
+                          label = [
+                            item.drugName,
+                            item.strength && item.strengthUnit ? `${item.strength} ${item.strengthUnit}` : item.strength,
+                            item.form,
+                            item.sig ? `— ${item.sig}` : null,
+                          ].filter(Boolean).join(" ") || JSON.stringify(item);
+                        } else {
+                          label = JSON.stringify(item);
+                        }
+                      } else {
+                        label = String(item ?? "");
+                      }
+                      return (
+                        <li key={ii} className="flex items-start gap-1.5">
+                          <span className="text-muted-foreground mt-1">-</span>
+                          <span className="break-words">{label}</span>
+                        </li>
+                      );
+                    })}
                   </ul>
                 ) : isFamChart ? (
                   <div className="text-sm mt-0.5 space-y-0.5" style={{ color: "#1c2414" }}>
@@ -1274,6 +1333,7 @@ function PreviewFieldGroup({ fields, data, signatureFallback }: { fields: Submis
                   </p>
                 )}
               </div>
+              </FieldCellBoundary>
             );
           })}
         </div>
