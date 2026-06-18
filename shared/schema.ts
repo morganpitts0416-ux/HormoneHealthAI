@@ -617,6 +617,9 @@ export const users = pgTable("users", {
   // Clinic branding & provider signature — stored as base64 data URLs
   clinicLogo: text("clinic_logo"),
   signatureImage: text("signature_image"),
+  // Legacy clinical-role field kept for backward compat; authoritative value is
+  // clinicMemberships.clinicalRole. Column is read by clinic-users endpoint.
+  clinicalRole: varchar("clinical_role", { length: 50 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

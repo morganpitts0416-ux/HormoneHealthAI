@@ -1,5 +1,5 @@
 import { Switch, Route, useLocation } from "wouter";
-import { useEffect } from "react";
+import { useEffect, Component } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useIsMutating } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -221,6 +221,51 @@ function AdminRoute({ component: Component }: { component: React.ComponentType }
   );
 }
 
+// ── Top-level error boundary ──────────────────────────────────────────────────
+// Catches any unhandled React render error so it shows a diagnostic instead of
+// a blank white screen. Remove once the root cause is confirmed and fixed.
+class AppErrorBoundary extends Component<
+  { children: React.ReactNode },
+  { error: Error | null; info: string }
+> {
+  state: { error: Error | null; info: string } = { error: null, info: "" };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(error: Error, info: { componentStack: string }) {
+    console.error("[AppErrorBoundary] caught:", error, info.componentStack);
+    this.setState({ info: info.componentStack ?? "" });
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{
+          minHeight: "100vh", backgroundColor: "#1a0000", color: "#ff6b6b",
+          fontFamily: "monospace", padding: 32, overflowY: "auto",
+        }}>
+          <div style={{ fontSize: 18, fontWeight: "bold", marginBottom: 12 }}>
+            ⚠ APP ERROR BOUNDARY — React render crash
+          </div>
+          <div style={{ backgroundColor: "#2a0000", padding: 16, borderRadius: 6, marginBottom: 16, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+            <strong>{this.state.error.name}:</strong> {this.state.error.message}
+          </div>
+          <div style={{ fontSize: 11, color: "#ff9999", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+            {this.state.error.stack}
+          </div>
+          <div style={{ fontSize: 11, color: "#ffaa66", marginTop: 16, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+            <strong>Component stack:</strong>{"\n"}{this.state.info}
+          </div>
+          <button
+            onClick={() => this.setState({ error: null, info: "" })}
+            style={{ marginTop: 24, padding: "8px 20px", backgroundColor: "#500", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}
+          >
+            Try to recover
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function RootRedirect() {
   const { user, isLoading } = useAuth();
   const [, setLocation] = useLocation();
@@ -385,7 +430,9 @@ function App() {
                 <FaviconSpinner />
                 <GlobalLoadingOverlay />
                 <Toaster />
-                <Router />
+                <AppErrorBoundary>
+                  <Router />
+                </AppErrorBoundary>
               </TourProvider>
             </TooltipProvider>
           </SoapNoteContextProvider>
