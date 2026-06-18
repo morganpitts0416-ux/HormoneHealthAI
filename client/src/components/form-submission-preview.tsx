@@ -1563,10 +1563,6 @@ export function FormSubmissionPreviewDialog({
     <>
       <Dialog open={!!submissionId && !syncReviewOpen} onOpenChange={(v) => { if (!v) onClose(); }}>
         <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col" data-testid="dialog-submission-preview">
-          {/* ── TEMP DIAGNOSTIC ── remove once blank-dialog bug is confirmed fixed ── */}
-          <div style={{ background: "#dc2626", color: "#fff", fontFamily: "monospace", fontSize: 11, padding: "4px 12px", flexShrink: 0 }}>
-            FSP-DIALOG-LOADED · build:2026-06-18b · id:{detail?.id ?? "loading"} · fields:{sortedFields.length} · sections:{sortedSections.length} · unsectioned:{unsectionedFields.length} · rawKeys:{Object.keys(data).length}
-          </div>
           <DialogHeader className="flex-shrink-0">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div className="flex items-center gap-2">
@@ -1674,11 +1670,6 @@ export function FormSubmissionPreviewDialog({
                       {detail.syncStatus === "synced" ? "Synced" : "Not synced"}
                     </Badge>
                   </div>
-                </div>
-
-                {/* TEMP DEBUG — remove after production verified */}
-                <div className="px-5 py-2 text-[10px] font-mono" style={{ backgroundColor: "#fffbea", borderBottom: "1px solid #e5d87a", color: "#5a4a00" }}>
-                  id:{detail.id} | fields:{sortedFields.length} | sections:{sortedSections.length} | unsectioned:{unsectionedFields.length} | rawKeys:{Object.keys(data).length}
                 </div>
 
                 <div className="px-5 py-4 space-y-4">

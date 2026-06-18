@@ -2982,10 +2982,6 @@ function FormSubmissionsPanel({ formId }: { formId: number }) {
             {/* Expanded detail */}
             {selectedSub === sub.id && subDetail && (
               <div className="mt-4 border-t pt-4 space-y-3">
-                {/* ── TEMP DIAGNOSTIC ── remove once blank-view bug is confirmed fixed ── */}
-                <div style={{ background: "#7c3aed", color: "#fff", fontFamily: "monospace", fontSize: 11, padding: "4px 8px", borderRadius: 4 }}>
-                  IFS-INLINE-VIEW · build:2026-06-18b · id:{subDetail.id} · fields:{subDetail.fields?.length ?? 0} · rawKeys:{Object.keys(subDetail.rawSubmissionJson ?? {}).length}
-                </div>
                 {subDetail.fields?.map((field: FormField) => {
                   const raw = subDetail.rawSubmissionJson as Record<string, unknown> | null ?? {};
                   // rawSubmissionJson may key by fieldKey (e.g. "first_name") OR by string field id (e.g. "42")

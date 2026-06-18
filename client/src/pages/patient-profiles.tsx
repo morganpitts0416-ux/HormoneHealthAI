@@ -5853,10 +5853,7 @@ export default function PatientProfiles() {
                                   size="sm"
                                   variant="outline"
                                   className="text-xs gap-1"
-                                  onClick={() => {
-                                    console.log("[VIEW-SUB-CLICK] id:", sub.id, "form:", sub.formName, "previewSubId before:", previewSubId);
-                                    setPreviewSubId(sub.id);
-                                  }}
+                                  onClick={() => setPreviewSubId(sub.id)}
                                   data-testid={`button-view-submission-${sub.id}`}
                                 >
                                   <Eye className="h-3 w-3" />
