@@ -3069,6 +3069,11 @@ export class DbStorage implements IStorage {
                  WHERE p.id = fs.patient_id AND p.clinic_id = ${clinicId}
                )
              )
+             OR EXISTS (
+               SELECT 1 FROM intake_forms f
+               WHERE f.id = fs.form_id
+                 AND (f.clinic_id = ${clinicId} OR f.clinician_id = ${clinicianId})
+             )
           ORDER BY fs.submitted_at DESC
         `);
         return rawRows(result) as schema.FormSubmission[];
