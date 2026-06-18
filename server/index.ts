@@ -31,10 +31,13 @@ async function cleanupObjectObjectChartEntries(): Promise<void> {
     for (const col of COLS) {
       const res = await pool.query(`
         UPDATE patient_charts
-        SET ${col} = (
-          SELECT jsonb_agg(elem)
-          FROM jsonb_array_elements_text(${col}) AS elem
-          WHERE elem NOT LIKE '%[object Object]%'
+        SET ${col} = COALESCE(
+          (
+            SELECT jsonb_agg(elem)
+            FROM jsonb_array_elements_text(${col}) AS elem
+            WHERE elem NOT LIKE '%[object Object]%'
+          ),
+          '[]'::jsonb
         )
         WHERE ${col}::text LIKE '%[object Object]%'
           AND jsonb_typeof(${col}) = 'array'
