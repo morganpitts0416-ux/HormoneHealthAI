@@ -325,6 +325,8 @@ export default function Dashboard() {
 
   const { data: notifications, isLoading: notifLoading } = useQuery<NotificationsData>({
     queryKey: ["/api/clinician/notifications"],
+    staleTime: 0,
+    refetchOnMount: "always",
     refetchInterval: 20 * 1000,
   });
 
@@ -366,6 +368,8 @@ export default function Dashboard() {
 
   const { data: pendingSubmissions = [] } = useQuery<PendingSubmissionRow[]>({
     queryKey: ["/api/intake-forms/submissions/pending"],
+    staleTime: 0,
+    refetchOnMount: "always",
     refetchInterval: 30 * 1000,
   });
 

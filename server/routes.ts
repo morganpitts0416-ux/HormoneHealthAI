@@ -2421,14 +2421,19 @@ Rules:
   // workflow requests.  All surfaced in the dashboard widget.
   app.get("/api/clinician/notifications", requireAuth, async (req, res) => {
     try {
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
+      const userId = (req as any).user?.id;
       const [unreadMessages, pendingOrders, pendingRefillRequests, pendingSpruceRequests] = await Promise.all([
         storage.getUnreadMessageSummaryForClinician(clinicianId),
         storage.getPendingOrdersForClinician(clinicianId),
         storage.getPendingRefillRequestsForClinician(clinicianId, clinicId ?? null),
         clinicId ? storage.getPendingSpruceWorkflowRequests(clinicId) : Promise.resolve([]),
       ]);
+      console.log(`[clinician-notifications] userId=${userId} clinicianId=${clinicianId} clinicId=${clinicId} unreadMessages=${unreadMessages?.length ?? 0} pendingOrders=${pendingOrders?.length ?? 0} pendingRefills=${pendingRefillRequests?.length ?? 0} pendingSpruce=${pendingSpruceRequests?.length ?? 0}`);
       res.json({ unreadMessages, pendingOrders, pendingRefillRequests, pendingSpruceRequests });
     } catch (error) {
       console.error("Clinician notifications error:", error);
@@ -14325,10 +14330,15 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
   // GET /api/intake-forms/submissions/pending — all clinic submissions (all staff + providers)
   app.get("/api/intake-forms/submissions/pending", requireAuth, async (req: any, res) => {
     try {
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
       const clinicId = getEffectiveClinicId(req);
       const clinicianId = getClinicianId(req);
+      const userId = (req as any).user?.id;
       const submissions = await storage.getFormSubmissionsByClinic(clinicId, clinicianId);
       const pending = submissions.filter(s => s.reviewStatus === "pending" || s.syncStatus === "not_synced");
+      console.log(`[pending-submissions] userId=${userId} clinicianId=${clinicianId} clinicId=${clinicId} totalFromDB=${submissions.length} pendingAfterFilter=${pending.length} firstIds=${pending.slice(0,5).map(s=>`${s.id}(rv=${s.reviewStatus},sy=${s.syncStatus})`).join(",")}`);
       const enriched = await Promise.all(pending.map(async (sub) => {
         try {
           const form = await storage.getIntakeFormById(sub.formId);
