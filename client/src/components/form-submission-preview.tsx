@@ -1492,7 +1492,11 @@ export function FormSubmissionPreviewDialog({
 
   const sortedSections = [...(detail?.sections ?? [])].sort((a, b) => a.orderIndex - b.orderIndex);
   const sortedFields = [...(detail?.fields ?? [])].sort((a, b) => a.orderIndex - b.orderIndex);
-  const unsectionedFields = sortedFields.filter(f => !f.sectionId);
+  // If the sections array is empty but fields have sectionIds (sections were removed or
+  // never returned), treat every field as unsectioned so the content actually renders.
+  const unsectionedFields = sortedSections.length === 0
+    ? sortedFields
+    : sortedFields.filter(f => !f.sectionId);
   const data = detail?.rawSubmissionJson ?? {};
 
   return (
@@ -1606,6 +1610,11 @@ export function FormSubmissionPreviewDialog({
                       {detail.syncStatus === "synced" ? "Synced" : "Not synced"}
                     </Badge>
                   </div>
+                </div>
+
+                {/* TEMP DEBUG — remove after production verified */}
+                <div className="px-5 py-2 text-[10px] font-mono" style={{ backgroundColor: "#fffbea", borderBottom: "1px solid #e5d87a", color: "#5a4a00" }}>
+                  id:{detail.id} | fields:{sortedFields.length} | sections:{sortedSections.length} | unsectioned:{unsectionedFields.length} | rawKeys:{Object.keys(data).length}
                 </div>
 
                 <div className="px-5 py-4 space-y-4">
