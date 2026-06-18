@@ -10,6 +10,7 @@ import { execFile } from "child_process";
 import multer from "multer";
 import OpenAI from "openai";
 import { z } from "zod";
+import * as schema from "@shared/schema";
 import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable, clinicProviderInvites, patientFormAssignments, clinicalEncounters, patients as patientsTable, insertAppointmentTypeSchema, insertProviderAvailabilitySchema, insertCalendarBlockSchema, insertPatientVitalSchema, insertVitalsMonitoringEpisodeSchema, PATIENT_DOCUMENT_CATEGORIES, type PatientDocumentCategory, chartReviewCollaborators, chartReviewAgreements, type InsertNoteTemplate, updateClinicalBlockDefaultsSchema, insertEncounterTemplateSchema, clinicianStaff } from "@shared/schema";
 import { eq, and, sql, desc, isNull, isNotNull, or, ilike, inArray } from "drizzle-orm";
 import { ClinicalLogicEngine } from "./clinical-logic";
