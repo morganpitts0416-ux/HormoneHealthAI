@@ -72,6 +72,7 @@ export default function FemaleLabInterpretation() {
   }, [setCurrentPatient]);
   const [selectedSupplementNames, setSelectedSupplementNames] = useState<Set<string>>(new Set());
   const [customSupplements, setCustomSupplements] = useState<CustomSupplement[]>([]);
+  const [savedLabId, setSavedLabId] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasPrefilledBmiRef = useRef(false);
   const { toast } = useToast();
@@ -98,7 +99,7 @@ export default function FemaleLabInterpretation() {
         demographics: {
           ...(prev.demographics ?? {}),
           bmi: lastBmi,
-        },
+        } as FemaleLabValues['demographics'],
       }));
     }
   }, [selectedPatient?.id, patientLabs]);
@@ -154,6 +155,7 @@ export default function FemaleLabInterpretation() {
           // for a background refetch. The server returns the full LabResult
           // object, so this data is complete.
           if (saved?.id) {
+            setSavedLabId(saved.id);
             queryClient.setQueryData(
               ['/api/patients', pid, 'labs'],
               (old: any[] | undefined) => {
@@ -557,13 +559,13 @@ export default function FemaleLabInterpretation() {
                           ...baseDemographics,
                           ...(bpEntry ? { systolicBP: bpEntry.systolicBp } : {}),
                           ...(bmiEntry ? { bmi: parseFloat(bmiEntry.bmi) } : {}),
-                        },
+                        } as FemaleLabValues['demographics'],
                       });
                     })
                     .catch(() => {
                       setLabValues({
                         patientName: `${patient.firstName} ${patient.lastName}`,
-                        demographics: baseDemographics,
+                        demographics: baseDemographics as FemaleLabValues['demographics'],
                       });
                     });
                 } else {
@@ -767,8 +769,6 @@ export default function FemaleLabInterpretation() {
                 <PatientSummary
                   summary={interpretationResult.patientSummary}
                   labValues={labValues as any}
-                  labId={savedLabId}
-                  patientId={selectedPatient?.id ?? null}
                 />
 
                 {/* 10. SOAP Note */}
