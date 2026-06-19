@@ -375,7 +375,7 @@ export default function Dashboard() {
     },
   });
 
-  const { data: pendingSubmissions = [], isLoading: submissionsLoading } = useQuery<PendingSubmissionRow[]>({
+  const { data: pendingSubmissions = [], isLoading: submissionsLoading, error: submissionsError } = useQuery<PendingSubmissionRow[]>({
     queryKey: ["/api/intake-forms/submissions/pending"],
     queryFn: async () => {
       const res = await fetch("/api/intake-forms/submissions/pending", {
@@ -882,10 +882,6 @@ export default function Dashboard() {
             </CollapsibleQueueTile>
 
             {/* ④ Form Submissions */}
-            {/* DEBUG — remove after confirming data reaches frontend */}
-            <p className="text-[10px] text-muted-foreground px-1 -mb-2" data-testid="debug-pending-submissions-count">
-              Pending form submissions loaded: {pendingSubmissions.length}
-            </p>
             <CollapsibleQueueTile
               icon={<ClipboardList className="w-4 h-4" />}
               label="Form Submissions"
@@ -931,6 +927,11 @@ export default function Dashboard() {
 
 
           </div>
+
+          {/* DEBUG — remove once form submissions display is confirmed */}
+          <p className="text-[10px] text-muted-foreground mt-1" data-testid="debug-pending-submissions-count">
+            Form submissions: {submissionsLoading ? "loading…" : submissionsError ? `ERROR — ${(submissionsError as Error).message}` : `${pendingSubmissions.length} pending`}
+          </p>
         </div>
 
         {/* ── Active Orders & Referrals ────────────────────────────── */}
