@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
@@ -375,22 +375,41 @@ export default function Dashboard() {
     },
   });
 
-  const { data: pendingSubmissions = [], isLoading: submissionsLoading, error: submissionsError } = useQuery<PendingSubmissionRow[]>({
-    queryKey: ["/api/intake-forms/submissions/pending"],
-    queryFn: async () => {
+  // ── Pending form submissions — bypasses TanStack cache entirely so the
+  // endpoint is always called on mount regardless of global staleTime:Infinity.
+  const [pendingSubmissions, setPendingSubmissions] = useState<PendingSubmissionRow[]>([]);
+  const [submissionsLoading, setSubmissionsLoading] = useState(true);
+  const [submissionsError, setSubmissionsError] = useState<Error | null>(null);
+  const [pendingQueryMounted, setPendingQueryMounted] = useState(false);
+  const [pendingFetchCount, setPendingFetchCount] = useState(0);
+
+  const fetchPendingSubmissions = useCallback(async () => {
+    setSubmissionsLoading(true);
+    setSubmissionsError(null);
+    setPendingFetchCount(c => c + 1);
+    try {
       const res = await fetch("/api/intake-forms/submissions/pending", {
         credentials: "include",
         cache: "no-store",
-        headers: { "Cache-Control": "no-cache" },
+        headers: { "Cache-Control": "no-cache", "Pragma": "no-cache" },
       });
-      if (!res.ok) throw new Error(`${res.status}`);
-      return res.json();
-    },
-    staleTime: 0,
-    gcTime: 0,
-    refetchOnMount: "always",
-    refetchInterval: 30 * 1000,
-  });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setPendingSubmissions(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      setSubmissionsError(err instanceof Error ? err : new Error(String(err)));
+      setPendingSubmissions([]);
+    } finally {
+      setSubmissionsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    setPendingQueryMounted(true);
+    fetchPendingSubmissions();
+    const interval = setInterval(fetchPendingSubmissions, 30_000);
+    return () => clearInterval(interval);
+  }, [fetchPendingSubmissions]);
 
   const markReviewedMutation = useMutation({
     mutationFn: async (submissionId: number) => {
@@ -398,7 +417,7 @@ export default function Dashboard() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/intake-forms/submissions/pending"] });
+      fetchPendingSubmissions();
       queryClient.invalidateQueries({ queryKey: ["/api/intake-forms/submissions/all"] });
     },
   });
@@ -928,10 +947,16 @@ export default function Dashboard() {
 
           </div>
 
-          {/* DEBUG — remove once form submissions display is confirmed */}
-          <p className="text-[10px] text-muted-foreground mt-1" data-testid="debug-pending-submissions-count">
-            Form submissions: {submissionsLoading ? "loading…" : submissionsError ? `ERROR — ${(submissionsError as Error).message}` : `${pendingSubmissions.length} pending`}
-          </p>
+          {/* ═══ DASHBOARD DEBUG — remove once confirmed ═══ */}
+          <div className="mt-2 p-2 rounded border border-amber-400 bg-amber-50 text-[10px] font-mono space-y-0.5" data-testid="debug-submissions-block">
+            <p className="font-bold text-amber-800">*** DASHBOARD DEBUG ACTIVE ***</p>
+            <p>pending query mounted: <span className="font-bold">{pendingQueryMounted ? "yes" : "no"}</span></p>
+            <p>pending fetch count: <span className="font-bold">{pendingFetchCount}</span></p>
+            <p>pending query status: <span className="font-bold">{submissionsLoading ? "loading" : submissionsError ? `error: ${submissionsError.message}` : "success"}</span></p>
+            <p>pending query row count: <span className="font-bold">{pendingSubmissions.length}</span></p>
+            <p>pending first IDs: <span className="font-bold">{pendingSubmissions.slice(0, 5).map(s => s.id).join(", ") || "none"}</span></p>
+          </div>
+          {/* ═══════════════════════════════════════════ */}
         </div>
 
         {/* ── Active Orders & Referrals ────────────────────────────── */}

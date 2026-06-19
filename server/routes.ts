@@ -2426,7 +2426,7 @@ Rules:
       res.setHeader("Expires", "0");
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
-      const userId = (req as any).user?.id;
+      const userId = clinicianId;
       const [unreadMessages, pendingOrders, pendingRefillRequests, pendingSpruceRequests] = await Promise.all([
         storage.getUnreadMessageSummaryForClinician(clinicianId),
         storage.getPendingOrdersForClinician(clinicianId),
