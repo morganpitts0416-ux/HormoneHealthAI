@@ -2780,6 +2780,15 @@ export class DbStorage implements IStorage {
     return rawRows(result)[0] as schema.IntakeForm | undefined;
   }
 
+  async getIntakeFormsByIds(ids: number[]): Promise<{ id: number; name: string }[]> {
+    if (ids.length === 0) return [];
+    const result = await pool.query<{ id: number; name: string }>(
+      `SELECT id, name FROM intake_forms WHERE id = ANY($1::int[])`,
+      [ids]
+    );
+    return result.rows;
+  }
+
   async createIntakeForm(data: schema.InsertIntakeForm): Promise<schema.IntakeForm> {
     try {
       const result = await db.execute(sql`

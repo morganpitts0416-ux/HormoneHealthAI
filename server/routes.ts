@@ -14358,14 +14358,26 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
 
       const pending = submissions.filter((s: any) => s.reviewStatus === "pending" || s.syncStatus === "not_synced");
       console.log(`[pending-submissions] clinicId=${clinicId} clinicianId=${clinicianId} totalFromDB=${submissions.length} pendingAfterFilter=${pending.length} elapsed=${Date.now()-t0}ms firstIds=${pending.slice(0,5).map((s: any)=>`${s.id}(rv=${s.reviewStatus},sy=${s.syncStatus})`).join(",")}`);
-      const enriched = await Promise.all(pending.map(async (sub: any) => {
+
+      // Batch-fetch form names in ONE query instead of N parallel queries.
+      // The previous Promise.all(pending.map(getIntakeFormById)) fired up to 31
+      // simultaneous DB queries, exhausting the 20-connection pool and causing
+      // intermittent connection-timeout 500s on every other dashboard load.
+      let formNameMap = new Map<number, string>();
+      if (pending.length > 0) {
+        const uniqueFormIds = [...new Set(pending.map((s: any) => s.formId as number))];
         try {
-          const form = await storage.getIntakeFormById(sub.formId);
-          return { ...sub, formName: form?.name ?? "Unknown Form" };
+          const formRows = await storage.getIntakeFormsByIds(uniqueFormIds);
+          for (const f of formRows) formNameMap.set(f.id, f.name);
         } catch {
-          return { ...sub, formName: "Unknown Form" };
+          // non-fatal — formName falls back to "Unknown Form" below
         }
+      }
+      const enriched = pending.map((sub: any) => ({
+        ...sub,
+        formName: formNameMap.get(sub.formId) ?? "Unknown Form",
       }));
+
       console.log(`[pending-submissions] responding with ${enriched.length} rows, total elapsed=${Date.now()-t0}ms`);
       res.json(enriched);
     } catch (err) {
