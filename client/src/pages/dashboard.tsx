@@ -387,19 +387,27 @@ export default function Dashboard() {
     setSubmissionsLoading(true);
     setSubmissionsError(null);
     setPendingFetchCount(c => c + 1);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15_000);
     try {
       const res = await fetch("/api/intake-forms/submissions/pending", {
         credentials: "include",
         cache: "no-store",
+        signal: controller.signal,
         headers: { "Cache-Control": "no-cache", "Pragma": "no-cache" },
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setPendingSubmissions(Array.isArray(data) ? data : []);
     } catch (err: any) {
-      setSubmissionsError(err instanceof Error ? err : new Error(String(err)));
+      if (err?.name === "AbortError") {
+        setSubmissionsError(new Error("TIMEOUT after 15s — server did not respond"));
+      } else {
+        setSubmissionsError(err instanceof Error ? err : new Error(String(err)));
+      }
       setPendingSubmissions([]);
     } finally {
+      clearTimeout(timeoutId);
       setSubmissionsLoading(false);
     }
   }, []);

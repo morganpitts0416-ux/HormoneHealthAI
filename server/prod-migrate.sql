@@ -1891,3 +1891,11 @@ FROM   intake_forms f
 WHERE  fs.form_id   = f.id
   AND  fs.clinic_id IS NULL
   AND  f.clinic_id  IS NOT NULL;
+
+-- ── form_submissions indexes (performance) ────────────────────────────────────
+-- Without these, getFormSubmissionsByClinic does full-table correlated subquery
+-- scans that hang on large datasets. Applied idempotently.
+CREATE INDEX IF NOT EXISTS form_submissions_clinic_id_idx     ON form_submissions (clinic_id);
+CREATE INDEX IF NOT EXISTS form_submissions_clinician_id_idx  ON form_submissions (clinician_id);
+CREATE INDEX IF NOT EXISTS form_submissions_patient_id_idx    ON form_submissions (patient_id);
+CREATE INDEX IF NOT EXISTS form_submissions_form_id_idx       ON form_submissions (form_id);

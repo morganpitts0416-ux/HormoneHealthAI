@@ -14329,17 +14329,36 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
 
   // GET /api/intake-forms/submissions/pending — all clinic submissions (all staff + providers)
   app.get("/api/intake-forms/submissions/pending", requireAuth, async (req: any, res) => {
+    const t0 = Date.now();
+    console.log("[pending-submissions] handler entered");
     try {
       res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
       res.setHeader("Pragma", "no-cache");
       res.setHeader("Expires", "0");
       const clinicId = getEffectiveClinicId(req);
       const clinicianId = getClinicianId(req);
-      const userId = (req as any).user?.id;
-      const submissions = await storage.getFormSubmissionsByClinic(clinicId, clinicianId);
-      const pending = submissions.filter(s => s.reviewStatus === "pending" || s.syncStatus === "not_synced");
-      console.log(`[pending-submissions] userId=${userId} clinicianId=${clinicianId} clinicId=${clinicId} totalFromDB=${submissions.length} pendingAfterFilter=${pending.length} firstIds=${pending.slice(0,5).map(s=>`${s.id}(rv=${s.reviewStatus},sy=${s.syncStatus})`).join(",")}`);
-      const enriched = await Promise.all(pending.map(async (sub) => {
+      console.log(`[pending-submissions] clinicId=${clinicId} clinicianId=${clinicianId} — querying DB`);
+
+      // Hard timeout: if the DB query takes > 10 s, abort and return empty so
+      // the client doesn't hang indefinitely.
+      let submissions: any[] = [];
+      try {
+        const queryPromise = storage.getFormSubmissionsByClinic(clinicId, clinicianId);
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("DB_TIMEOUT")), 10_000)
+        );
+        submissions = await Promise.race([queryPromise, timeoutPromise]);
+      } catch (qErr: any) {
+        if (qErr?.message === "DB_TIMEOUT") {
+          console.error(`[pending-submissions] DB query timed out after 10 s — returning []`);
+          return res.json([]);
+        }
+        throw qErr;
+      }
+
+      const pending = submissions.filter((s: any) => s.reviewStatus === "pending" || s.syncStatus === "not_synced");
+      console.log(`[pending-submissions] clinicId=${clinicId} clinicianId=${clinicianId} totalFromDB=${submissions.length} pendingAfterFilter=${pending.length} elapsed=${Date.now()-t0}ms firstIds=${pending.slice(0,5).map((s: any)=>`${s.id}(rv=${s.reviewStatus},sy=${s.syncStatus})`).join(",")}`);
+      const enriched = await Promise.all(pending.map(async (sub: any) => {
         try {
           const form = await storage.getIntakeFormById(sub.formId);
           return { ...sub, formName: form?.name ?? "Unknown Form" };
@@ -14347,6 +14366,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
           return { ...sub, formName: "Unknown Form" };
         }
       }));
+      console.log(`[pending-submissions] responding with ${enriched.length} rows, total elapsed=${Date.now()-t0}ms`);
       res.json(enriched);
     } catch (err) {
       console.error("[intake-forms/submissions/pending] ERROR:", err);

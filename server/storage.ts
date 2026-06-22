@@ -3052,28 +3052,37 @@ export class DbStorage implements IStorage {
   async getFormSubmissionsByClinic(clinicId: number | null, clinicianId: number): Promise<schema.FormSubmission[]> {
     if (clinicId) {
       try {
-        // Three ways a submission belongs to this clinic:
-        // 1. clinic_id matches directly (new submissions)
-        // 2. clinician_id matches the logged-in user (legacy single-tenant submissions)
-        // 3. patient_id belongs to a patient in this clinic (covers portal submissions
-        //    created before clinic_id was backfilled on form_submissions)
+        // Rewritten to avoid correlated subqueries (previously caused full-table
+        // scans on large datasets). Each step uses indexed lookups only.
+        //
+        // Step 1: patient IDs in this clinic (indexed on patients.clinic_id)
+        const patientRows = await db.execute(sql`
+          SELECT id FROM patients WHERE clinic_id = ${clinicId}
+        `);
+        const patientIds: number[] = (patientRows.rows ?? []).map((r: any) => r.id);
+
+        // Step 2: form IDs owned by this clinic (indexed on intake_forms.clinic_id)
+        const formRows = await db.execute(sql`
+          SELECT id FROM intake_forms
+          WHERE clinic_id = ${clinicId} OR clinician_id = ${clinicianId}
+        `);
+        const formIds: number[] = (formRows.rows ?? []).map((r: any) => r.id);
+
+        // Step 3: fetch submissions using simple IN/= conditions (all indexed)
+        // clinic_id = clinicId          — direct match (form_submissions_clinic_id_idx)
+        // clinician_id = clinicianId    — legacy single-tenant (form_submissions_clinician_id_idx)
+        // patient_id IN (...)           — portal submissions (form_submissions_patient_id_idx)
+        // form_id IN (...)              — clinic-owned forms  (form_submissions_form_id_idx)
+        const patientIdList = patientIds.length > 0 ? patientIds : [-1];
+        const formIdList    = formIds.length    > 0 ? formIds    : [-1];
+
         const result = await db.execute(sql`
           SELECT DISTINCT fs.*
           FROM form_submissions fs
           WHERE fs.clinic_id = ${clinicId}
              OR fs.clinician_id = ${clinicianId}
-             OR (
-               fs.patient_id IS NOT NULL
-               AND EXISTS (
-                 SELECT 1 FROM patients p
-                 WHERE p.id = fs.patient_id AND p.clinic_id = ${clinicId}
-               )
-             )
-             OR EXISTS (
-               SELECT 1 FROM intake_forms f
-               WHERE f.id = fs.form_id
-                 AND (f.clinic_id = ${clinicId} OR f.clinician_id = ${clinicianId})
-             )
+             OR fs.patient_id = ANY(${sql.raw(`ARRAY[${patientIdList.join(",")}]::int[]`)})
+             OR fs.form_id    = ANY(${sql.raw(`ARRAY[${formIdList.join(",")}]::int[]`)})
           ORDER BY fs.submitted_at DESC
         `);
         return rawRows(result) as schema.FormSubmission[];
