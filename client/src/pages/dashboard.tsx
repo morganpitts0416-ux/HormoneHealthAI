@@ -318,6 +318,7 @@ export default function Dashboard() {
   useFirstVisitTour();
 
   const [selectedSpruceRequest, setSelectedSpruceRequest] = useState<SpruceWorkflowRequestRow | null>(null);
+  const [expandedOrderId, setExpandedOrderId] = useState<number | null>(null);
   const [notesCollapsed, setNotesCollapsed] = useState(true);
 
   const { data: patients = [] } = useQuery<Patient[]>({
@@ -797,9 +798,14 @@ export default function Dashboard() {
               {combinedRequests.slice(0, 3).map((entry) => {
                 if (entry.kind === "order") {
                   const order = entry.row;
+                  const isExpanded = expandedOrderId === order.id;
                   return (
                     <div key={`order-${order.id}`} data-testid={`notification-order-${order.id}`} className="px-4 py-2">
-                      <div className="flex items-center gap-2.5">
+                      <button
+                        className="w-full text-left flex items-center gap-2.5 hover-elevate rounded-md"
+                        onClick={() => setExpandedOrderId(isExpanded ? null : order.id)}
+                        data-testid={`button-expand-order-${order.id}`}
+                      >
                         <PatientInitials first={order.patientFirstName} last={order.patientLastName} />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
@@ -808,11 +814,30 @@ export default function Dashboard() {
                           </div>
                           <p className="text-xs" style={{ color: "#7a8a64" }}>{order.items.length} item{order.items.length !== 1 ? "s" : ""} · ${parseFloat(order.subtotal).toFixed(2)}</p>
                         </div>
-                        <Button size="sm" data-testid={`button-fulfill-order-${order.id}`} className="h-7 px-2 text-xs gap-1" style={{ backgroundColor: "#2e3a20", color: "#ffffff" }}
-                          onClick={() => fulfillOrderMutation.mutate(order.id)} disabled={fulfillOrderMutation.isPending}>
-                          <CheckCircle2 className="w-3 h-3" /> Fulfill
-                        </Button>
-                      </div>
+                        <ChevronRight className="w-3.5 h-3.5 flex-shrink-0 transition-transform" style={{ color: "#c4b9a5", transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }} />
+                      </button>
+
+                      {isExpanded && (
+                        <div className="mt-2 ml-11 space-y-1.5" data-testid={`order-detail-${order.id}`}>
+                          {order.items.map((item, idx) => (
+                            <div key={idx} className="flex items-center justify-between gap-2 py-1 border-b last:border-0" style={{ borderColor: "#e8e0d0" }}>
+                              <div className="min-w-0">
+                                <p className="text-xs font-medium truncate" style={{ color: "#1c2414" }}>{item.name}</p>
+                                {item.dose && <p className="text-xs" style={{ color: "#7a8a64" }}>{item.dose} · qty {item.quantity}</p>}
+                                {!item.dose && <p className="text-xs" style={{ color: "#7a8a64" }}>qty {item.quantity}</p>}
+                              </div>
+                              <p className="text-xs font-medium flex-shrink-0" style={{ color: "#1c2414" }}>${item.lineTotal.toFixed(2)}</p>
+                            </div>
+                          ))}
+                          <div className="flex items-center justify-between pt-1">
+                            <p className="text-xs font-semibold" style={{ color: "#1c2414" }}>Total: ${parseFloat(order.subtotal).toFixed(2)}</p>
+                            <Button size="sm" data-testid={`button-fulfill-order-${order.id}`} className="h-7 px-2 text-xs gap-1" style={{ backgroundColor: "#2e3a20", color: "#ffffff" }}
+                              onClick={(e) => { e.stopPropagation(); fulfillOrderMutation.mutate(order.id); }} disabled={fulfillOrderMutation.isPending}>
+                              <CheckCircle2 className="w-3 h-3" /> Fulfill
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 }
