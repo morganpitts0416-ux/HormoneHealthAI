@@ -394,6 +394,17 @@ export default function Dashboard() {
     retry: 1,
   });
 
+  useEffect(() => {
+    if (submissionsError) {
+      console.error("[ClinIQ] /api/intake-forms/submissions/pending error:", submissionsError);
+    }
+    console.log(
+      "[ClinIQ] pendingSubmissions:", pendingSubmissions.length,
+      "| loading:", submissionsLoading,
+      "| error:", submissionsError ?? null,
+    );
+  }, [pendingSubmissions, submissionsLoading, submissionsError]);
+
   const markReviewedMutation = useMutation({
     mutationFn: async (submissionId: number) => {
       const res = await apiRequest("PATCH", `/api/intake-forms/submissions/${submissionId}/review`);
@@ -896,7 +907,7 @@ export default function Dashboard() {
               isLoading={submissionsLoading}
               testId="tile-form-submissions"
               isEmpty={pendingSubmissions.length === 0}
-              emptyLabel="No pending submissions"
+              emptyLabel={submissionsError ? `Load error: ${(submissionsError as Error).message}` : "No pending submissions"}
               autoExpand={true}
             >
               {pendingSubmissions.slice(0, 3).map((sub) => (
@@ -926,7 +937,11 @@ export default function Dashboard() {
                 </p>
               )}
             </CollapsibleQueueTile>
-
+            {submissionsError && (
+              <p className="text-xs text-red-600 px-1 pt-0.5 col-span-full" data-testid="text-submissions-error">
+                Form Submissions load error: {(submissionsError as Error).message}
+              </p>
+            )}
 
           </div>
 
