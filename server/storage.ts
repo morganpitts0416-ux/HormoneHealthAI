@@ -3052,40 +3052,36 @@ export class DbStorage implements IStorage {
   async getFormSubmissionsByClinic(clinicId: number | null, clinicianId: number): Promise<schema.FormSubmission[]> {
     if (clinicId) {
       try {
-        // Rewritten to avoid correlated subqueries (previously caused full-table
-        // scans on large datasets). Each step uses indexed lookups only.
+        // Uses native pool.query with parameterized arrays to avoid sql.raw()
+        // issues in Drizzle. Three fast indexed steps:
         //
-        // Step 1: patient IDs in this clinic (indexed on patients.clinic_id)
-        const patientRows = await db.execute(sql`
-          SELECT id FROM patients WHERE clinic_id = ${clinicId}
-        `);
-        const patientIds: number[] = (patientRows.rows ?? []).map((r: any) => r.id);
+        // Step 1: patient IDs in this clinic (patients.clinic_id index)
+        const patientRows = await pool.query<{ id: number }>(
+          `SELECT id FROM patients WHERE clinic_id = $1`,
+          [clinicId]
+        );
+        const patientIds: number[] = patientRows.rows.map(r => r.id);
 
-        // Step 2: form IDs owned by this clinic (indexed on intake_forms.clinic_id)
-        const formRows = await db.execute(sql`
-          SELECT id FROM intake_forms
-          WHERE clinic_id = ${clinicId} OR clinician_id = ${clinicianId}
-        `);
-        const formIds: number[] = (formRows.rows ?? []).map((r: any) => r.id);
+        // Step 2: form IDs owned by this clinic (intake_forms.clinic_id index)
+        const formRows = await pool.query<{ id: number }>(
+          `SELECT id FROM intake_forms WHERE clinic_id = $1 OR clinician_id = $2`,
+          [clinicId, clinicianId]
+        );
+        const formIds: number[] = formRows.rows.map(r => r.id);
 
-        // Step 3: fetch submissions using simple IN/= conditions (all indexed)
-        // clinic_id = clinicId          — direct match (form_submissions_clinic_id_idx)
-        // clinician_id = clinicianId    — legacy single-tenant (form_submissions_clinician_id_idx)
-        // patient_id IN (...)           — portal submissions (form_submissions_patient_id_idx)
-        // form_id IN (...)              — clinic-owned forms  (form_submissions_form_id_idx)
-        const patientIdList = patientIds.length > 0 ? patientIds : [-1];
-        const formIdList    = formIds.length    > 0 ? formIds    : [-1];
-
-        const result = await db.execute(sql`
-          SELECT DISTINCT fs.*
-          FROM form_submissions fs
-          WHERE fs.clinic_id = ${clinicId}
-             OR fs.clinician_id = ${clinicianId}
-             OR fs.patient_id = ANY(${sql.raw(`ARRAY[${patientIdList.join(",")}]::int[]`)})
-             OR fs.form_id    = ANY(${sql.raw(`ARRAY[${formIdList.join(",")}]::int[]`)})
-          ORDER BY fs.submitted_at DESC
-        `);
-        return rawRows(result) as schema.FormSubmission[];
+        // Step 3: submissions via indexed ANY($n::int[]) — pg driver serializes
+        // JS arrays natively, no sql.raw() needed.
+        const result = await pool.query(
+          `SELECT DISTINCT fs.*
+           FROM form_submissions fs
+           WHERE fs.clinic_id    = $1
+              OR fs.clinician_id = $2
+              OR fs.patient_id   = ANY($3::int[])
+              OR fs.form_id      = ANY($4::int[])
+           ORDER BY fs.submitted_at DESC`,
+          [clinicId, clinicianId, patientIds, formIds]
+        );
+        return result.rows.map(mapRow) as schema.FormSubmission[];
       } catch (err) {
         console.error("[storage] getFormSubmissionsByClinic primary query error — falling back to clinician-only query:", err);
         return this.getFormSubmissionsByClinician(clinicianId);
