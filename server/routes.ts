@@ -15415,13 +15415,20 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       const clinicianId = getClinicianId(req);
       const submissions = await storage.getFormSubmissionsByClinic(clinicId, clinicianId);
       const pending = submissions.filter(s => s.reviewStatus === "pending" || s.syncStatus === "not_synced");
-      const enriched = await Promise.all(pending.map(async (sub) => {
+      // Batch-fetch form names in ONE query instead of N parallel queries (N+1 fix).
+      let formNameMap = new Map<number, string>();
+      if (pending.length > 0) {
+        const uniqueFormIds = [...new Set(pending.map((s: any) => s.formId as number))];
         try {
-          const form = await storage.getIntakeFormById(sub.formId);
-          return { ...sub, formName: form?.name ?? "Unknown Form" };
+          const formRows = await storage.getIntakeFormsByIds(uniqueFormIds);
+          for (const f of formRows) formNameMap.set(f.id, f.name);
         } catch {
-          return { ...sub, formName: "Unknown Form" };
+          // non-fatal — formName falls back to "Unknown Form" below
         }
+      }
+      const enriched = pending.map((sub: any) => ({
+        ...sub,
+        formName: formNameMap.get(sub.formId) ?? "Unknown Form",
       }));
       res.json(enriched);
     } catch (err) {

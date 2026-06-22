@@ -2865,12 +2865,15 @@ function FormSubmissionsPanel({ formId }: { formId: number }) {
   const [reassignSubId, setReassignSubId] = useState<number | null>(null);
   const [reassignSearch, setReassignSearch] = useState("");
 
-  const { data: pending = [], isLoading } = useQuery<Submission[]>({
-    queryKey: ["/api/form-submissions/pending"],
-    queryFn: () => fetch("/api/form-submissions/pending").then(r => r.json()),
+  // Use the unified "all submissions" endpoint so this panel shares the same
+  // data source as the Dashboard tile, View All page, and Account menu.
+  const { data: allSubmissions = [], isLoading } = useQuery<Submission[]>({
+    queryKey: ["/api/intake-forms/submissions/all"],
   });
 
-  const formSubmissions = pending.filter(s => s.formId === formId);
+  const formSubmissions = allSubmissions.filter((s: any) => s.formId === formId);
+  const formPending = formSubmissions.filter((s: any) => s.reviewStatus === "pending" || s.syncStatus === "not_synced");
+  const formReviewed = formSubmissions.filter((s: any) => s.reviewStatus !== "pending" && s.syncStatus !== "not_synced");
 
   const { data: subDetail } = useQuery({
     queryKey: ["/api/form-submissions", selectedSub],
@@ -2882,11 +2885,18 @@ function FormSubmissionsPanel({ formId }: { formId: number }) {
     queryKey: ["/api/patients"],
   });
 
+  // Invalidate all 3 query keys so every viewing location stays in sync.
+  function invalidateAll() {
+    queryClient.invalidateQueries({ queryKey: ["/api/intake-forms/submissions/all"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/intake-forms/submissions/pending"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/form-submissions/pending"] });
+  }
+
   const syncMutation = useMutation({
     mutationFn: (id: number) => apiRequest("POST", `/api/form-submissions/${id}/sync`, {}),
     onSuccess: async (res) => {
       const result = await res.json();
-      queryClient.invalidateQueries({ queryKey: ["/api/form-submissions/pending"] });
+      invalidateAll();
       const added = result.results?.filter((r: any) => !r.duplicate).length ?? 0;
       const skipped = result.results?.filter((r: any) => r.duplicate).length ?? 0;
       toast({ title: `Synced to chart: ${added} added, ${skipped} duplicates skipped` });
@@ -2894,11 +2904,13 @@ function FormSubmissionsPanel({ formId }: { formId: number }) {
     onError: () => toast({ title: "Sync failed", variant: "destructive" }),
   });
 
+  // Use the same PATCH endpoint as Dashboard/View All/Account so both
+  // reviewStatus AND syncStatus are updated atomically in one call.
   const reviewMutation = useMutation({
-    mutationFn: ({ id, status }: { id: number; status: string }) =>
-      apiRequest("PUT", `/api/form-submissions/${id}/review`, { reviewStatus: status }),
+    mutationFn: ({ id }: { id: number; status: string }) =>
+      apiRequest("PATCH", `/api/intake-forms/submissions/${id}/review`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/form-submissions/pending"] });
+      invalidateAll();
     },
   });
 
@@ -2906,7 +2918,7 @@ function FormSubmissionsPanel({ formId }: { formId: number }) {
     mutationFn: ({ subId, patientId }: { subId: number; patientId: number }) =>
       apiRequest("PATCH", `/api/form-submissions/${subId}/reassign`, { patientId }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/form-submissions/pending"] });
+      invalidateAll();
       queryClient.invalidateQueries({ queryKey: ["/api/form-submissions", reassignSubId] });
       setReassignSubId(null);
       setReassignSearch("");
@@ -2924,20 +2936,20 @@ function FormSubmissionsPanel({ formId }: { formId: number }) {
 
   if (isLoading) return <div className="flex items-center gap-2 text-muted-foreground text-sm py-6"><RefreshCw className="h-4 w-4 animate-spin" /> Loading...</div>;
 
-  if (formSubmissions.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-center gap-2">
-        <Inbox className="h-10 w-10 text-muted-foreground/40" />
-        <p className="font-medium text-muted-foreground">No submissions yet</p>
-        <p className="text-sm text-muted-foreground">Share the form link to start receiving responses</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-3 max-w-2xl">
-      <h3 className="font-semibold">Pending Submissions</h3>
-      {formSubmissions.map(sub => (
+    <div className="space-y-4 max-w-2xl">
+      {formPending.length === 0 && formReviewed.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-16 text-center gap-2">
+          <Inbox className="h-10 w-10 text-muted-foreground/40" />
+          <p className="font-medium text-muted-foreground">No submissions yet</p>
+          <p className="text-sm text-muted-foreground">Share the form link to start receiving responses</p>
+        </div>
+      )}
+      {formPending.length > 0 && (
+        <>
+          <h3 className="font-semibold">Pending Submissions</h3>
+          <div className="space-y-3">
+      {formPending.map(sub => (
         <Card key={sub.id} data-testid={`card-submission-${sub.id}`}>
           <CardContent className="p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -3018,6 +3030,53 @@ function FormSubmissionsPanel({ formId }: { formId: number }) {
           </CardContent>
         </Card>
       ))}
+          </div>
+        </>
+      )}
+
+      {formReviewed.length > 0 && (
+        <>
+          <h3 className="font-semibold text-muted-foreground">Reviewed ({formReviewed.length})</h3>
+          <div className="space-y-2">
+            {formReviewed.map(sub => (
+              <Card key={sub.id} className="opacity-75" data-testid={`card-submission-reviewed-${sub.id}`}>
+                <CardContent className="p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <span className="text-sm font-medium">{sub.submitterName ?? "Anonymous"}</span>
+                      {sub.submitterEmail && <span className="text-xs text-muted-foreground ml-2">{sub.submitterEmail}</span>}
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <SubmissionStatusBadge status={sub.reviewStatus} type="review" />
+                        <SubmissionStatusBadge status={sub.syncStatus} type="sync" />
+                        <span className="text-xs text-muted-foreground">{new Date(sub.submittedAt).toLocaleString()}</span>
+                      </div>
+                    </div>
+                    <Button size="sm" variant="outline" onClick={() => setSelectedSub(sub.id === selectedSub ? null : sub.id)}
+                      data-testid={`button-view-reviewed-${sub.id}`}>
+                      <Eye className="h-3.5 w-3.5 mr-1" /> {selectedSub === sub.id ? "Hide" : "View"}
+                    </Button>
+                  </div>
+                  {selectedSub === sub.id && subDetail && (
+                    <div className="mt-4 border-t pt-4 space-y-3">
+                      {subDetail.fields?.map((field: FormField) => {
+                        const raw = subDetail.rawSubmissionJson as Record<string, unknown> | null ?? {};
+                        const value = raw[field.fieldKey] ?? raw[String(field.id)] ?? raw[field.id as unknown as string];
+                        if (value === undefined || value === null || value === "") return null;
+                        return (
+                          <div key={field.id}>
+                            <p className="text-xs font-medium text-muted-foreground">{field.label}</p>
+                            <p className="text-sm mt-0.5">{Array.isArray(value) ? value.join(", ") : String(value)}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </>
+      )}
 
       <Dialog open={reassignSubId !== null} onOpenChange={(v) => { if (!v) { setReassignSubId(null); setReassignSearch(""); } }}>
         <DialogContent>
