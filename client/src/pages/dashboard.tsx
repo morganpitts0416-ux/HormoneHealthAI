@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
@@ -375,49 +375,24 @@ export default function Dashboard() {
     },
   });
 
-  // ── Pending form submissions — bypasses TanStack cache entirely so the
-  // endpoint is always called on mount regardless of global staleTime:Infinity.
-  const [pendingSubmissions, setPendingSubmissions] = useState<PendingSubmissionRow[]>([]);
-  const [submissionsLoading, setSubmissionsLoading] = useState(true);
-  const [submissionsError, setSubmissionsError] = useState<Error | null>(null);
-  const [pendingQueryMounted, setPendingQueryMounted] = useState(false);
-  const [pendingFetchCount, setPendingFetchCount] = useState(0);
-
-  const fetchPendingSubmissions = useCallback(async () => {
-    setSubmissionsLoading(true);
-    setSubmissionsError(null);
-    setPendingFetchCount(c => c + 1);
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15_000);
-    try {
-      const res = await fetch("/api/intake-forms/submissions/pending", {
-        credentials: "include",
-        cache: "no-store",
-        signal: controller.signal,
-        headers: { "Cache-Control": "no-cache", "Pragma": "no-cache" },
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setPendingSubmissions(Array.isArray(data) ? data : []);
-    } catch (err: any) {
-      if (err?.name === "AbortError") {
-        setSubmissionsError(new Error("TIMEOUT after 15s — server did not respond"));
-      } else {
-        setSubmissionsError(err instanceof Error ? err : new Error(String(err)));
-      }
-      setPendingSubmissions([]);
-    } finally {
-      clearTimeout(timeoutId);
-      setSubmissionsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    setPendingQueryMounted(true);
-    fetchPendingSubmissions();
-    const interval = setInterval(fetchPendingSubmissions, 30_000);
-    return () => clearInterval(interval);
-  }, [fetchPendingSubmissions]);
+  // ── Pending form submissions — staleTime:0 overrides the global Infinity so
+  // a fresh fetch always fires on mount.  TanStack Query returns cached data
+  // immediately on remount (no "loading / 0 rows" flash), then refetches in
+  // the background.  The previous manual useCallback+useEffect approach reset
+  // state to (loading=true, data=[]) on every remount before the new fetch
+  // completed, causing the tile to appear perpetually stuck at loading.
+  const {
+    data: pendingSubmissions = [],
+    isLoading: submissionsLoading,
+    error: submissionsError,
+  } = useQuery<PendingSubmissionRow[]>({
+    queryKey: ["/api/intake-forms/submissions/pending"],
+    staleTime: 0,
+    refetchOnMount: true,
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  });
 
   const markReviewedMutation = useMutation({
     mutationFn: async (submissionId: number) => {
@@ -425,7 +400,7 @@ export default function Dashboard() {
       return res.json();
     },
     onSuccess: () => {
-      fetchPendingSubmissions();
+      queryClient.invalidateQueries({ queryKey: ["/api/intake-forms/submissions/pending"] });
       queryClient.invalidateQueries({ queryKey: ["/api/intake-forms/submissions/all"] });
     },
   });
@@ -955,16 +930,6 @@ export default function Dashboard() {
 
           </div>
 
-          {/* ═══ DASHBOARD DEBUG — remove once confirmed ═══ */}
-          <div className="mt-2 p-2 rounded border border-amber-400 bg-amber-50 text-[10px] font-mono space-y-0.5" data-testid="debug-submissions-block">
-            <p className="font-bold text-amber-800">*** DASHBOARD DEBUG ACTIVE ***</p>
-            <p>pending query mounted: <span className="font-bold">{pendingQueryMounted ? "yes" : "no"}</span></p>
-            <p>pending fetch count: <span className="font-bold">{pendingFetchCount}</span></p>
-            <p>pending query status: <span className="font-bold">{submissionsLoading ? "loading" : submissionsError ? `error: ${submissionsError.message}` : "success"}</span></p>
-            <p>pending query row count: <span className="font-bold">{pendingSubmissions.length}</span></p>
-            <p>pending first IDs: <span className="font-bold">{pendingSubmissions.slice(0, 5).map(s => s.id).join(", ") || "none"}</span></p>
-          </div>
-          {/* ═══════════════════════════════════════════ */}
         </div>
 
         {/* ── Active Orders & Referrals ────────────────────────────── */}
