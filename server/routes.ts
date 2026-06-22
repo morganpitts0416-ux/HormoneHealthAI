@@ -14311,7 +14311,9 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
     try {
       const clinicId = getEffectiveClinicId(req);
       const clinicianId = getClinicianId(req);
+      console.log(`[submissions/all] clinicId=${clinicId} clinicianId=${clinicianId} — querying DB`);
       const submissions = await storage.getFormSubmissionsByClinic(clinicId, clinicianId);
+      console.log(`[submissions/all] clinicId=${clinicId} clinicianId=${clinicianId} totalFromDB=${submissions.length}`);
       // Batch-fetch form names in ONE query instead of N parallel db.execute calls.
       // The previous Promise.all(submissions.map(getIntakeFormById)) fired up to 31
       // simultaneous queries, exhausting the 20-connection pool and causing
