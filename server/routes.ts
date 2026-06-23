@@ -4362,7 +4362,7 @@ Return ONLY this JSON structure:
     }
     try {
       // Find first clinic that has an API token configured
-      const allSettings = await db.select().from(schema.clinicSpruceSettings).limit(10);
+      const allSettings = await storageDb.select().from(schema.clinicSpruceSettings).limit(10);
       const withToken = allSettings.find(s => s.apiTokenEncrypted && isEncrypted(s.apiTokenEncrypted));
       if (!withToken) {
         return res.json({ error: "No clinic has a Spruce API token configured in this database." });
