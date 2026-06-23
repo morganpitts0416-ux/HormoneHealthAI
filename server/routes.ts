@@ -4369,35 +4369,39 @@ Return ONLY this JSON structure:
       }
       const apiToken = decryptSecret(withToken.apiTokenEncrypted!);
 
-      // Try candidate team-member endpoints — Spruce API may use different paths
-      const candidates = [
-        "https://api.sprucehealth.com/v1/team-members",
-        "https://api.sprucehealth.com/v1/users",
-        "https://api.sprucehealth.com/v1/members",
-        "https://api.sprucehealth.com/v1/organization/members",
-        "https://api.sprucehealth.com/v1/me",
-      ];
+      // Phase 0b: confirmed endpoint — pull full member objects to check for email field
+      const membersUrl = "https://api.sprucehealth.com/v1/organization/members";
+      const r = await fetch(membersUrl, {
+        headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
+      });
+      const text = await r.text();
+      let body: any;
+      try { body = JSON.parse(text); } catch { body = text; }
 
-      const results: Record<string, any> = {};
-      for (const url of candidates) {
-        try {
-          const r = await fetch(url, {
-            headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
-          });
-          const text = await r.text();
-          let body: any;
-          try { body = JSON.parse(text); } catch { body = text.slice(0, 500); }
-          // Redact any field that looks like a token/secret before returning
-          const safeBody = JSON.parse(JSON.stringify(body, (k, v) =>
-            typeof v === "string" && (k.toLowerCase().includes("token") || k.toLowerCase().includes("secret") || k.toLowerCase().includes("password")) ? "[REDACTED]" : v
-          ));
-          results[url] = { status: r.status, ok: r.ok, body: safeBody };
-        } catch (err: any) {
-          results[url] = { error: err?.message ?? "fetch failed" };
-        }
-      }
+      // Also try /me to see what fields are on a user object
+      const meR = await fetch("https://api.sprucehealth.com/v1/me", {
+        headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
+      });
+      const meText = await meR.text();
+      let meBody: any;
+      try { meBody = JSON.parse(meText); } catch { meBody = meText; }
 
-      return res.json({ clinicId: withToken.clinicId, results });
+      // Redact secrets
+      const redact = (v: any) => JSON.parse(JSON.stringify(v, (k, val) =>
+        typeof val === "string" && (k.toLowerCase().includes("token") || k.toLowerCase().includes("secret") || k.toLowerCase().includes("password")) ? "[REDACTED]" : val
+      ));
+
+      // Return: all member keys from first member + full first 3 members + /me response
+      const members = body?.members ?? [];
+      const firstMemberKeys = members[0] ? Object.keys(members[0]) : [];
+
+      return res.json({
+        clinicId: withToken.clinicId,
+        membersEndpoint: { status: r.status, totalCount: members.length, hasMore: body?.hasMore },
+        firstMemberKeys,
+        sampleMembers: redact(members.slice(0, 3)),
+        meEndpoint: { status: meR.status, body: redact(meBody) },
+      });
     } catch (err: any) {
       return res.status(500).json({ error: err?.message ?? "unknown error" });
     }
