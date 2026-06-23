@@ -4352,6 +4352,57 @@ Return ONLY this JSON structure:
     res.json({ message: "Account promoted to admin", user: { id: updated.id, username: updated.username, role: updated.role } });
   });
 
+  // ── TEMPORARY: Spruce team-member API probe (Phase 0 verification) ──────────
+  // Remove this endpoint once Phase 0 is confirmed.
+  // Gate: OPS_BOOTSTRAP_TOKEN query param.
+  app.get("/api/admin/spruce-probe", async (req, res) => {
+    const envToken = process.env.OPS_BOOTSTRAP_TOKEN;
+    if (!envToken || req.query.token !== envToken) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+    try {
+      // Find first clinic that has an API token configured
+      const allSettings = await db.select().from(schema.clinicSpruceSettings).limit(10);
+      const withToken = allSettings.find(s => s.apiTokenEncrypted && isEncrypted(s.apiTokenEncrypted));
+      if (!withToken) {
+        return res.json({ error: "No clinic has a Spruce API token configured in this database." });
+      }
+      const apiToken = decryptSecret(withToken.apiTokenEncrypted!);
+
+      // Try candidate team-member endpoints — Spruce API may use different paths
+      const candidates = [
+        "https://api.sprucehealth.com/v1/team-members",
+        "https://api.sprucehealth.com/v1/users",
+        "https://api.sprucehealth.com/v1/members",
+        "https://api.sprucehealth.com/v1/organization/members",
+        "https://api.sprucehealth.com/v1/me",
+      ];
+
+      const results: Record<string, any> = {};
+      for (const url of candidates) {
+        try {
+          const r = await fetch(url, {
+            headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
+          });
+          const text = await r.text();
+          let body: any;
+          try { body = JSON.parse(text); } catch { body = text.slice(0, 500); }
+          // Redact any field that looks like a token/secret before returning
+          const safeBody = JSON.parse(JSON.stringify(body, (k, v) =>
+            typeof v === "string" && (k.toLowerCase().includes("token") || k.toLowerCase().includes("secret") || k.toLowerCase().includes("password")) ? "[REDACTED]" : v
+          ));
+          results[url] = { status: r.status, ok: r.ok, body: safeBody };
+        } catch (err: any) {
+          results[url] = { error: err?.message ?? "fetch failed" };
+        }
+      }
+
+      return res.json({ clinicId: withToken.clinicId, results });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message ?? "unknown error" });
+    }
+  });
+
   // One-time first-admin setup — no login required, only works when zero admins exist
   app.post("/api/admin/auto-bootstrap", async (req, res) => {
     const { username } = req.body || {};
