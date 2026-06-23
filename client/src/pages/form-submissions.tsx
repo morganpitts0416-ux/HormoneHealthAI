@@ -53,7 +53,7 @@ export default function FormSubmissionsPage() {
 
   const { data: user } = useQuery<any>({ queryKey: ["/api/user"] });
 
-  const { data: submissions = [], isLoading } = useQuery<SubmissionRow[]>({
+  const { data: submissions = [], isLoading, isFetching, isError, error } = useQuery<SubmissionRow[]>({
     queryKey: ["/api/intake-forms/submissions/all"],
     queryFn: async () => {
       const res = await fetch("/api/intake-forms/submissions/all", {
@@ -130,6 +130,16 @@ export default function FormSubmissionsPage() {
   }, [submissions, nameFilter, dateFilter, statusFilter]);
 
   const pendingCount = submissions.filter((s) => s.reviewStatus === "pending").length;
+
+  console.log("[FormSubmissions] submissions.length=", submissions.length,
+    "filtered.length=", filtered.length,
+    "statusFilter=", statusFilter,
+    "isLoading=", isLoading,
+    "isFetching=", isFetching,
+    "isError=", isError,
+    "error=", error,
+    "Array.isArray(submissions)=", Array.isArray(submissions),
+    "first row=", submissions[0] ?? null);
 
   return (
     <div className="flex-1 overflow-auto" style={{ backgroundColor: "#f5f2ed" }}>
@@ -223,6 +233,16 @@ export default function FormSubmissionsPage() {
             </div>
           </CardHeader>
           <CardContent className="p-0">
+            <div style={{ background: "#fffbe6", border: "1px solid #f0c040", padding: "6px 12px", fontFamily: "monospace", fontSize: "11px", lineHeight: "1.6", color: "#333" }}>
+              <strong>DIAG</strong>{" "}
+              submissions.length={submissions.length} |{" "}
+              filteredSubmissions.length={filtered.length} |{" "}
+              statusFilter={statusFilter} |{" "}
+              loading={String(isLoading)} |{" "}
+              fetching={String(isFetching)} |{" "}
+              error={isError ? String(error) : "none"} |{" "}
+              isArray={String(Array.isArray(submissions))}
+            </div>
             {isLoading ? (
               <div className="flex items-center justify-center py-16">
                 <Loader2 className="h-6 w-6 animate-spin" style={{ color: "#7a8a64" }} />
