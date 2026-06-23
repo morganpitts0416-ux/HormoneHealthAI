@@ -6886,12 +6886,36 @@ export interface SpruceConversationMessageRow {
     }).from(schema.users).where(inArray(schema.users.id, providerIds));
     for (const p of providers) providerMap[p.id] = p;
   }
-  return orders.map(o => ({
-    ...o,
-    taskCompletions: byOrder[o.id] ?? [],
-    assignees: assigneesByOrder[o.id] ?? [],
-    orderingProvider: o.orderingProviderUserId ? (providerMap[o.orderingProviderUserId] ?? null) : null,
-  }));
+  // Legacy fallback: orders created before order_assignees have no junction rows.
+  // Resolve names from users/clinician_staff so the UI never shows "unassigned" for them.
+  const legacyUserIds = [...new Set(orders.filter(o => !(assigneesByOrder[o.id]?.length) && o.assignedToUserId != null).map(o => o.assignedToUserId as number))];
+  const legacyStaffIds = [...new Set(orders.filter(o => !(assigneesByOrder[o.id]?.length) && o.assignedToStaffId != null).map(o => o.assignedToStaffId as number))];
+  const legacyUserMap: Record<number, string> = {};
+  const legacyStaffMap: Record<number, string> = {};
+  await Promise.all([
+    legacyUserIds.length
+      ? db.select({ id: schema.users.id, firstName: schema.users.firstName, lastName: schema.users.lastName, title: schema.users.title })
+          .from(schema.users).where(inArray(schema.users.id, legacyUserIds))
+          .then(rows => { for (const u of rows) legacyUserMap[u.id] = [u.title, u.firstName, u.lastName].filter(Boolean).join(" "); })
+      : Promise.resolve(),
+    legacyStaffIds.length
+      ? db.select({ id: schema.clinicianStaff.id, firstName: schema.clinicianStaff.firstName, lastName: schema.clinicianStaff.lastName, credentials: schema.clinicianStaff.credentials })
+          .from(schema.clinicianStaff).where(inArray(schema.clinicianStaff.id, legacyStaffIds))
+          .then(rows => { for (const s of rows) legacyStaffMap[s.id] = [s.firstName, s.lastName].filter(Boolean).join(" ") + (s.credentials ? `, ${s.credentials}` : ""); })
+      : Promise.resolve(),
+  ]);
+
+  return orders.map(o => {
+    let assignees = assigneesByOrder[o.id] ?? [];
+    if (assignees.length === 0) {
+      if (o.assignedToUserId != null && legacyUserMap[o.assignedToUserId]) {
+        assignees = [{ teamMemberId: `user:${o.assignedToUserId}`, displayName: legacyUserMap[o.assignedToUserId] }];
+      } else if (o.assignedToStaffId != null && legacyStaffMap[o.assignedToStaffId]) {
+        assignees = [{ teamMemberId: `staff:${o.assignedToStaffId}`, displayName: legacyStaffMap[o.assignedToStaffId] }];
+      }
+    }
+    return { ...o, taskCompletions: byOrder[o.id] ?? [], assignees, orderingProvider: o.orderingProviderUserId ? (providerMap[o.orderingProviderUserId] ?? null) : null };
+  });
 };
 
 (DbStorage.prototype as any).getActiveClinicalOrders = async function(
@@ -6941,14 +6965,42 @@ export interface SpruceConversationMessageRow {
     }).from(schema.users).where(inArray(schema.users.id, providerIds));
     for (const p of providers) providerMap[p.id] = p;
   }
-  return orders.map(o => ({
-    ...o,
-    taskCompletions: byOrder[o.id] ?? [],
-    assignees: assigneesByOrder[o.id] ?? [],
-    patientFirstName: patientMap[o.patientId]?.firstName ?? '',
-    patientLastName: patientMap[o.patientId]?.lastName ?? '',
-    orderingProvider: o.orderingProviderUserId ? (providerMap[o.orderingProviderUserId] ?? null) : null,
-  }));
+  // Legacy fallback: orders created before order_assignees have no junction rows.
+  const legacyUserIds2 = [...new Set(orders.filter(o => !(assigneesByOrder[o.id]?.length) && o.assignedToUserId != null).map(o => o.assignedToUserId as number))];
+  const legacyStaffIds2 = [...new Set(orders.filter(o => !(assigneesByOrder[o.id]?.length) && o.assignedToStaffId != null).map(o => o.assignedToStaffId as number))];
+  const legacyUserMap2: Record<number, string> = {};
+  const legacyStaffMap2: Record<number, string> = {};
+  await Promise.all([
+    legacyUserIds2.length
+      ? db.select({ id: schema.users.id, firstName: schema.users.firstName, lastName: schema.users.lastName, title: schema.users.title })
+          .from(schema.users).where(inArray(schema.users.id, legacyUserIds2))
+          .then(rows => { for (const u of rows) legacyUserMap2[u.id] = [u.title, u.firstName, u.lastName].filter(Boolean).join(" "); })
+      : Promise.resolve(),
+    legacyStaffIds2.length
+      ? db.select({ id: schema.clinicianStaff.id, firstName: schema.clinicianStaff.firstName, lastName: schema.clinicianStaff.lastName, credentials: schema.clinicianStaff.credentials })
+          .from(schema.clinicianStaff).where(inArray(schema.clinicianStaff.id, legacyStaffIds2))
+          .then(rows => { for (const s of rows) legacyStaffMap2[s.id] = [s.firstName, s.lastName].filter(Boolean).join(" ") + (s.credentials ? `, ${s.credentials}` : ""); })
+      : Promise.resolve(),
+  ]);
+
+  return orders.map(o => {
+    let assignees = assigneesByOrder[o.id] ?? [];
+    if (assignees.length === 0) {
+      if (o.assignedToUserId != null && legacyUserMap2[o.assignedToUserId]) {
+        assignees = [{ teamMemberId: `user:${o.assignedToUserId}`, displayName: legacyUserMap2[o.assignedToUserId] }];
+      } else if (o.assignedToStaffId != null && legacyStaffMap2[o.assignedToStaffId]) {
+        assignees = [{ teamMemberId: `staff:${o.assignedToStaffId}`, displayName: legacyStaffMap2[o.assignedToStaffId] }];
+      }
+    }
+    return {
+      ...o,
+      taskCompletions: byOrder[o.id] ?? [],
+      assignees,
+      patientFirstName: patientMap[o.patientId]?.firstName ?? '',
+      patientLastName: patientMap[o.patientId]?.lastName ?? '',
+      orderingProvider: o.orderingProviderUserId ? (providerMap[o.orderingProviderUserId] ?? null) : null,
+    };
+  });
 };
 
 // Insert/replace all assignees for an order in one atomic operation.
