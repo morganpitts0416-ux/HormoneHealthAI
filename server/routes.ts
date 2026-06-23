@@ -3,6 +3,7 @@ import { registerOpsRoutes } from "./ops";
 import { createServer, type Server } from "http";
 import crypto from "crypto";
 import { encryptSecret, decryptSecret, isEncrypted } from "./crypto-utils";
+
 import { enrollWorkflow, processWaitingSteps, notifyPatientResponse, notifyStaffReply, pauseRun, resumeRun, retryStep, skipStep } from "./workflow-engine";
 import fs from "fs";
 import path from "path";
@@ -216,6 +217,26 @@ import { findUserForCollaboratorInvite, isValidNpi, listMembershipsForUser, getM
 import { buildMedicalTermsList, buildNormalizationRules, buildWhisperPrompt, NORMALIZATION_EXAMPLES } from "./clinical-lexicon";
 import Stripe from "stripe";
 import bcrypt from "bcrypt";
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+/**
+ * Generates a human-readable public token for a form publication.
+ * Format: <url-safe-form-name>-<6-hex-chars>
+ * Example: "Appointment Request Form" → "appointment-request-form-3a9f2c"
+ * Slug portion is capped at 43 chars so total stays well within the 80-char
+ * column limit. Existing 32-char hex tokens are unaffected — the public lookup
+ * route matches purely by token value regardless of format.
+ */
+function formPublicationToken(formName: string): string {
+  const slug = (formName || "form")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 43);
+  const suffix = crypto.randomBytes(3).toString("hex"); // always 6 lowercase hex chars
+  return `${slug}-${suffix}`;
+}
 
 // ── Auth middleware ────────────────────────────────────────────────────────────
 
@@ -6458,7 +6479,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
           formId: parseInt(formId),
           mode: "link",
           status: "active",
-          publicToken: crypto.randomBytes(16).toString("hex"),
+          publicToken: formPublicationToken(form.name),
         });
       }
 
@@ -6557,7 +6578,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
           formId: parseInt(formId),
           mode: "link",
           status: "active",
-          publicToken: crypto.randomBytes(16).toString("hex"),
+          publicToken: formPublicationToken(form.name),
         });
       }
 
@@ -15274,7 +15295,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
             formId: item.formId,
             mode: "link",
             status: "active",
-            publicToken: randomBytes(16).toString("hex"),
+            publicToken: formPublicationToken(form?.name ?? "Form"),
           });
         }
         return { formId: item.formId, formName: form?.name ?? "Form", publicToken: pub.publicToken, completed: false };
