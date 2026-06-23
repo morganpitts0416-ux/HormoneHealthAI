@@ -14634,11 +14634,9 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       if (!(await canManageForms(req))) return res.status(403).json({ message: "Admin access required to publish forms." });
       const form = await resolveClinicForm(req);
       if (!form) return res.status(404).json({ message: "Form not found" });
-      const { randomUUID } = await import("crypto");
-      const token = randomUUID().replace(/-/g, "");
       const pub = await storage.createFormPublication({
         formId: form.id,
-        publicToken: token,
+        publicToken: formPublicationToken(form.name),
         mode: req.body.mode ?? "link",
         status: "active",
         expiresAt: req.body.expiresAt ? new Date(req.body.expiresAt) : null,
