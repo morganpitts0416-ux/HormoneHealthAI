@@ -4352,61 +4352,6 @@ Return ONLY this JSON structure:
     res.json({ message: "Account promoted to admin", user: { id: updated.id, username: updated.username, role: updated.role } });
   });
 
-  // ── TEMPORARY: Spruce team-member API probe (Phase 0 verification) ──────────
-  // Remove this endpoint once Phase 0 is confirmed.
-  // Gate: OPS_BOOTSTRAP_TOKEN query param.
-  app.get("/api/admin/spruce-probe", async (req, res) => {
-    const envToken = process.env.OPS_BOOTSTRAP_TOKEN;
-    if (!envToken || req.query.token !== envToken) {
-      return res.status(403).json({ message: "Forbidden" });
-    }
-    try {
-      // Find first clinic that has an API token configured
-      const allSettings = await storageDb.select().from(schema.clinicSpruceSettings).limit(10);
-      const withToken = allSettings.find(s => s.apiTokenEncrypted && isEncrypted(s.apiTokenEncrypted));
-      if (!withToken) {
-        return res.json({ error: "No clinic has a Spruce API token configured in this database." });
-      }
-      const apiToken = decryptSecret(withToken.apiTokenEncrypted!);
-
-      // Phase 0b: confirmed endpoint — pull full member objects to check for email field
-      const membersUrl = "https://api.sprucehealth.com/v1/organization/members";
-      const r = await fetch(membersUrl, {
-        headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
-      });
-      const text = await r.text();
-      let body: any;
-      try { body = JSON.parse(text); } catch { body = text; }
-
-      // Also try /me to see what fields are on a user object
-      const meR = await fetch("https://api.sprucehealth.com/v1/me", {
-        headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
-      });
-      const meText = await meR.text();
-      let meBody: any;
-      try { meBody = JSON.parse(meText); } catch { meBody = meText; }
-
-      // Redact secrets
-      const redact = (v: any) => JSON.parse(JSON.stringify(v, (k, val) =>
-        typeof val === "string" && (k.toLowerCase().includes("token") || k.toLowerCase().includes("secret") || k.toLowerCase().includes("password")) ? "[REDACTED]" : val
-      ));
-
-      // Return: all member keys from first member + full first 3 members + /me response
-      const members = body?.members ?? [];
-      const firstMemberKeys = members[0] ? Object.keys(members[0]) : [];
-
-      return res.json({
-        clinicId: withToken.clinicId,
-        membersEndpoint: { status: r.status, totalCount: members.length, hasMore: body?.hasMore },
-        firstMemberKeys,
-        sampleMembers: redact(members.slice(0, 3)),
-        meEndpoint: { status: meR.status, body: redact(meBody) },
-      });
-    } catch (err: any) {
-      return res.status(500).json({ error: err?.message ?? "unknown error" });
-    }
-  });
-
   // One-time first-admin setup — no login required, only works when zero admins exist
   app.post("/api/admin/auto-bootstrap", async (req, res) => {
     const { username } = req.body || {};
