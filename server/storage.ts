@@ -3099,6 +3099,33 @@ export class DbStorage implements IStorage {
     return this.getFormSubmissionsByClinician(clinicianId);
   }
 
+  async debugFormSubmissionsRaw(): Promise<any[]> {
+    const result = await pool.query(
+      `SELECT
+         fs.id,
+         fs.clinic_id          AS fs_clinic_id,
+         fs.clinician_id       AS fs_clinician_id,
+         fs.patient_id         AS fs_patient_id,
+         fs.form_id            AS fs_form_id,
+         fs.review_status,
+         fs.sync_status,
+         fs.submission_source,
+         fs.submitted_at,
+         if2.clinic_id         AS form_clinic_id,
+         if2.clinician_id      AS form_clinician_id,
+         p.clinic_id           AS patient_clinic_id,
+         u.id                  AS owner_user_id,
+         u.default_clinic_id   AS owner_default_clinic_id
+       FROM form_submissions fs
+       LEFT JOIN intake_forms if2 ON if2.id = fs.form_id
+       LEFT JOIN patients p        ON p.id  = fs.patient_id
+       LEFT JOIN users u           ON u.id  = fs.clinician_id
+       ORDER BY fs.submitted_at DESC
+       LIMIT 10`
+    );
+    return result.rows;
+  }
+
   async getFormSubmission(id: number): Promise<schema.FormSubmission | undefined> {
     const result = await db.execute(sql`SELECT * FROM form_submissions WHERE id = ${id} LIMIT 1`);
     return rawRows(result)[0] as schema.FormSubmission | undefined;

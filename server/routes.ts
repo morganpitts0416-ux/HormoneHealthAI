@@ -14314,6 +14314,23 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       console.log(`[submissions/all] clinicId=${clinicId} clinicianId=${clinicianId} — querying DB`);
       const submissions = await storage.getFormSubmissionsByClinic(clinicId, clinicianId);
       console.log(`[submissions/all] clinicId=${clinicId} clinicianId=${clinicianId} totalFromDB=${submissions.length}`);
+      if (submissions.length === 0) {
+        try {
+          const rawRows = await (storage as any).debugFormSubmissionsRaw();
+          console.log(`[submissions/all] RAW unscoped check — ${rawRows.length} row(s) in form_submissions table:`);
+          for (const r of rawRows) {
+            console.log(
+              `[submissions/all]   sub#${r.id}: fs.clinic_id=${r.fs_clinic_id} fs.clinician_id=${r.fs_clinician_id} fs.patient_id=${r.fs_patient_id} fs.form_id=${r.fs_form_id}` +
+              ` review=${r.review_status} sync=${r.sync_status} source=${r.submission_source}` +
+              ` | form.clinic_id=${r.form_clinic_id} form.clinician_id=${r.form_clinician_id}` +
+              ` | patient.clinic_id=${r.patient_clinic_id}` +
+              ` | owner.user_id=${r.owner_user_id} owner.default_clinic_id=${r.owner_default_clinic_id}`
+            );
+          }
+        } catch (diagErr) {
+          console.error("[submissions/all] RAW diagnostic query failed:", diagErr);
+        }
+      }
       // Batch-fetch form names in ONE query instead of N parallel db.execute calls.
       // The previous Promise.all(submissions.map(getIntakeFormById)) fired up to 31
       // simultaneous queries, exhausting the 20-connection pool and causing
