@@ -6864,11 +6864,19 @@ export interface SpruceConversationMessageRow {
     .orderBy(desc(schema.clinicalOrders.createdAt));
   if (!orders.length) return [];
   const orderIds = orders.map(o => o.id);
-  const completions = await db.select().from(schema.orderTaskCompletions)
-    .where(inArray(schema.orderTaskCompletions.orderId, orderIds));
+  const [completions, assigneeRows] = await Promise.all([
+    db.select().from(schema.orderTaskCompletions)
+      .where(inArray(schema.orderTaskCompletions.orderId, orderIds)),
+    db.select().from(schema.orderAssignees)
+      .where(inArray(schema.orderAssignees.orderId, orderIds)),
+  ]);
   const byOrder = completions.reduce((acc, c) => {
     (acc[c.orderId] ??= []).push(c); return acc;
   }, {} as Record<number, typeof completions>);
+  const assigneesByOrder = assigneeRows.reduce((acc, a) => {
+    (acc[a.orderId] ??= []).push({ teamMemberId: a.teamMemberId, displayName: a.displayName });
+    return acc;
+  }, {} as Record<number, { teamMemberId: string; displayName: string }[]>);
   const providerIds = [...new Set(orders.map(o => o.orderingProviderUserId).filter((id): id is number => id != null))];
   const providerMap: Record<number, { firstName: string; lastName: string; title: string | null; npi: string | null; signatureImage: string | null }> = {};
   if (providerIds.length) {
@@ -6881,6 +6889,7 @@ export interface SpruceConversationMessageRow {
   return orders.map(o => ({
     ...o,
     taskCompletions: byOrder[o.id] ?? [],
+    assignees: assigneesByOrder[o.id] ?? [],
     orderingProvider: o.orderingProviderUserId ? (providerMap[o.orderingProviderUserId] ?? null) : null,
   }));
 };
@@ -6906,16 +6915,23 @@ export interface SpruceConversationMessageRow {
     .orderBy(desc(schema.clinicalOrders.createdAt));
   if (!orders.length) return [];
   const orderIds = orders.map(o => o.id);
-  const completions = await db.select().from(schema.orderTaskCompletions)
-    .where(inArray(schema.orderTaskCompletions.orderId, orderIds));
   const patientIds = [...new Set(orders.map(o => o.patientId))];
-  const patients = await db
-    .select({ id: schema.patients.id, firstName: schema.patients.firstName, lastName: schema.patients.lastName })
-    .from(schema.patients).where(inArray(schema.patients.id, patientIds));
+  const [completions, assigneeRows, patients] = await Promise.all([
+    db.select().from(schema.orderTaskCompletions)
+      .where(inArray(schema.orderTaskCompletions.orderId, orderIds)),
+    db.select().from(schema.orderAssignees)
+      .where(inArray(schema.orderAssignees.orderId, orderIds)),
+    db.select({ id: schema.patients.id, firstName: schema.patients.firstName, lastName: schema.patients.lastName })
+      .from(schema.patients).where(inArray(schema.patients.id, patientIds)),
+  ]);
   const patientMap = Object.fromEntries(patients.map(p => [p.id, p]));
   const byOrder = completions.reduce((acc, c) => {
     (acc[c.orderId] ??= []).push(c); return acc;
   }, {} as Record<number, typeof completions>);
+  const assigneesByOrder = assigneeRows.reduce((acc, a) => {
+    (acc[a.orderId] ??= []).push({ teamMemberId: a.teamMemberId, displayName: a.displayName });
+    return acc;
+  }, {} as Record<number, { teamMemberId: string; displayName: string }[]>);
   const providerIds = [...new Set(orders.map(o => o.orderingProviderUserId).filter((id): id is number => id != null))];
   const providerMap: Record<number, { firstName: string; lastName: string; title: string | null; npi: string | null; signatureImage: string | null }> = {};
   if (providerIds.length) {
@@ -6928,10 +6944,32 @@ export interface SpruceConversationMessageRow {
   return orders.map(o => ({
     ...o,
     taskCompletions: byOrder[o.id] ?? [],
+    assignees: assigneesByOrder[o.id] ?? [],
     patientFirstName: patientMap[o.patientId]?.firstName ?? '',
     patientLastName: patientMap[o.patientId]?.lastName ?? '',
     orderingProvider: o.orderingProviderUserId ? (providerMap[o.orderingProviderUserId] ?? null) : null,
   }));
+};
+
+// Insert/replace all assignees for an order in one atomic operation.
+// Validates each teamMemberId matches "user:{int}" or "staff:{int}".
+const TEAM_MEMBER_ID_RE = /^(user|staff):\d+$/;
+(DbStorage.prototype as any).setOrderAssignees = async function(
+  orderId: number,
+  assignees: { teamMemberId: string; displayName: string }[],
+): Promise<void> {
+  for (const a of assignees) {
+    if (!TEAM_MEMBER_ID_RE.test(a.teamMemberId)) {
+      throw new Error(`Invalid teamMemberId format: "${a.teamMemberId}"`);
+    }
+  }
+  // Delete existing rows then insert new set
+  await db.delete(schema.orderAssignees).where(eq(schema.orderAssignees.orderId, orderId));
+  if (assignees.length > 0) {
+    await db.insert(schema.orderAssignees).values(
+      assignees.map(a => ({ orderId, teamMemberId: a.teamMemberId, displayName: a.displayName }))
+    ).onConflictDoNothing();
+  }
 };
 
 (DbStorage.prototype as any).createClinicalOrder = async function(

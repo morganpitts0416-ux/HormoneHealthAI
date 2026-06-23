@@ -3295,6 +3295,20 @@ export const insertOrderTaskCompletionSchema = createInsertSchema(orderTaskCompl
 });
 export type InsertOrderTaskCompletion = z.infer<typeof insertOrderTaskCompletionSchema>;
 
+// ── Order Assignees (multi-assignee junction) ─────────────────────────────────
+// One row per (order, team member). team_member_id stores the namespaced string
+// that /api/clinical-orders/team returns, e.g. "user:5" or "staff:12".
+export const orderAssignees = pgTable("order_assignees", {
+  id: serial("id").primaryKey(),
+  orderId: integer("order_id").notNull().references(() => clinicalOrders.id, { onDelete: "cascade" }),
+  teamMemberId: varchar("team_member_id", { length: 50 }).notNull(),
+  displayName: text("display_name").notNull(),
+  addedAt: timestamp("added_at").defaultNow().notNull(),
+}, (t) => ({
+  uniqueOrderMember: uniqueIndex("order_assignees_order_member_idx").on(t.orderId, t.teamMemberId),
+}));
+export type OrderAssignee = typeof orderAssignees.$inferSelect;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Platform Admin / Ops Portal
 // Additive-only — does not alter any existing table.

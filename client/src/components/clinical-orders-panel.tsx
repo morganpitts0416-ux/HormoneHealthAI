@@ -62,6 +62,7 @@ interface ClinicalOrderData {
   recurrenceMonths: number | null;
   assignedToUserId: number | null;
   assignedToStaffId: number | null;
+  assignees: { teamMemberId: string; displayName: string }[];
   status: string;
   notes: string | null;
   diagnosisCode: string | null;
@@ -360,6 +361,27 @@ function OrderDetailDrawer({
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5">
           {/* Order details */}
           <div className="space-y-2">
+            {/* Subtype — the actual order content. Shown untruncated so staff can read every lab/study requested. */}
+            <div className="rounded-md bg-muted/50 border px-3 py-2.5">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+                {order.orderType === "referral" ? "Specialty / Service"
+                  : order.orderType === "imaging" ? "Imaging Study"
+                  : order.orderType === "lab" ? "Labs / Panel Ordered"
+                  : "Screening / Service"}
+              </p>
+              <p className="text-sm font-medium leading-snug break-words whitespace-pre-wrap" data-testid="text-order-subtype-detail">{order.subtype}</p>
+            </div>
+            {/* Assignees — multi-assignee with legacy fallback */}
+            {(() => {
+              const names = (order.assignees ?? []).map((a) => a.displayName);
+              return names.length > 0 ? (
+                <div className="flex items-start gap-2 text-sm">
+                  <User className="w-3.5 h-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
+                  <span className="text-muted-foreground">Assigned to:</span>
+                  <span className="font-medium">{names.join(", ")}</span>
+                </div>
+              ) : null;
+            })()}
             {order.referringTo && (
               <div className="flex items-start gap-2 text-sm">
                 <User className="w-3.5 h-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
@@ -728,7 +750,7 @@ function NewOrderDialog({
   const [reason, setReason] = useState("");
   const [targetDate, setTargetDate] = useState("");
   const [notifyDaysBefore, setNotifyDaysBefore] = useState("3");
-  const [assignedTo, setAssignedTo] = useState("");
+  const [selectedAssignees, setSelectedAssignees] = useState<{ id: string; label: string }[]>([]);
   const [orderingProviderId, setOrderingProviderId] = useState<string>("");
   const [recurring, setRecurring] = useState(false);
   const [recurrenceMonths, setRecurrenceMonths] = useState("12");
@@ -748,11 +770,6 @@ function NewOrderDialog({
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      let assignedToUserId: number | null = null;
-      let assignedToStaffId: number | null = null;
-      if (assignedTo.startsWith("user:")) assignedToUserId = parseInt(assignedTo.slice(5));
-      else if (assignedTo.startsWith("staff:")) assignedToStaffId = parseInt(assignedTo.slice(6));
-
       const orderingProviderUserId = effectiveOrderingProvider.startsWith("user:")
         ? parseInt(effectiveOrderingProvider.slice(5))
         : null;
@@ -768,8 +785,7 @@ function NewOrderDialog({
         targetDate: targetDate || null,
         notifyDaysBefore: targetDate ? parseInt(notifyDaysBefore) : undefined,
         recurrenceMonths: recurring ? parseInt(recurrenceMonths) : null,
-        assignedToUserId,
-        assignedToStaffId,
+        assignees: selectedAssignees.map((a) => ({ teamMemberId: a.id, displayName: a.label })),
         orderingProviderUserId,
         notes: notes.trim() || null,
         diagnosisCode: diagnosis?.code ?? null,
@@ -787,7 +803,7 @@ function NewOrderDialog({
       // Reset
       setOrderType("referral"); setSubtype(""); setPriority("routine");
       setReferringTo(""); setFacilityFax(""); setFacilityAddress("");
-      setReason(""); setTargetDate(""); setNotifyDaysBefore("3"); setAssignedTo(""); setOrderingProviderId("");
+      setReason(""); setTargetDate(""); setNotifyDaysBefore("3"); setSelectedAssignees([]); setOrderingProviderId("");
       setRecurring(false); setRecurrenceMonths("12"); setNotes("");
       setDiagnosis(null); setCpt(null);
     },
@@ -1000,13 +1016,44 @@ function NewOrderDialog({
 
           <div className="space-y-1.5">
             <Label className="text-xs">Assign To</Label>
-            <Select value={assignedTo} onValueChange={setAssignedTo}>
+            {/* Selected assignee chips */}
+            {selectedAssignees.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-1">
+                {selectedAssignees.map((a) => (
+                  <span
+                    key={a.id}
+                    className="inline-flex items-center gap-1 text-xs bg-muted border rounded px-2 py-0.5"
+                    data-testid={`chip-assignee-${a.id}`}
+                  >
+                    {a.label}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedAssignees((prev) => prev.filter((x) => x.id !== a.id))}
+                      className="text-muted-foreground hover:text-foreground"
+                      data-testid={`button-remove-assignee-${a.id}`}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <Select
+              value=""
+              onValueChange={(val) => {
+                if (!val) return;
+                const member = team.find((m) => m.id === val);
+                if (!member) return;
+                setSelectedAssignees((prev) =>
+                  prev.some((a) => a.id === val) ? prev : [...prev, { id: member.id, label: member.label }]
+                );
+              }}
+            >
               <SelectTrigger className="h-8 text-xs" data-testid="select-assigned-to">
-                <SelectValue placeholder="Select team member…" />
+                <SelectValue placeholder={selectedAssignees.length > 0 ? "Add another…" : "Select team member…"} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="unassigned">Unassigned</SelectItem>
-                {team.map((m) => (
+                {team.filter((m) => !selectedAssignees.some((a) => a.id === m.id)).map((m) => (
                   <SelectItem key={m.id} value={m.id} data-testid={`option-team-${m.id}`}>
                     {m.label}
                     <span className="ml-1.5 text-muted-foreground text-xs">· {m.kind === "provider" ? "Provider" : "Staff"}</span>
@@ -1072,6 +1119,12 @@ function OrderRow({ order, patientName, onClick }: { order: ClinicalOrderData; p
           )}
         </div>
         <p className="text-xs text-muted-foreground truncate">{order.subtype}{order.referringTo ? ` · ${order.referringTo}` : ""}</p>
+        {(() => {
+          const names = (order.assignees ?? []).map((a) => a.displayName);
+          return names.length > 0 ? (
+            <p className="text-[10px] text-muted-foreground truncate">→ {names.join(", ")}</p>
+          ) : null;
+        })()}
       </div>
       <div className="flex-shrink-0 text-right">
         <p className="text-xs font-medium">{done}/{total}</p>
@@ -1296,6 +1349,12 @@ export function ActiveOrdersWidget() {
                       <p className="text-xs truncate" style={{ color: "#7a8a64" }}>
                         {order.subtype}{order.referringTo ? ` · ${order.referringTo}` : ""}
                       </p>
+                      {(() => {
+                        const names = (order.assignees ?? []).map((a) => a.displayName);
+                        return names.length > 0 ? (
+                          <p className="text-[10px] truncate" style={{ color: "#7a8a64" }}>→ {names.join(", ")}</p>
+                        ) : null;
+                      })()}
                       {/* Progress bar */}
                       <div className="mt-1.5 flex items-center gap-2">
                         <div className="flex-1 h-1 rounded-full bg-black/10 overflow-hidden">

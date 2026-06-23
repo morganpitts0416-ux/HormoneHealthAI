@@ -21226,6 +21226,11 @@ IMPORTANT:
       const patientId = parseInt(req.params.id);
       if (isNaN(patientId)) return res.status(400).json({ error: "Invalid patient ID" });
       const effectiveClinicId = clinicId ?? clinicianId;
+      const TEAM_MEMBER_ID_RE = /^(user|staff):\d+$/;
+      const assigneeSchema = z.object({
+        teamMemberId: z.string().regex(TEAM_MEMBER_ID_RE, "teamMemberId must be user:{id} or staff:{id}"),
+        displayName: z.string().min(1).max(200),
+      });
       const schema2 = z.object({
         orderType: z.enum(["referral", "imaging", "health_maintenance", "lab"]),
         subtype: z.string().min(1).max(150),
@@ -21237,8 +21242,7 @@ IMPORTANT:
         targetDate: z.string().optional().nullable(),
         notifyDaysBefore: z.number().int().min(0).max(365).optional().nullable(),
         recurrenceMonths: z.number().int().positive().optional().nullable(),
-        assignedToUserId: z.number().int().positive().optional().nullable(),
-        assignedToStaffId: z.number().int().positive().optional().nullable(),
+        assignees: z.array(assigneeSchema).max(20).optional().default([]),
         notes: z.string().optional().nullable(),
         orderingProviderUserId: z.number().int().positive().optional().nullable(),
         diagnosisCode: z.string().max(20).optional().nullable(),
@@ -21250,6 +21254,19 @@ IMPORTANT:
       if (!parsed.success) return res.status(400).json({ error: "Invalid input", details: parsed.error.format() });
       const { data } = parsed;
       const staffId = sess.staffId ? Number(sess.staffId) : null;
+
+      // Derive legacy single-assignment fields from first assignee for backward compat
+      let legacyAssignedToUserId: number | null = null;
+      let legacyAssignedToStaffId: number | null = null;
+      if (data.assignees && data.assignees.length > 0) {
+        const first = data.assignees[0];
+        if (first.teamMemberId.startsWith("user:")) {
+          legacyAssignedToUserId = parseInt(first.teamMemberId.slice(5));
+        } else if (first.teamMemberId.startsWith("staff:")) {
+          legacyAssignedToStaffId = parseInt(first.teamMemberId.slice(6));
+        }
+      }
+
       // Compute activateOn date and initial status from targetDate + notifyDaysBefore
       let computedStatus: "active" | "scheduled" = "active";
       let computedActivateOn: string | null = null;
@@ -21264,20 +21281,25 @@ IMPORTANT:
         computedActivateOn = activateDate.toISOString().slice(0, 10);
         if (activateDate > today) computedStatus = "scheduled";
       }
-      const { notifyDaysBefore: _notifyDays, ...orderData } = data;
+      const { notifyDaysBefore: _notifyDays, assignees, ...orderData } = data;
       const order = await (storage as any).createClinicalOrder({
         ...orderData,
         clinicId: effectiveClinicId,
         patientId,
         createdByUserId: clinicianId,
         createdByStaffId: staffId,
-        // Default ordering provider to the creating clinician if not explicitly set
         orderingProviderUserId: data.orderingProviderUserId ?? clinicianId,
+        assignedToUserId: legacyAssignedToUserId,
+        assignedToStaffId: legacyAssignedToStaffId,
         status: computedStatus,
         activateOn: computedActivateOn,
         icd10Codes: [],
       });
-      res.status(201).json(order);
+      // Insert multi-assignee rows
+      if (assignees && assignees.length > 0) {
+        await (storage as any).setOrderAssignees(order.id, assignees);
+      }
+      res.status(201).json({ ...order, assignees: assignees ?? [] });
     } catch (err) {
       console.error("[clinical-orders POST]", err);
       res.status(500).json({ error: "Failed to create order" });
@@ -21292,10 +21314,16 @@ IMPORTANT:
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
       const effectiveClinicId = clinicId ?? clinicianId;
+      const TEAM_MEMBER_ID_RE = /^(user|staff):\d+$/;
+      const assigneeSchema = z.object({
+        teamMemberId: z.string().regex(TEAM_MEMBER_ID_RE, "teamMemberId must be user:{id} or staff:{id}"),
+        displayName: z.string().min(1).max(200),
+      });
       const patchSchema = z.object({
         notes: z.string().optional().nullable(),
         assignedToUserId: z.number().int().positive().optional().nullable(),
         assignedToStaffId: z.number().int().positive().optional().nullable(),
+        assignees: z.array(assigneeSchema).max(20).optional(),
         referringTo: z.string().max(200).optional().nullable(),
         facilityFax: z.string().max(30).optional().nullable(),
         facilityAddress: z.string().optional().nullable(),
@@ -21306,8 +21334,31 @@ IMPORTANT:
       });
       const parsed = patchSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: "Invalid input" });
-      const order = await (storage as any).updateClinicalOrder(id, parsed.data, effectiveClinicId);
+      const { assignees, ...orderFields } = parsed.data;
+
+      // Derive legacy fields from first assignee if a new assignee list is provided
+      if (assignees !== undefined && assignees.length > 0) {
+        const first = assignees[0];
+        if (first.teamMemberId.startsWith("user:")) {
+          (orderFields as any).assignedToUserId = parseInt(first.teamMemberId.slice(5));
+          (orderFields as any).assignedToStaffId = null;
+        } else if (first.teamMemberId.startsWith("staff:")) {
+          (orderFields as any).assignedToStaffId = parseInt(first.teamMemberId.slice(6));
+          (orderFields as any).assignedToUserId = null;
+        }
+      } else if (assignees !== undefined && assignees.length === 0) {
+        (orderFields as any).assignedToUserId = null;
+        (orderFields as any).assignedToStaffId = null;
+      }
+
+      const order = await (storage as any).updateClinicalOrder(id, orderFields, effectiveClinicId);
       if (!order) return res.status(404).json({ error: "Order not found" });
+
+      // Replace assignee junction rows if provided
+      if (assignees !== undefined) {
+        await (storage as any).setOrderAssignees(id, assignees);
+      }
+
       res.json(order);
     } catch (err) {
       console.error("[clinical-orders PATCH]", err);
