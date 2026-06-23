@@ -25,6 +25,7 @@ import { PDFExtractionService } from "./pdf-extraction";
 import { ASCVDCalculator } from "./ascvd-calculator";
 import { runEnhancedSoapPipeline } from "./soap-pipeline";
 import { runJunePipeline, shouldJuneAcknowledge } from "./spruce-june";
+import { getSpruceAuthorId, invalidateSpruceAuthorCache } from "./spruce-author";
 import { PREVENTCalculator } from "./prevent-calculator";
 import { StopBangCalculator } from "./stopbang-calculator";
 import { detectMaleHormonePatterns } from "./male-hormone-patterns";
@@ -2740,7 +2741,11 @@ Rules:
       if (apiToken && conv?.spruceConversationId) {
         try {
           // Spruce API body format per developer.sprucehealth.com/reference/postconversationmessage:
-          // { body: [{ type: "text", value: "..." }], internal: false }
+          // { body: [{ type: "text", value: "..." }], internal: false, author?: spruceTeammateId }
+          // Match the sending clinician's ClinIQ email → Spruce teammate id so the message
+          // appears in Spruce as sent by them rather than the organization account owner.
+          const senderEmail = (req.user as any)?.email ?? null;
+          const spruceAuthorId = await getSpruceAuthorId(clinicId, senderEmail, apiToken).catch(() => null);
           const spruceRes = await fetch(
             `https://api.sprucehealth.com/v1/conversations/${conv.spruceConversationId}/messages`,
             {
@@ -2752,6 +2757,7 @@ Rules:
               body: JSON.stringify({
                 body: [{ type: "text", value: body }],
                 internal: false,
+                ...(spruceAuthorId ? { author: spruceAuthorId } : {}),
               }),
             },
           );
@@ -5805,12 +5811,18 @@ Return ONLY this JSON structure:
             : null;
           if (apiToken && conv?.spruceConversationId) {
             try {
+              const senderEmail2 = (req.user as any)?.email ?? null;
+              const spruceAuthorId2 = await getSpruceAuthorId(clinicId, senderEmail2, apiToken).catch(() => null);
               const spruceRes = await fetch(
                 `https://api.sprucehealth.com/v1/conversations/${conv.spruceConversationId}/messages`,
                 {
                   method: 'POST',
                   headers: { 'Authorization': `Bearer ${apiToken}`, 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ body: [{ type: 'text', value: body }], internal: false }),
+                  body: JSON.stringify({
+                    body: [{ type: 'text', value: body }],
+                    internal: false,
+                    ...(spruceAuthorId2 ? { author: spruceAuthorId2 } : {}),
+                  }),
                 },
               );
               if (spruceRes.ok) {
@@ -19558,6 +19570,8 @@ IMPORTANT:
       }
 
       const row = await storage.upsertClinicSpruceSettings(clinicId, updates);
+      // Evict cached Spruce teammate list so the next message send re-fetches fresh members.
+      invalidateSpruceAuthorCache(clinicId);
       res.json({
         id: row.id,
         clinicId: row.clinicId,
