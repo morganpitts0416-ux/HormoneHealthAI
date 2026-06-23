@@ -1795,6 +1795,23 @@ CREATE TABLE IF NOT EXISTS order_task_completions (
 CREATE UNIQUE INDEX IF NOT EXISTS order_task_completions_order_task_idx
   ON order_task_completions (order_id, task_key);
 
+-- ── order_assignees ───────────────────────────────────────────────────────────
+-- Multi-assignee junction table. One row per (order, team member).
+-- team_member_id is a namespaced string: "user:{id}" or "staff:{id}".
+-- Existing single-assignee orders continue using assigned_to_user_id /
+-- assigned_to_staff_id on clinical_orders; the storage layer synthesises
+-- an assignees[] entry from those columns when this table has no rows for
+-- a given order (legacy fallback).
+CREATE TABLE IF NOT EXISTS order_assignees (
+  id             SERIAL PRIMARY KEY,
+  order_id       INTEGER NOT NULL REFERENCES clinical_orders(id) ON DELETE CASCADE,
+  team_member_id VARCHAR(50) NOT NULL,
+  display_name   TEXT NOT NULL,
+  added_at       TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS order_assignees_order_member_idx
+  ON order_assignees (order_id, team_member_id);
+
 -- ── ordering provider on clinical_orders ──────────────────────────────────────
 ALTER TABLE clinical_orders ADD COLUMN IF NOT EXISTS ordering_provider_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
 
