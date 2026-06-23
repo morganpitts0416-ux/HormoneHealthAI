@@ -3099,6 +3099,61 @@ export class DbStorage implements IStorage {
     return this.getFormSubmissionsByClinician(clinicianId);
   }
 
+  // Slim summary version — omits the large JSONB payload columns
+  // (raw_submission_json, normalized_submission_json, signature_json, sync_summary_json)
+  // so list endpoints stay well within Cloud Run's response-size limit.
+  // Use getFormSubmission(id) for the full record when opening a detail view.
+  private static readonly SUMMARY_COLS = `
+    fs.id, fs.form_id, fs.form_version, fs.clinician_id, fs.clinic_id,
+    fs.patient_id, fs.assignment_id, fs.submitted_by_patient, fs.submitted_by_staff,
+    fs.submission_source, fs.status, fs.submitted_at, fs.expires_at,
+    fs.review_status, fs.sync_status, fs.submitter_name, fs.submitter_email,
+    fs.created_at, fs.updated_at`;
+
+  private async getFormSubmissionsSummaryByClinician(clinicianId: number): Promise<any[]> {
+    const result = await pool.query(
+      `SELECT ${DbStorage.SUMMARY_COLS.replace(/fs\./g, '')}
+       FROM form_submissions fs
+       WHERE fs.clinician_id = $1
+       ORDER BY fs.submitted_at DESC`,
+      [clinicianId]
+    );
+    return result.rows.map(mapRow);
+  }
+
+  async getFormSubmissionsSummaryByClinic(clinicId: number | null, clinicianId: number): Promise<any[]> {
+    if (clinicId) {
+      try {
+        const patientRows = await pool.query<{ id: number }>(
+          `SELECT id FROM patients WHERE clinic_id = $1`, [clinicId]
+        );
+        const patientIds: number[] = patientRows.rows.map(r => r.id);
+
+        const formRows = await pool.query<{ id: number }>(
+          `SELECT id FROM intake_forms WHERE clinic_id = $1 OR clinician_id = $2`,
+          [clinicId, clinicianId]
+        );
+        const formIds: number[] = formRows.rows.map(r => r.id);
+
+        const result = await pool.query(
+          `SELECT DISTINCT ${DbStorage.SUMMARY_COLS}
+           FROM form_submissions fs
+           WHERE fs.clinic_id    = $1
+              OR fs.clinician_id = $2
+              OR fs.patient_id   = ANY($3::int[])
+              OR fs.form_id      = ANY($4::int[])
+           ORDER BY fs.submitted_at DESC`,
+          [clinicId, clinicianId, patientIds, formIds]
+        );
+        return result.rows.map(mapRow);
+      } catch (err) {
+        console.error("[storage] getFormSubmissionsSummaryByClinic error — falling back:", err);
+        return this.getFormSubmissionsSummaryByClinician(clinicianId);
+      }
+    }
+    return this.getFormSubmissionsSummaryByClinician(clinicianId);
+  }
+
   async debugFormSubmissionsRaw(): Promise<any[]> {
     const result = await pool.query(
       `SELECT

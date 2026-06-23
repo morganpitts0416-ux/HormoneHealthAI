@@ -14306,131 +14306,64 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
     }
   });
 
-  // GET /api/intake-forms/submissions/all — all clinic submissions with form names (all staff + providers)
+  // GET /api/intake-forms/submissions/all — slim summary list (omits large JSONB payload columns)
   app.get("/api/intake-forms/submissions/all", requireAuth, async (req: any, res) => {
     try {
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
       const clinicId = getEffectiveClinicId(req);
       const clinicianId = getClinicianId(req);
-      console.log(`[submissions/all] clinicId=${clinicId} clinicianId=${clinicianId} — querying DB`);
-      const submissions = await storage.getFormSubmissionsByClinic(clinicId, clinicianId);
-      console.log(`[submissions/all] clinicId=${clinicId} clinicianId=${clinicianId} totalFromDB=${submissions.length}`);
-      if (submissions.length === 0) {
-        try {
-          const rawRows = await (storage as any).debugFormSubmissionsRaw();
-          console.log(`[submissions/all] RAW unscoped check — ${rawRows.length} row(s) in form_submissions table:`);
-          for (const r of rawRows) {
-            console.log(
-              `[submissions/all]   sub#${r.id}: fs.clinic_id=${r.fs_clinic_id} fs.clinician_id=${r.fs_clinician_id} fs.patient_id=${r.fs_patient_id} fs.form_id=${r.fs_form_id}` +
-              ` review=${r.review_status} sync=${r.sync_status} source=${r.submission_source}` +
-              ` | form.clinic_id=${r.form_clinic_id} form.clinician_id=${r.form_clinician_id}` +
-              ` | patient.clinic_id=${r.patient_clinic_id}` +
-              ` | owner.user_id=${r.owner_user_id} owner.default_clinic_id=${r.owner_default_clinic_id}`
-            );
-          }
-        } catch (diagErr) {
-          console.error("[submissions/all] RAW diagnostic query failed:", diagErr);
-        }
-      }
-      // Batch-fetch form names in ONE query instead of N parallel db.execute calls.
-      // The previous Promise.all(submissions.map(getIntakeFormById)) fired up to 31
-      // simultaneous queries, exhausting the 20-connection pool and causing
-      // intermittent 500s on this endpoint and on /submissions/pending.
+      // Slim query — omits rawSubmissionJson / normalizedSubmissionJson / signatureJson / syncSummaryJson
+      // to keep the response well under Cloud Run's response-size limit.
+      const submissions = await (storage as any).getFormSubmissionsSummaryByClinic(clinicId, clinicianId);
+      // Batch-fetch form names in one query.
       let formNameMap = new Map<number, string>();
       if (submissions.length > 0) {
         const uniqueFormIds = [...new Set(submissions.map((s: any) => s.formId as number))];
-        console.log(`[submissions/all] uniqueFormIds count=${uniqueFormIds.length} ids=${JSON.stringify(uniqueFormIds.slice(0,10))}`);
         try {
           const formRows = await storage.getIntakeFormsByIds(uniqueFormIds);
           for (const f of formRows) formNameMap.set(f.id, f.name);
-          console.log(`[submissions/all] formNameMap.size=${formNameMap.size} (getIntakeFormsByIds succeeded)`);
-        } catch (fErr: any) {
-          console.error(`[submissions/all] getIntakeFormsByIds THREW (swallowed):`, fErr?.stack ?? String(fErr));
+        } catch {
+          // non-fatal — formName falls back to "Unknown Form"
         }
       }
-      console.log(`[submissions/all] building enriched array from ${submissions.length} rows`);
       const enriched = submissions.map((sub: any) => ({
         ...sub,
         formName: formNameMap.get(sub.formId) ?? "Unknown Form",
       }));
-      console.log(`[submissions/all] enriched.length=${enriched.length} first=${JSON.stringify({ id: enriched[0]?.id, formId: enriched[0]?.formId, formName: enriched[0]?.formName, reviewStatus: enriched[0]?.reviewStatus, syncStatus: enriched[0]?.syncStatus })}`);
-      try {
-        res.json(enriched);
-        console.log(`[submissions/all] res.json() completed OK`);
-      } catch (jsonErr: any) {
-        console.error(`[submissions/all] res.json() THREW:`, jsonErr?.stack ?? String(jsonErr));
-        if (!res.headersSent) {
-          res.status(500).json({ message: "Failed to serialize response" });
-        }
-      }
+      res.json(enriched);
     } catch (err: any) {
-      console.error(`[submissions/all] OUTER CATCH — stack: ${err?.stack ?? String(err)}`);
+      console.error(`[submissions/all] error: ${err?.stack ?? String(err)}`);
       res.status(500).json({ message: "Failed to fetch submissions" });
     }
   });
 
-  // GET /api/intake-forms/submissions/pending — all clinic submissions (all staff + providers)
+  // GET /api/intake-forms/submissions/pending — slim summary, filtered to pending/unsynced
   app.get("/api/intake-forms/submissions/pending", requireAuth, async (req: any, res) => {
-    const t0 = Date.now();
-    console.log("[pending-submissions] handler entered");
     try {
       res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-      res.setHeader("Pragma", "no-cache");
-      res.setHeader("Expires", "0");
       const clinicId = getEffectiveClinicId(req);
       const clinicianId = getClinicianId(req);
-      console.log(`[pending-submissions] clinicId=${clinicId} clinicianId=${clinicianId} — querying DB`);
-
-      // Hard timeout: if the DB query takes > 10 s, abort and return empty so
-      // the client doesn't hang indefinitely.
-      let submissions: any[] = [];
-      try {
-        const queryPromise = storage.getFormSubmissionsByClinic(clinicId, clinicianId);
-        const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("DB_TIMEOUT")), 10_000)
-        );
-        submissions = await Promise.race([queryPromise, timeoutPromise]);
-      } catch (qErr: any) {
-        if (qErr?.message === "DB_TIMEOUT") {
-          console.error(`[pending-submissions] DB query timed out after 10 s — returning []`);
-          return res.json([]);
-        }
-        throw qErr;
-      }
-
+      // Slim query — omits rawSubmissionJson / normalizedSubmissionJson / signatureJson / syncSummaryJson
+      const submissions = await (storage as any).getFormSubmissionsSummaryByClinic(clinicId, clinicianId);
       const pending = submissions.filter((s: any) => s.reviewStatus === "pending" || s.syncStatus === "not_synced");
-      console.log(`[pending-submissions] clinicId=${clinicId} clinicianId=${clinicianId} totalFromDB=${submissions.length} pendingAfterFilter=${pending.length} elapsed=${Date.now()-t0}ms firstIds=${pending.slice(0,5).map((s: any)=>`${s.id}(rv=${s.reviewStatus},sy=${s.syncStatus})`).join(",")}`);
-
-      // Batch-fetch form names in ONE query instead of N parallel queries.
-      // The previous Promise.all(pending.map(getIntakeFormById)) fired up to 31
-      // simultaneous DB queries, exhausting the 20-connection pool and causing
-      // intermittent connection-timeout 500s on every other dashboard load.
+      // Batch-fetch form names in one query.
       let formNameMap = new Map<number, string>();
       if (pending.length > 0) {
         const uniqueFormIds = [...new Set(pending.map((s: any) => s.formId as number))];
-        console.log(`[pending-submissions] uniqueFormIds count=${uniqueFormIds.length}`);
         try {
           const formRows = await storage.getIntakeFormsByIds(uniqueFormIds);
           for (const f of formRows) formNameMap.set(f.id, f.name);
-          console.log(`[pending-submissions] formNameMap.size=${formNameMap.size} (getIntakeFormsByIds succeeded)`);
-        } catch (fErr: any) {
-          console.error(`[pending-submissions] getIntakeFormsByIds THREW (swallowed):`, fErr?.stack ?? String(fErr));
+        } catch {
+          // non-fatal — formName falls back to "Unknown Form"
         }
       }
-      console.log(`[pending-submissions] building enriched array from ${pending.length} rows`);
       const enriched = pending.map((sub: any) => ({
         ...sub,
         formName: formNameMap.get(sub.formId) ?? "Unknown Form",
       }));
-      console.log(`[pending-submissions] enriched.length=${enriched.length} first=${JSON.stringify({ id: enriched[0]?.id, formId: enriched[0]?.formId, formName: enriched[0]?.formName, reviewStatus: enriched[0]?.reviewStatus })}`);
-      try {
-        res.json(enriched);
-        console.log(`[pending-submissions] res.json() completed OK, total elapsed=${Date.now()-t0}ms`);
-      } catch (jsonErr: any) {
-        console.error(`[pending-submissions] res.json() THREW:`, jsonErr?.stack ?? String(jsonErr));
-        if (!res.headersSent) res.status(500).json({ message: "Failed to serialize response" });
-      }
+      res.json(enriched);
     } catch (err: any) {
-      console.error(`[pending-submissions] OUTER CATCH — stack: ${err?.stack ?? String(err)}`);
+      console.error(`[submissions/pending] error: ${err?.stack ?? String(err)}`);
       res.status(500).json({ message: "Failed to fetch pending submissions" });
     }
   });
