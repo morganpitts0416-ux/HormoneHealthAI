@@ -14338,20 +14338,32 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       let formNameMap = new Map<number, string>();
       if (submissions.length > 0) {
         const uniqueFormIds = [...new Set(submissions.map((s: any) => s.formId as number))];
+        console.log(`[submissions/all] uniqueFormIds count=${uniqueFormIds.length} ids=${JSON.stringify(uniqueFormIds.slice(0,10))}`);
         try {
           const formRows = await storage.getIntakeFormsByIds(uniqueFormIds);
           for (const f of formRows) formNameMap.set(f.id, f.name);
-        } catch {
-          // non-fatal — formName falls back to "Unknown Form" below
+          console.log(`[submissions/all] formNameMap.size=${formNameMap.size} (getIntakeFormsByIds succeeded)`);
+        } catch (fErr: any) {
+          console.error(`[submissions/all] getIntakeFormsByIds THREW (swallowed):`, fErr?.stack ?? String(fErr));
         }
       }
+      console.log(`[submissions/all] building enriched array from ${submissions.length} rows`);
       const enriched = submissions.map((sub: any) => ({
         ...sub,
         formName: formNameMap.get(sub.formId) ?? "Unknown Form",
       }));
-      res.json(enriched);
-    } catch (err) {
-      console.error("[intake-forms/submissions/all] ERROR:", err);
+      console.log(`[submissions/all] enriched.length=${enriched.length} first=${JSON.stringify({ id: enriched[0]?.id, formId: enriched[0]?.formId, formName: enriched[0]?.formName, reviewStatus: enriched[0]?.reviewStatus, syncStatus: enriched[0]?.syncStatus })}`);
+      try {
+        res.json(enriched);
+        console.log(`[submissions/all] res.json() completed OK`);
+      } catch (jsonErr: any) {
+        console.error(`[submissions/all] res.json() THREW:`, jsonErr?.stack ?? String(jsonErr));
+        if (!res.headersSent) {
+          res.status(500).json({ message: "Failed to serialize response" });
+        }
+      }
+    } catch (err: any) {
+      console.error(`[submissions/all] OUTER CATCH — stack: ${err?.stack ?? String(err)}`);
       res.status(500).json({ message: "Failed to fetch submissions" });
     }
   });
@@ -14395,22 +14407,30 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       let formNameMap = new Map<number, string>();
       if (pending.length > 0) {
         const uniqueFormIds = [...new Set(pending.map((s: any) => s.formId as number))];
+        console.log(`[pending-submissions] uniqueFormIds count=${uniqueFormIds.length}`);
         try {
           const formRows = await storage.getIntakeFormsByIds(uniqueFormIds);
           for (const f of formRows) formNameMap.set(f.id, f.name);
-        } catch {
-          // non-fatal — formName falls back to "Unknown Form" below
+          console.log(`[pending-submissions] formNameMap.size=${formNameMap.size} (getIntakeFormsByIds succeeded)`);
+        } catch (fErr: any) {
+          console.error(`[pending-submissions] getIntakeFormsByIds THREW (swallowed):`, fErr?.stack ?? String(fErr));
         }
       }
+      console.log(`[pending-submissions] building enriched array from ${pending.length} rows`);
       const enriched = pending.map((sub: any) => ({
         ...sub,
         formName: formNameMap.get(sub.formId) ?? "Unknown Form",
       }));
-
-      console.log(`[pending-submissions] responding with ${enriched.length} rows, total elapsed=${Date.now()-t0}ms`);
-      res.json(enriched);
-    } catch (err) {
-      console.error("[intake-forms/submissions/pending] ERROR:", err);
+      console.log(`[pending-submissions] enriched.length=${enriched.length} first=${JSON.stringify({ id: enriched[0]?.id, formId: enriched[0]?.formId, formName: enriched[0]?.formName, reviewStatus: enriched[0]?.reviewStatus })}`);
+      try {
+        res.json(enriched);
+        console.log(`[pending-submissions] res.json() completed OK, total elapsed=${Date.now()-t0}ms`);
+      } catch (jsonErr: any) {
+        console.error(`[pending-submissions] res.json() THREW:`, jsonErr?.stack ?? String(jsonErr));
+        if (!res.headersSent) res.status(500).json({ message: "Failed to serialize response" });
+      }
+    } catch (err: any) {
+      console.error(`[pending-submissions] OUTER CATCH — stack: ${err?.stack ?? String(err)}`);
       res.status(500).json({ message: "Failed to fetch pending submissions" });
     }
   });
