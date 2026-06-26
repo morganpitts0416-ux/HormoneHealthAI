@@ -2592,6 +2592,135 @@ Rules:
     }
   });
 
+  // POST /api/spruce/conversations/:key/internal-note — staff writes an internal note on the patient thread.
+  // Notes are stored as portal_messages with messageType='internal_note', visibility='internal_only'.
+  // mentionedUserIds[] creates patientMessageMentions rows + provider notifications for each tagged staff.
+  app.post("/api/spruce/conversations/:key/internal-note", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const userId = (req.user as any)?.id ?? null;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const key = decodeURIComponent(req.params.key);
+      const { content, mentionedUserIds = [] } = req.body;
+      if (!content || typeof content !== "string" || !content.trim()) {
+        return res.status(400).json({ error: "content is required" });
+      }
+      const noteBody = content.trim();
+
+      // Resolve patientId from the conversation key
+      const [convRow] = await storageDb
+        .select({ patientId: schema.spruceMessages.patientId })
+        .from(schema.spruceMessages)
+        .where(
+          and(
+            eq(schema.spruceMessages.clinicId, clinicId),
+            or(
+              eq(schema.spruceMessages.spruceConversationId, key),
+              eq(schema.spruceMessages.fromPhone, key),
+            ),
+            isNotNull(schema.spruceMessages.patientId),
+          )
+        )
+        .limit(1);
+
+      const patientId = convRow?.patientId ?? null;
+      if (!patientId) {
+        return res.status(400).json({
+          error: "This conversation must be linked to a patient before adding internal notes.",
+        });
+      }
+
+      // Create the internal note in portal_messages
+      const [msg] = await storageDb
+        .insert(schema.portalMessages)
+        .values({
+          patientId,
+          clinicianId: userId,
+          senderType: "clinician",
+          content: noteBody,
+          messageType: "internal_note",
+          visibility: "internal_only",
+        })
+        .returning();
+
+      // Build sender display name for notifications
+      const u = req.user as any;
+      const senderName = [u?.title, u?.firstName, u?.lastName].filter(Boolean).join(" ") || "A staff member";
+
+      // Get patient name for the notification body
+      const patient = await storage.getPatient(patientId);
+      const patientName = [patient?.firstName, patient?.lastName].filter(Boolean).join(" ") || "a patient";
+
+      // Process @mentions
+      const validMentionIds = Array.isArray(mentionedUserIds)
+        ? mentionedUserIds.filter((id: any) => typeof id === "number")
+        : [];
+      for (const mentionedUserId of validMentionIds) {
+        await storageDb.insert(schema.patientMessageMentions).values({
+          clinicId,
+          patientId,
+          messageId: msg.id,
+          mentionedUserId,
+        });
+        await storageDb.insert(schema.providerInboxNotifications).values({
+          clinicId,
+          patientId,
+          providerId: mentionedUserId,
+          type: "mention",
+          title: `@mention from ${senderName}`,
+          message: `${senderName} mentioned you in a note about ${patientName}: "${noteBody.slice(0, 80)}${noteBody.length > 80 ? "…" : ""}"`,
+          severity: "normal",
+        });
+      }
+
+      res.json({ ok: true, message: msg });
+    } catch (err) {
+      console.error("[Spruce/internal-note] Error:", err);
+      res.status(500).json({ error: "Failed to save internal note" });
+    }
+  });
+
+  // GET /api/inbox/assigned-to-me — personal work queue: @mentions + directed notifications
+  app.get("/api/inbox/assigned-to-me", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const userId = (req.user as any)?.id ?? null;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const items = await (storage as any).getAssignedToMeQueue(clinicId, userId);
+      res.json(items);
+    } catch (err) {
+      console.error("[Inbox/assigned-to-me] Error:", err);
+      res.status(500).json({ error: "Failed to fetch queue" });
+    }
+  });
+
+  // PATCH /api/inbox/mentions/:id/acknowledge — mark a @mention as acknowledged (dismiss from queue)
+  app.patch("/api/inbox/mentions/:id/acknowledge", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const userId = (req.user as any)?.id ?? null;
+      const mentionId = parseInt(req.params.id, 10);
+      if (isNaN(mentionId)) return res.status(400).json({ error: "Invalid mention id" });
+      await storageDb
+        .update(schema.patientMessageMentions)
+        .set({ acknowledgedAt: new Date() })
+        .where(
+          and(
+            eq(schema.patientMessageMentions.id, mentionId),
+            eq(schema.patientMessageMentions.clinicId, clinicId),
+            eq(schema.patientMessageMentions.mentionedUserId, userId),
+          )
+        );
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[Inbox/mentions/acknowledge] Error:", err);
+      res.status(500).json({ error: "Failed to acknowledge mention" });
+    }
+  });
+
   // POST /api/spruce/conversations/:key/mark-replied — dismiss from "Unreplied" without sending
   app.post("/api/spruce/conversations/:key/mark-replied", requireAuth, async (req, res) => {
     try {

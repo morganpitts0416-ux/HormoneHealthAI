@@ -26,6 +26,15 @@ import {
   Users,
   ClipboardList,
   MailCheck,
+  AtSign,
+  FileText,
+  Package,
+  Bell,
+  StickyNote,
+  PenLine,
+  CheckCheck,
+  X as XIcon,
+  Tag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -76,10 +85,31 @@ interface SpruceMessage {
   patientFirstName: string | null;
   patientLastName: string | null;
   spruceContactName: string | null;
-  /** 'spruce' for native Spruce messages; 'portal' for ClinIQ portal messages merged in */
-  source?: 'spruce' | 'portal';
-  /** messageType from portal_messages; null for spruce-source rows */
+  source?: 'spruce' | 'portal' | 'form_submitted' | 'supplement' | 'notification';
   portalMessageType?: string | null;
+  authorName?: string | null;
+}
+
+interface AssignedToMeItem {
+  id: string;
+  kind: 'mention' | 'notification';
+  patientId: number | null;
+  patientFirstName: string | null;
+  patientLastName: string | null;
+  reason: string;
+  snippet: string;
+  timestamp: string;
+  conversationKey: string | null;
+  acknowledgedAt: string | null;
+}
+
+interface ClinicMember {
+  id: number;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  title: string | null;
+  role: string | null;
 }
 
 interface ConvState {
@@ -277,6 +307,116 @@ function ConversationRow({
   );
 }
 
+// ── InternalNoteBubble ────────────────────────────────────────────────────────
+// Staff-only internal note — always internal_only visibility, never shown to patients.
+
+function InternalNoteBubble({ msg }: { msg: SpruceMessage }) {
+  const authorDisplay = msg.spruceContactName ?? msg.authorName ?? "Staff";
+  return (
+    <div className="flex justify-end mb-3 px-4" data-testid={`msg-note-${msg.id}`}>
+      <div className="max-w-[76%]">
+        <div className="flex items-center justify-end gap-1.5 mb-1">
+          <span
+            className="inline-flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded-full leading-none"
+            style={{ backgroundColor: "#ede9fe", color: "#5b21b6" }}
+          >
+            <StickyNote className="w-2.5 h-2.5" />
+            Internal note
+          </span>
+          <p className="text-[11px] font-semibold" style={{ color: "#5b21b6" }}>
+            {authorDisplay}
+          </p>
+        </div>
+        <div
+          className="rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm leading-relaxed"
+          style={{
+            backgroundColor: "#f5f3ff",
+            border: "1px solid #ddd6fe",
+            color: "#2e1065",
+          }}
+        >
+          <span style={{ whiteSpace: "pre-line" }}>{msg.messageBody ?? ""}</span>
+        </div>
+        <p className="text-[10px] mt-1 text-right" style={{ color: "#8b5cf6" }}>
+          {formatMessageTime(msg.receivedAt)} · staff only
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── MilestoneEvent ────────────────────────────────────────────────────────────
+// Center-aligned event card for form submissions, supplement orders, notifications.
+
+function MilestoneEvent({ msg }: { msg: SpruceMessage }) {
+  const eventType = msg.eventType ?? "";
+  const source = msg.source ?? "";
+
+  let Icon = Bell;
+  let label = "Event";
+  let chipBg = "#f0f9ff";
+  let chipBorder = "#bae6fd";
+  let chipColor = "#0369a1";
+  let iconColor = "#0369a1";
+
+  if (source === "form_submitted" || eventType === "form_submitted") {
+    Icon = FileText;
+    label = `Form submitted: ${msg.messageBody ?? "Form"}`;
+    chipBg = "#f0fdf4"; chipBorder = "#bbf7d0"; chipColor = "#15803d"; iconColor = "#15803d";
+  } else if (source === "supplement") {
+    if (eventType === "supplement_fulfilled") {
+      Icon = CheckCheck;
+      label = `Supplement fulfilled: ${msg.messageBody ?? ""}`;
+      chipBg = "#f0fdf4"; chipBorder = "#bbf7d0"; chipColor = "#15803d"; iconColor = "#15803d";
+    } else {
+      Icon = Package;
+      label = `Supplement ordered: ${msg.messageBody ?? ""}`;
+      chipBg = "#fff7ed"; chipBorder = "#fed7aa"; chipColor = "#c2410c"; iconColor = "#c2410c";
+    }
+  } else if (source === "notification" || eventType === "notification") {
+    Icon = Bell;
+    const title = msg.spruceContactName ?? "Notification";
+    label = `${title}: ${msg.messageBody ?? ""}`;
+    chipBg = "#fefce8"; chipBorder = "#fde68a"; chipColor = "#b45309"; iconColor = "#b45309";
+  }
+
+  return (
+    <div className="flex justify-center my-2 px-4" data-testid={`milestone-${msg.id}`}>
+      <div
+        className="inline-flex items-center gap-2 text-[11px] font-medium px-3 py-1.5 rounded-full max-w-[90%]"
+        style={{
+          backgroundColor: chipBg,
+          border: `1px solid ${chipBorder}`,
+          color: chipColor,
+        }}
+      >
+        <Icon className="w-3 h-3 flex-shrink-0" style={{ color: iconColor }} />
+        <span className="truncate">{label}</span>
+        <span className="text-[9px] opacity-70 flex-shrink-0">
+          {formatMessageTime(msg.receivedAt)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ── ThreadEvent ───────────────────────────────────────────────────────────────
+// Dispatch wrapper — picks the right component for each event type.
+
+function ThreadEvent({ msg, optimistic }: { msg: SpruceMessage; optimistic?: boolean }) {
+  if (msg.messageDirection === "internal_note") {
+    return <InternalNoteBubble msg={msg} />;
+  }
+  if (
+    msg.source === "form_submitted" ||
+    msg.source === "supplement" ||
+    msg.source === "notification"
+  ) {
+    return <MilestoneEvent msg={msg} />;
+  }
+  return <MessageBubble msg={msg} optimistic={optimistic} />;
+}
+
 // ── MessageBubble ──────────────────────────────────────────────────────────────
 
 function MessageBubble({ msg, optimistic }: { msg: SpruceMessage; optimistic?: boolean }) {
@@ -424,6 +564,10 @@ export default function SpruceInboxPage() {
   const [replyText, setReplyText] = useState("");
   const [optimisticMsgs, setOptimisticMsgs] = useState<SpruceMessage[]>([]);
   const [showSystemEvents, setShowSystemEvents] = useState(false);
+  const [composeMode, setComposeMode] = useState<"reply" | "note">("reply");
+  const [mentionedUsers, setMentionedUsers] = useState<ClinicMember[]>([]);
+  const [showMentionPicker, setShowMentionPicker] = useState(false);
+  const [mentionSearch, setMentionSearch] = useState("");
   const threadBottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -460,6 +604,21 @@ export default function SpruceInboxPage() {
       return res.json();
     },
     enabled: !!selectedKey,
+  });
+
+  // ── Assigned-to-me queue (ClinIQ-native @mentions + notifications) ───────
+  const {
+    data: assignedItems = [],
+    refetch: refetchAssigned,
+  } = useQuery<AssignedToMeItem[]>({
+    queryKey: ["/api/inbox/assigned-to-me"],
+    refetchInterval: 30_000,
+  });
+
+  // ── Clinic member list for @mention picker ─────────────────────────────
+  const { data: clinicMembers = [] } = useQuery<ClinicMember[]>({
+    queryKey: ["/api/clinic/members"],
+    enabled: composeMode === "note" || showMentionPicker,
   });
 
   // ── Workflow request (June task) for selected conversation ─────────────
@@ -554,6 +713,68 @@ export default function SpruceInboxPage() {
     },
   });
 
+  // ── Send internal note mutation ──────────────────────────────────────────
+  const sendInternalNote = useMutation({
+    mutationFn: async ({ content, mentionedUserIds }: { content: string; mentionedUserIds: number[] }) => {
+      if (!selectedKey) throw new Error("No conversation selected");
+      const res = await apiRequest(
+        "POST",
+        `/api/spruce/conversations/${encodeURIComponent(selectedKey)}/internal-note`,
+        { content, mentionedUserIds },
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).error || "Failed to save note");
+      }
+      return res.json();
+    },
+    onMutate: ({ content }) => {
+      const parts = [user?.title, user?.firstName, user?.lastName].filter(Boolean);
+      const fake: SpruceMessage = {
+        id: Date.now(),
+        spruceConversationId: null,
+        fromPhone: null,
+        toPhone: null,
+        messageBody: content,
+        messageDirection: "internal_note",
+        eventType: "internal_note",
+        staffRepliedAt: null,
+        receivedAt: new Date().toISOString(),
+        patientId: null,
+        patientFirstName: null,
+        patientLastName: null,
+        spruceContactName: parts.join(" ") || "Staff",
+        source: "portal",
+        portalMessageType: "internal_note",
+      };
+      setOptimisticMsgs(prev => [...prev, fake]);
+      setReplyText("");
+      setMentionedUsers([]);
+    },
+    onSuccess: () => {
+      setOptimisticMsgs([]);
+      refetchMsgs();
+      qc.invalidateQueries({ queryKey: ["/api/inbox/assigned-to-me"] });
+    },
+    onError: (err: Error) => {
+      setOptimisticMsgs([]);
+      toast({ variant: "destructive", title: "Failed to save note", description: err.message });
+    },
+  });
+
+  // ── Acknowledge @mention (dismiss from queue) ─────────────────────────────
+  const acknowledgeMention = useMutation({
+    mutationFn: async (mentionId: string) => {
+      const id = mentionId.replace("mention-", "");
+      const res = await apiRequest("PATCH", `/api/inbox/mentions/${id}/acknowledge`, {});
+      if (!res.ok) throw new Error("Failed to acknowledge");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/inbox/assigned-to-me"] });
+    },
+  });
+
   // ── Mark June workflow task complete ────────────────────────────────────
   const markWorkflowCompleteMutation = useMutation({
     mutationFn: async (requestId: number) => {
@@ -589,10 +810,14 @@ export default function SpruceInboxPage() {
       .catch(() => { /* non-fatal — silently ignore */ });
   }, [selectedKey]);
 
-  // Clear optimistic messages when selectedKey changes
+  // Clear optimistic messages + compose state when selectedKey changes
   useEffect(() => {
     setOptimisticMsgs([]);
     setReplyText("");
+    setComposeMode("reply");
+    setMentionedUsers([]);
+    setShowMentionPicker(false);
+    setMentionSearch("");
   }, [selectedKey]);
 
   // Auto-select first conversation when list loads — desktop only.
@@ -791,8 +1016,15 @@ export default function SpruceInboxPage() {
 
   function handleSend() {
     const body = replyText.trim();
-    if (!body || sendReply.isPending) return;
-    sendReply.mutate(body);
+    if (!body || sendReply.isPending || sendInternalNote.isPending) return;
+    if (composeMode === "note") {
+      sendInternalNote.mutate({
+        content: body,
+        mentionedUserIds: mentionedUsers.map(m => m.id),
+      });
+    } else {
+      sendReply.mutate(body);
+    }
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -802,11 +1034,19 @@ export default function SpruceInboxPage() {
     }
   }
 
-  // A message is a Spruce system/action event (not a real patient or staff message)
-  // when messageDirection is "spruce_system_event" (new) or the legacy "unknown".
-  // These are workflow assignments, archives, team assignments, tag changes, etc.
-  // They render as small muted system chips — never as full chat bubbles.
+  // A message is a Spruce system/action event (archive events, tag changes, etc.)
+  // that renders as a small muted chip — toggled by the "Show system events" button.
+  // Internal notes and milestone events (form_submitted, supplement, notification)
+  // are always visible and never hidden by the system-events toggle.
   function isSpruceSystemEvent(msg: SpruceMessage): boolean {
+    if (
+      msg.messageDirection === "internal_note" ||
+      msg.source === "form_submitted" ||
+      msg.source === "supplement" ||
+      msg.source === "notification"
+    ) {
+      return false;
+    }
     return (
       msg.messageDirection === "spruce_system_event" ||
       msg.messageDirection === "unknown" ||
@@ -898,7 +1138,7 @@ export default function SpruceInboxPage() {
           <NavItem
             icon={BookUser}
             label="Assigned to Me"
-            count={assignedToMeConvs.length}
+            count={assignedItems.length + assignedToMeConvs.length || undefined}
             active={activeView === "assigned"}
             onClick={() => { setActiveView("assigned"); setSelectedKey(null); }}
             testId="nav-assigned"
@@ -967,7 +1207,7 @@ export default function SpruceInboxPage() {
               all: activeConvs.length,
               unread: activeConvs.filter((c) => !c.hasStaffReply).length,
               urgent: urgentConvs.length,
-              assigned: assignedToMeConvs.length || undefined,
+              assigned: (assignedItems.length + assignedToMeConvs.length) || undefined,
               unmatched: unmatchedConvs.length,
               archived: archivedConvs.length || undefined,
             };
@@ -1097,14 +1337,65 @@ export default function SpruceInboxPage() {
               )}
             </div>
           ) : (
-            filtered.map((conv) => (
-              <ConversationRow
-                key={conv.conversationKey}
-                conv={conv}
-                selected={selectedKey === conv.conversationKey}
-                onClick={() => setSelectedKey(conv.conversationKey)}
-              />
-            ))
+            <>
+              {/* ClinIQ-native @mention / notification items — shown only in assigned view */}
+              {activeView === "assigned" && assignedItems.length > 0 && (
+                <div className="py-1">
+                  <p className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[#9a9a8a]">
+                    Needs your attention
+                  </p>
+                  {assignedItems.map(item => (
+                    <button
+                      key={item.id}
+                      onClick={() => item.conversationKey && setSelectedKey(item.conversationKey)}
+                      className="w-full text-left px-3 py-2.5 flex items-start gap-2.5 hover:bg-[#f5f3ff] transition-colors border-b border-[#f0ede8] last:border-0"
+                      data-testid={`assigned-item-${item.id}`}
+                    >
+                      <span
+                        className="mt-0.5 flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center"
+                        style={{ backgroundColor: item.type === "mention" ? "#ede9fe" : "#fef3c7" }}
+                      >
+                        {item.type === "mention"
+                          ? <AtSign className="w-3 h-3" style={{ color: "#5b21b6" }} />
+                          : <Bell className="w-3 h-3" style={{ color: "#b45309" }} />}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-[#1c2414] truncate">{item.patientName}</p>
+                        <p className="text-[11px] text-[#6a6a5a] truncate">{item.preview}</p>
+                        <p className="text-[10px] text-[#9a9a8a] mt-0.5">
+                          {item.mentionedBy && <span className="mr-1">From {item.mentionedBy} ·</span>}
+                          {new Date(item.createdAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                        </p>
+                      </div>
+                      <button
+                        onClick={e => { e.stopPropagation(); acknowledgeMention.mutate(item.id); }}
+                        className="flex-shrink-0 opacity-40 hover:opacity-80 transition-opacity mt-0.5"
+                        title="Dismiss"
+                        data-testid={`button-dismiss-${item.id}`}
+                      >
+                        <CheckCheck className="w-3.5 h-3.5 text-[#4a5a40]" />
+                      </button>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Spruce-tagged conversations — label only when both sections are present */}
+              {activeView === "assigned" && assignedItems.length > 0 && filtered.length > 0 && (
+                <p className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[#9a9a8a]">
+                  Tagged conversations
+                </p>
+              )}
+
+              {filtered.map((conv) => (
+                <ConversationRow
+                  key={conv.conversationKey}
+                  conv={conv}
+                  selected={selectedKey === conv.conversationKey}
+                  onClick={() => setSelectedKey(conv.conversationKey)}
+                />
+              ))}
+            </>
           )}
         </div>
       </div>
@@ -1438,12 +1729,12 @@ export default function SpruceInboxPage() {
                   <div key={group.dateLabel}>
                     <DateDivider label={group.dateLabel} />
                     {group.messages.map((msg) => (
-                      <MessageBubble key={msg.id} msg={msg} />
+                      <ThreadEvent key={msg.id} msg={msg} />
                     ))}
                   </div>
                 ))}
                 {optimisticMsgs.map((msg) => (
-                  <MessageBubble key={msg.id} msg={msg} optimistic />
+                  <ThreadEvent key={msg.id} msg={msg} optimistic />
                 ))}
               </>
             )}
@@ -1451,19 +1742,142 @@ export default function SpruceInboxPage() {
           </div>
 
           {/* ── Compose / Reply footer ──────────────────────────────────── */}
-          <div className="border-t border-[#e5e2dc] bg-white px-3 md:px-4 pt-3 pb-20 md:pb-[72px]">
-            <div className="rounded-lg border border-[#e0dcd4] bg-[#fafaf8] overflow-hidden">
+          <div className="border-t border-[#e5e2dc] bg-white px-3 md:px-4 pt-2 pb-20 md:pb-[72px]">
+
+            {/* Mode toggle row */}
+            <div className="flex items-center gap-1 mb-2">
+              <button
+                onClick={() => { setComposeMode("reply"); setMentionedUsers([]); setShowMentionPicker(false); }}
+                data-testid="button-compose-reply"
+                className={`flex items-center gap-1.5 text-[11px] font-medium px-3 py-1 rounded-full transition-colors ${
+                  composeMode === "reply"
+                    ? "bg-[#2e7d52] text-white"
+                    : "bg-[#f0ede8] text-[#5a6a50] hover:bg-[#e5e2dc]"
+                }`}
+              >
+                <Send className="w-3 h-3" />
+                Message patient
+              </button>
+              <button
+                onClick={() => setComposeMode("note")}
+                data-testid="button-compose-note"
+                className={`flex items-center gap-1.5 text-[11px] font-medium px-3 py-1 rounded-full transition-colors ${
+                  composeMode === "note"
+                    ? "bg-[#5b21b6] text-white"
+                    : "bg-[#f0ede8] text-[#5a6a50] hover:bg-[#e5e2dc]"
+                }`}
+              >
+                <StickyNote className="w-3 h-3" />
+                Internal note
+              </button>
+            </div>
+
+            {/* @mention pills — shown only in note mode */}
+            {composeMode === "note" && (
+              <div className="mb-1.5 flex items-center gap-1.5 flex-wrap">
+                {mentionedUsers.map(m => (
+                  <span
+                    key={m.id}
+                    className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full"
+                    style={{ backgroundColor: "#ede9fe", color: "#5b21b6" }}
+                  >
+                    <AtSign className="w-2.5 h-2.5" />
+                    {[m.firstName, m.lastName].filter(Boolean).join(" ")}
+                    <button
+                      onClick={() => setMentionedUsers(prev => prev.filter(u => u.id !== m.id))}
+                      className="ml-0.5 opacity-60 hover:opacity-100"
+                    >
+                      <XIcon className="w-2.5 h-2.5" />
+                    </button>
+                  </span>
+                ))}
+                <button
+                  onClick={() => setShowMentionPicker(v => !v)}
+                  data-testid="button-add-mention"
+                  className="flex items-center gap-1 text-[11px] text-[#5b21b6] hover:text-[#3b0764] px-2 py-0.5 rounded-full hover:bg-[#ede9fe] transition-colors"
+                >
+                  <AtSign className="w-3 h-3" />
+                  Mention
+                </button>
+                {showMentionPicker && (
+                  <div className="relative">
+                    <div
+                      className="absolute bottom-7 left-0 z-50 bg-white rounded-lg border border-[#ddd6fe] shadow-lg w-52 overflow-hidden"
+                    >
+                      <div className="p-1.5 border-b border-[#f0ede8]">
+                        <input
+                          autoFocus
+                          value={mentionSearch}
+                          onChange={e => setMentionSearch(e.target.value)}
+                          placeholder="Search staff…"
+                          className="w-full text-xs px-2 py-1 rounded border border-[#e0dcd4] outline-none focus:ring-1 focus:ring-[#8b5cf6]"
+                          data-testid="input-mention-search"
+                        />
+                      </div>
+                      <div className="max-h-40 overflow-y-auto py-1">
+                        {clinicMembers
+                          .filter(m => {
+                            const q = mentionSearch.toLowerCase();
+                            const name = [m.firstName, m.lastName].filter(Boolean).join(" ").toLowerCase();
+                            return !q || name.includes(q);
+                          })
+                          .filter(m => !mentionedUsers.find(mu => mu.id === m.id))
+                          .slice(0, 8)
+                          .map(m => (
+                            <button
+                              key={m.id}
+                              onClick={() => {
+                                setMentionedUsers(prev => [...prev, m]);
+                                setShowMentionPicker(false);
+                                setMentionSearch("");
+                              }}
+                              className="w-full text-left px-3 py-1.5 text-xs hover:bg-[#f5f3ff] transition-colors"
+                            >
+                              <span className="font-medium text-[#2d1f4a]">
+                                {[m.title, m.firstName, m.lastName].filter(Boolean).join(" ")}
+                              </span>
+                              {m.role && (
+                                <span className="ml-1 text-[10px] text-[#9a8a9a]">{m.role}</span>
+                              )}
+                            </button>
+                          ))}
+                        {clinicMembers.length === 0 && (
+                          <p className="text-[10px] text-[#9a9a8a] text-center py-2">No staff found</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div
+              className="rounded-lg border overflow-hidden"
+              style={{
+                borderColor: composeMode === "note" ? "#ddd6fe" : "#e0dcd4",
+                backgroundColor: composeMode === "note" ? "#faf8ff" : "#fafaf8",
+              }}
+            >
               <Textarea
                 ref={textareaRef}
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Type a reply… (⌘↵ to send)"
+                placeholder={composeMode === "note" ? "Write a staff-only internal note… (⌘↵ to save)" : "Type a reply… (⌘↵ to send)"}
                 className="resize-none border-0 rounded-none text-sm bg-transparent focus-visible:ring-0 min-h-[80px] max-h-[160px]"
+                style={{ color: composeMode === "note" ? "#2e1065" : undefined }}
                 data-testid="textarea-reply"
               />
-              <div className="flex items-center justify-between px-3 py-2 border-t border-[#eeeae4]">
-                {hasSpruceToken ? (
+              <div
+                className="flex items-center justify-between px-3 py-2 border-t"
+                style={{ borderColor: composeMode === "note" ? "#ddd6fe" : "#eeeae4" }}
+              >
+                {composeMode === "note" ? (
+                  <div className="flex items-center gap-1.5 text-[10px]" style={{ color: "#7c3aed" }}>
+                    <StickyNote className="w-3 h-3 flex-shrink-0" />
+                    <span>Staff only · never visible to patient</span>
+                  </div>
+                ) : hasSpruceToken ? (
                   <div className="flex items-center gap-1.5 text-[10px] text-[#9a9a8a]">
                     <ShieldCheck className="w-3 h-3 flex-shrink-0" />
                     <span>Sends via Spruce · logged for audit</span>
@@ -1480,18 +1894,22 @@ export default function SpruceInboxPage() {
                 )}
                 <Button
                   size="sm"
-                  disabled={!replyText.trim() || sendReply.isPending}
+                  disabled={!replyText.trim() || sendReply.isPending || sendInternalNote.isPending}
                   onClick={handleSend}
-                  style={{ backgroundColor: "#2e7d52" }}
+                  style={{ backgroundColor: composeMode === "note" ? "#5b21b6" : "#2e7d52" }}
                   className="text-white flex-shrink-0 ml-2"
                   data-testid="button-send-reply"
                 >
-                  {sendReply.isPending ? (
+                  {(sendReply.isPending || sendInternalNote.isPending) ? (
                     <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                  ) : composeMode === "note" ? (
+                    <StickyNote className="w-3.5 h-3.5 mr-1.5" />
                   ) : (
                     <Send className="w-3.5 h-3.5 mr-1.5" />
                   )}
-                  {sendReply.isPending ? "Sending…" : "Send"}
+                  {sendReply.isPending || sendInternalNote.isPending
+                    ? composeMode === "note" ? "Saving…" : "Sending…"
+                    : composeMode === "note" ? "Save note" : "Send"}
                 </Button>
               </div>
             </div>

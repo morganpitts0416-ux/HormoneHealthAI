@@ -409,6 +409,7 @@ export interface IStorage {
   getPendingSpruceWorkflowRequests(clinicId: number): Promise<schema.SpruceWorkflowRequest[]>;
   listSpruceConversations(clinicId: number): Promise<SpruceConversationSummary[]>;
   getSpruceConversationMessages(clinicId: number, conversationKey: string): Promise<SpruceConversationMessageRow[]>;
+  getAssignedToMeQueue(clinicId: number, userId: number): Promise<AssignedToMeItem[]>;
   updateSpruceWorkflowRequestStatus(
     id: number,
     status: string,
@@ -5406,10 +5407,26 @@ export interface SpruceConversationMessageRow {
   patientFirstName: string | null;
   patientLastName: string | null;
   spruceContactName: string | null;
-  // 'spruce' = came from spruce_messages; 'portal' = came from portal_messages
-  source: 'spruce' | 'portal';
+  // source discriminates which table the row came from
+  source: 'spruce' | 'portal' | 'form_submitted' | 'supplement' | 'notification';
   // messageType from portal_messages; null for spruce-source rows
   portalMessageType: string | null;
+  // Optional display name for the author (filled in for internal notes etc.)
+  authorName?: string | null;
+}
+
+// ── AssignedToMeItem ──────────────────────────────────────────────────────────
+export interface AssignedToMeItem {
+  id: string;
+  kind: 'mention' | 'notification';
+  patientId: number | null;
+  patientFirstName: string | null;
+  patientLastName: string | null;
+  reason: string;
+  snippet: string;
+  timestamp: string;
+  conversationKey: string | null;
+  acknowledgedAt: string | null;
 }
 
 (DbStorage.prototype as any).listSpruceConversations = async function(
@@ -5628,8 +5645,11 @@ export interface SpruceConversationMessageRow {
     const senderType = p.senderType;
     // Map portal senderType + messageType → Spruce-compatible messageDirection
     let messageDirection: string;
-    if (messageType !== 'message') {
-      // internal_note, june_memo, workflow_note, system_event — render as system
+    if (messageType === 'internal_note') {
+      // Internal notes render as their own distinct bubble — not a system pill
+      messageDirection = 'internal_note';
+    } else if (messageType !== 'message') {
+      // june_memo, workflow_note, system_event — render as system pill
       messageDirection = 'spruce_system_event';
     } else {
       messageDirection = senderType === 'patient' ? 'inbound_patient' : 'outbound_staff';
@@ -5653,8 +5673,108 @@ export interface SpruceConversationMessageRow {
     };
   });
 
-  // ── 3. Merge and sort chronologically ───────────────────────────────────
-  const all = [...tagged, ...portalTagged];
+  // ── 3. Form submissions for this patient ─────────────────────────────────
+  const formRows = await db
+    .select({
+      id: schema.formSubmissions.id,
+      submittedAt: schema.formSubmissions.submittedAt,
+      formName: schema.intakeForms.name,
+      submitterName: schema.formSubmissions.submitterName,
+    })
+    .from(schema.formSubmissions)
+    .leftJoin(schema.intakeForms, eq(schema.formSubmissions.formId, schema.intakeForms.id))
+    .where(
+      and(
+        eq(schema.formSubmissions.patientId, patientId),
+        eq(schema.formSubmissions.clinicId, clinicId),
+      )
+    )
+    .orderBy(asc(schema.formSubmissions.submittedAt));
+
+  const formTagged: SpruceConversationMessageRow[] = formRows.map(f => ({
+    id: -(200_000 + f.id),
+    spruceConversationId: null,
+    fromPhone: null,
+    toPhone: null,
+    messageBody: f.formName ?? 'Form submitted',
+    messageDirection: 'spruce_system_event',
+    eventType: 'form_submitted',
+    staffRepliedAt: null,
+    receivedAt: f.submittedAt,
+    patientId,
+    patientFirstName: null,
+    patientLastName: null,
+    spruceContactName: f.submitterName ?? null,
+    source: 'form_submitted' as const,
+    portalMessageType: null,
+  }));
+
+  // ── 4. Supplement orders for this patient ─────────────────────────────────
+  const suppRows = await db
+    .select()
+    .from(schema.supplementOrders)
+    .where(eq(schema.supplementOrders.patientId, patientId))
+    .orderBy(asc(schema.supplementOrders.createdAt));
+
+  const suppTagged: SpruceConversationMessageRow[] = suppRows.map(s => {
+    const items = (s.items ?? []) as Array<{ name?: string; productName?: string }>;
+    const itemSummary = items.length === 1
+      ? (items[0].name ?? items[0].productName ?? 'supplement')
+      : items.length > 1
+        ? `${items.length} supplements`
+        : 'supplement order';
+    return {
+      id: -(400_000 + s.id),
+      spruceConversationId: null,
+      fromPhone: null,
+      toPhone: null,
+      messageBody: itemSummary,
+      messageDirection: 'spruce_system_event',
+      eventType: s.status === 'fulfilled' ? 'supplement_fulfilled' : 'supplement_ordered',
+      staffRepliedAt: null,
+      receivedAt: s.createdAt,
+      patientId,
+      patientFirstName: null,
+      patientLastName: null,
+      spruceContactName: null,
+      source: 'supplement' as const,
+      portalMessageType: null,
+    };
+  });
+
+  // ── 5. Patient-linked provider inbox notifications ─────────────────────────
+  const notifRows = await db
+    .select()
+    .from(schema.providerInboxNotifications)
+    .where(
+      and(
+        eq(schema.providerInboxNotifications.clinicId, clinicId),
+        eq(schema.providerInboxNotifications.patientId, patientId),
+        isNull(schema.providerInboxNotifications.dismissedAt),
+      )
+    )
+    .orderBy(asc(schema.providerInboxNotifications.createdAt));
+
+  const notifTagged: SpruceConversationMessageRow[] = notifRows.map(n => ({
+    id: -(600_000 + n.id),
+    spruceConversationId: null,
+    fromPhone: null,
+    toPhone: null,
+    messageBody: n.message,
+    messageDirection: 'spruce_system_event',
+    eventType: 'notification',
+    staffRepliedAt: null,
+    receivedAt: n.createdAt,
+    patientId,
+    patientFirstName: null,
+    patientLastName: null,
+    spruceContactName: n.title,
+    source: 'notification' as const,
+    portalMessageType: null,
+  }));
+
+  // ── 6. Merge all sources and sort chronologically ─────────────────────────
+  const all = [...tagged, ...portalTagged, ...formTagged, ...suppTagged, ...notifTagged];
   all.sort((a, b) => new Date(a.receivedAt).getTime() - new Date(b.receivedAt).getTime());
   return all;
 };
@@ -5676,6 +5796,122 @@ export interface SpruceConversationMessageRow {
     .where(eq(schema.spruceWorkflowRequests.id, id))
     .returning();
   return row;
+};
+
+// ── getAssignedToMeQueue ───────────────────────────────────────────────────
+// Returns all unacknowledged @mentions + patient-linked notifications routed
+// to this provider.  Each item includes the conversation key so the frontend
+// can navigate directly to the patient thread.
+(DbStorage.prototype as any).getAssignedToMeQueue = async function(
+  clinicId: number,
+  userId: number,
+): Promise<AssignedToMeItem[]> {
+  // 1. @mentions where this user was tagged
+  const mentionRows = await db
+    .select({
+      mentionId: schema.patientMessageMentions.id,
+      patientId: schema.patientMessageMentions.patientId,
+      patientFirstName: schema.patients.firstName,
+      patientLastName: schema.patients.lastName,
+      messageContent: schema.portalMessages.content,
+      mentionedAt: schema.patientMessageMentions.createdAt,
+      acknowledgedAt: schema.patientMessageMentions.acknowledgedAt,
+    })
+    .from(schema.patientMessageMentions)
+    .leftJoin(schema.patients, eq(schema.patientMessageMentions.patientId, schema.patients.id))
+    .leftJoin(schema.portalMessages, eq(schema.patientMessageMentions.messageId, schema.portalMessages.id))
+    .where(
+      and(
+        eq(schema.patientMessageMentions.clinicId, clinicId),
+        eq(schema.patientMessageMentions.mentionedUserId, userId),
+        isNull(schema.patientMessageMentions.acknowledgedAt),
+      )
+    )
+    .orderBy(desc(schema.patientMessageMentions.createdAt));
+
+  // 2. Notifications directly targeted at this provider
+  const notifRows = await db
+    .select({
+      notifId: schema.providerInboxNotifications.id,
+      patientId: schema.providerInboxNotifications.patientId,
+      patientFirstName: schema.patients.firstName,
+      patientLastName: schema.patients.lastName,
+      title: schema.providerInboxNotifications.title,
+      message: schema.providerInboxNotifications.message,
+      createdAt: schema.providerInboxNotifications.createdAt,
+    })
+    .from(schema.providerInboxNotifications)
+    .leftJoin(schema.patients, eq(schema.providerInboxNotifications.patientId, schema.patients.id))
+    .where(
+      and(
+        eq(schema.providerInboxNotifications.clinicId, clinicId),
+        eq(schema.providerInboxNotifications.providerId, userId),
+        isNull(schema.providerInboxNotifications.dismissedAt),
+      )
+    )
+    .orderBy(desc(schema.providerInboxNotifications.createdAt));
+
+  // 3. For patients in the queue, look up their Spruce conversation key
+  const patientIds = [
+    ...new Set([
+      ...mentionRows.map(m => m.patientId),
+      ...notifRows.map(n => n.patientId).filter(Boolean),
+    ] as number[]),
+  ];
+
+  const patientConvKeyMap: Record<number, string> = {};
+  if (patientIds.length > 0) {
+    const convRows = await db
+      .select({
+        patientId: schema.spruceMessages.patientId,
+        spruceId: schema.spruceMessages.spruceConversationId,
+        fromPhone: schema.spruceMessages.fromPhone,
+      })
+      .from(schema.spruceMessages)
+      .where(
+        and(
+          eq(schema.spruceMessages.clinicId, clinicId),
+          inArray(schema.spruceMessages.patientId, patientIds),
+          isNotNull(schema.spruceMessages.patientId),
+        )
+      )
+      .orderBy(desc(schema.spruceMessages.receivedAt));
+    for (const row of convRows) {
+      if (row.patientId && !patientConvKeyMap[row.patientId]) {
+        patientConvKeyMap[row.patientId] = row.spruceId ?? row.fromPhone ?? '';
+      }
+    }
+  }
+
+  const items: AssignedToMeItem[] = [
+    ...mentionRows.map(m => ({
+      id: `mention-${m.mentionId}`,
+      kind: 'mention' as const,
+      patientId: m.patientId,
+      patientFirstName: m.patientFirstName ?? null,
+      patientLastName: m.patientLastName ?? null,
+      reason: 'You were @mentioned in a note',
+      snippet: m.messageContent ? m.messageContent.slice(0, 120) : '',
+      timestamp: m.mentionedAt.toISOString(),
+      conversationKey: patientConvKeyMap[m.patientId] ?? null,
+      acknowledgedAt: m.acknowledgedAt?.toISOString() ?? null,
+    })),
+    ...notifRows.map(n => ({
+      id: `notification-${n.notifId}`,
+      kind: 'notification' as const,
+      patientId: n.patientId ?? null,
+      patientFirstName: n.patientFirstName ?? null,
+      patientLastName: n.patientLastName ?? null,
+      reason: n.title,
+      snippet: n.message.slice(0, 120),
+      timestamp: n.createdAt.toISOString(),
+      conversationKey: n.patientId ? (patientConvKeyMap[n.patientId] ?? null) : null,
+      acknowledgedAt: null,
+    })),
+  ];
+
+  items.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  return items;
 };
 
 // ── backfillSprucePatientLinks ─────────────────────────────────────────────

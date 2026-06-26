@@ -1,0 +1,213 @@
+Unified Patient Communication Hub — Revised Plan for Approval
+
+The goal is to make the Spruce Inbox inside ClinIQ become one cohesive patient communication hub.
+
+When staff opens a patient’s thread, they should see one chronological timeline containing:
+
+* Spruce SMS messages
+* Staff replies through Spruce
+* Internal staff-only notes
+* @mentions between ClinIQ users
+* Assigned patient-related tasks
+* Form submission events
+* Form workflow notifications
+* Portal messages
+* ClinIQ system notifications
+* Supplement order notifications
+* Automated messages and workflow events
+
+This should function like a complete patient communication timeline, not just a Spruce SMS thread.
+
+Critical Safety Requirements
+
+Before building anything, we need to protect the existing system:
+
+1. Do not disrupt the current Spruce integration.
+2. Do not alter existing Spruce June behavior.
+3. Do not change how Spruce messages currently send or receive.
+4. Do not lock staff out of ClinIQ.
+5. Do not lock patients out of the portal.
+6. Do not expose internal notes to patients.
+7. Do not change patient portal visibility rules.
+8. Do not change Spruce assignment behavior unless we explicitly approve that feature later.
+
+Important Clarification on “Assignment”
+
+I do not want “assigning a conversation” to make the thread private or hidden from other staff.
+
+The purpose of this feature is not to restrict access.
+
+The purpose is to improve routing, accountability, and internal communication while keeping the patient communication thread visible to appropriate clinic staff.
+
+If Spruce’s native “assigned conversation” feature would remove the conversation from the shared team inbox or limit visibility for other staff, we should not implement that part yet.
+
+For now, ClinIQ assignment should mean:
+
+* “This needs this staff member’s attention”
+* “This item appears in their Assigned to Me queue”
+* “This patient-related task or mention is routed to them”
+
+It should not mean:
+
+* Other staff can no longer see the thread
+* The conversation disappears from the shared inbox
+* Spruce routing changes in a way that affects June or existing workflows
+
+Updated Build Plan
+
+Slice 1 — Unified Patient Timeline API
+
+Create a unified backend timeline that merges all patient communication-related events into one chronological thread.
+
+Sources to include:
+
+* Spruce SMS messages
+* Portal messages
+* Internal staff-only notes
+* Form submissions
+* Workflow events
+* Provider inbox notifications
+* Supplement order notifications
+* ClinIQ system events
+
+Each event should return a consistent TimelineEvent object with fields like:
+
+* event type
+* patient ID
+* timestamp
+* author/source
+* visibility
+* message/body/summary
+* related form/order/workflow ID if applicable
+
+The frontend thread should render these in chronological order.
+
+This is the foundation and should be built first.
+
+Slice 2 — Internal Notes + @Mentions
+
+Add the ability for staff to write internal notes directly inside the patient thread.
+
+The compose box should clearly toggle between:
+
+* Message patient
+* Internal note
+
+Internal notes must be:
+
+* staff-only
+* clearly labeled as internal
+* never visible in the patient portal
+* visually distinct from patient-facing messages
+
+@mentions should allow one staff member to tag another staff member inside an internal note.
+
+When a user is tagged:
+
+* create a mention record
+* create a ClinIQ notification
+* show the item in that user’s Assigned to Me queue
+* link directly back to the patient thread
+
+Slice 3 — Assigned to Me Queue
+
+The Assigned to Me section should become a personal work queue for staff.
+
+It should include:
+
+* @mentions from internal notes
+* form workflow assignments
+* patient-related tasks assigned to the user
+* important notifications routed to the user
+
+Each item should show:
+
+* patient name
+* reason it appeared
+* snippet or summary
+* timestamp
+* link to open the patient thread
+
+For now, this should be ClinIQ-native only.
+
+Do not call Spruce’s native assignment API yet unless we confirm exactly how Spruce handles assigned conversations and whether the rest of the team can still view them normally.
+
+Slice 4 — Hold Spruce Native Assignment for Later
+
+Do not build the Spruce “Assign to” button yet.
+
+Before approving that feature, we need to confirm:
+
+* Does assigning a Spruce conversation remove it from the shared inbox?
+* Can all staff still view the conversation?
+* Does it affect Spruce June?
+* Does it affect current routing?
+* Does it affect current ClinIQ/Spruce sync logic?
+* Can assignment be used only as a soft accountability marker instead of a visibility/routing change?
+
+Until confirmed, assignment should stay inside ClinIQ only.
+
+Slice 5 — Form Workflow Assignment
+
+Once the Assigned to Me queue works, wire form workflows into it.
+
+When a workflow step assigns something to a staff member, ClinIQ should:
+
+* create a notification/task for that user
+* show it in Assigned to Me
+* link it to the patient thread
+* add a timeline event in the patient communication thread
+
+Example:
+
+“Intake Form completed”
+“Review assigned to Brianna”
+“Brianna completed review”
+“Automated follow-up SMS sent”
+
+This keeps form workflows connected to patient communication instead of living separately.
+
+Expected Final Experience
+
+When staff opens the Spruce Inbox page and clicks a patient thread, they should see one running timeline of everything that happened with that patient.
+
+Example timeline:
+
+* Patient completed appointment request form
+* ClinIQ sent automated confirmation
+* Patient replied by SMS through Spruce
+* Staff member replied to patient
+* Internal note added by Morgan
+* Brianna was @mentioned
+* Lab review task assigned to Kim
+* Supplement order notification added
+* Portal message sent
+* Follow-up workflow triggered
+
+All of this should appear in one chronological patient thread.
+
+Patient-facing messages remain patient-facing.
+
+Internal notes, staff mentions, assignments, and workflow tasks remain staff-only.
+
+What We Should Build First
+
+Approved build order:
+
+1. Unified timeline API
+2. Internal notes
+3. @mentions
+4. ClinIQ-native Assigned to Me queue
+5. Form workflow assignment integration
+
+Do not build Spruce native conversation assignment yet.
+
+That feature needs more confirmation because we do not want to accidentally affect Spruce visibility, Spruce June, existing message routing, or staff access.
+
+Main Principle
+
+This feature is meant to create one cohesive patient communication thread.
+
+It should improve team communication, reduce missed messages, and make patient-related work easier to track.
+
+It should not create silos, hide conversations, disrupt Spruce, or change patient/staff access unexpectedly.
