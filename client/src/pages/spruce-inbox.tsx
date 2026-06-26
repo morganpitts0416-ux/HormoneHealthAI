@@ -802,6 +802,19 @@ export default function SpruceInboxPage() {
     },
   });
 
+  // ── Dismiss a provider inbox notification ─────────────────────────────────
+  const dismissNotification = useMutation({
+    mutationFn: async (notifId: string) => {
+      const id = notifId.replace("notification-", "");
+      const res = await apiRequest("DELETE", `/api/clinician/inbox-notifications/${id}`, {});
+      if (!res.ok) throw new Error("Failed to dismiss notification");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/inbox/assigned-to-me"] });
+    },
+  });
+
   // ── Mark June workflow task complete ────────────────────────────────────
   const markWorkflowCompleteMutation = useMutation({
     mutationFn: async (requestId: number) => {
@@ -1490,22 +1503,30 @@ export default function SpruceInboxPage() {
                     >
                       <span
                         className="mt-0.5 flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center"
-                        style={{ backgroundColor: item.type === "mention" ? "#ede9fe" : "#fef3c7" }}
+                        style={{ backgroundColor: item.kind === "mention" ? "#ede9fe" : "#fef3c7" }}
                       >
-                        {item.type === "mention"
+                        {item.kind === "mention"
                           ? <AtSign className="w-3 h-3" style={{ color: "#5b21b6" }} />
                           : <Bell className="w-3 h-3" style={{ color: "#b45309" }} />}
                       </span>
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-[#1c2414] truncate">{item.patientName}</p>
-                        <p className="text-[11px] text-[#6a6a5a] truncate">{item.preview}</p>
+                        <p className="text-xs font-medium text-[#1c2414] truncate">
+                          {[item.patientFirstName, item.patientLastName].filter(Boolean).join(" ") || "Unknown Patient"}
+                        </p>
+                        <p className="text-[11px] text-[#6a6a5a] truncate">{item.snippet || item.reason}</p>
                         <p className="text-[10px] text-[#9a9a8a] mt-0.5">
-                          {item.mentionedBy && <span className="mr-1">From {item.mentionedBy} ·</span>}
-                          {new Date(item.createdAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                          {new Date(item.timestamp).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                         </p>
                       </div>
                       <button
-                        onClick={e => { e.stopPropagation(); acknowledgeMention.mutate(item.id); }}
+                        onClick={e => {
+                          e.stopPropagation();
+                          if (item.kind === "mention") {
+                            acknowledgeMention.mutate(item.id);
+                          } else {
+                            dismissNotification.mutate(item.id);
+                          }
+                        }}
                         className="flex-shrink-0 opacity-40 hover:opacity-80 transition-opacity mt-0.5"
                         title="Dismiss"
                         data-testid={`button-dismiss-${item.id}`}
