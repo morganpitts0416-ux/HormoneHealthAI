@@ -985,15 +985,11 @@ export default function SpruceInboxPage() {
       return !q || name.includes(q) || phone.includes(q);
     })
     .sort((a, b) => {
-      // "Awaiting reply": float conversations where the last real message is
-      // from the patient (inbound_patient). System events like
-      // "archived and unassigned this conversation" are NOT patient messages —
-      // using !hasStaffReply here was burying active conversations (e.g. today's
-      // patient messages) below hundreds of bulk-restored archived threads that
-      // happen to have no ClinIQ staff-reply record.
-      const aAwaiting = a.lastMessageDirection === "inbound_patient" ? 0 : 1;
-      const bAwaiting = b.lastMessageDirection === "inbound_patient" ? 0 : 1;
-      if (aAwaiting !== bAwaiting) return aAwaiting - bAwaiting;
+      // Pure recency: newest last-message at the top, regardless of direction.
+      // Any activity (patient reply, staff reply, anything) bumps the thread up.
+      // Prioritised sub-buckets (e.g. "unread first") belong in the Unreplied
+      // tab — not here where they buried active today conversations below old
+      // unanswered threads from months ago.
       const diff = new Date(a.lastMessageAt).getTime() - new Date(b.lastMessageAt).getTime();
       return sort === "newest" ? -diff : diff;
     });
