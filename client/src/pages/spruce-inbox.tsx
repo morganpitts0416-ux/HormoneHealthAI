@@ -977,18 +977,23 @@ export default function SpruceInboxPage() {
       if (activeView === "urgent" && !isUrgent(c)) return false;
       // "assigned" = tagged to the current clinician in Spruce
       if (activeView === "assigned" && (c.taggedClinicianId == null || c.taggedClinicianId !== user?.id)) return false;
-      // "unread" = no staff reply yet (inbound, not yet responded)
-      if (activeView === "unread" && c.hasStaffReply) return false;
+      // "unread" = last real message is from the patient (inbound_patient) — awaiting reply
+      if (activeView === "unread" && c.lastMessageDirection !== "inbound_patient") return false;
       const name = getDisplayName(c).toLowerCase();
       const phone = (c.fromPhone ?? "").toLowerCase();
       const q = search.toLowerCase();
       return !q || name.includes(q) || phone.includes(q);
     })
     .sort((a, b) => {
-      // Unread (no staff reply) conversations always float above replied ones
-      const aUnread = !a.hasStaffReply ? 0 : 1;
-      const bUnread = !b.hasStaffReply ? 0 : 1;
-      if (aUnread !== bUnread) return aUnread - bUnread;
+      // "Awaiting reply": float conversations where the last real message is
+      // from the patient (inbound_patient). System events like
+      // "archived and unassigned this conversation" are NOT patient messages —
+      // using !hasStaffReply here was burying active conversations (e.g. today's
+      // patient messages) below hundreds of bulk-restored archived threads that
+      // happen to have no ClinIQ staff-reply record.
+      const aAwaiting = a.lastMessageDirection === "inbound_patient" ? 0 : 1;
+      const bAwaiting = b.lastMessageDirection === "inbound_patient" ? 0 : 1;
+      if (aAwaiting !== bAwaiting) return aAwaiting - bAwaiting;
       const diff = new Date(a.lastMessageAt).getTime() - new Date(b.lastMessageAt).getTime();
       return sort === "newest" ? -diff : diff;
     });
@@ -1130,7 +1135,7 @@ export default function SpruceInboxPage() {
           <NavItem
             icon={MessageCircle}
             label="Unreplied"
-            count={activeConvs.filter((c) => !c.hasStaffReply).length}
+            count={activeConvs.filter((c) => c.lastMessageDirection === "inbound_patient").length}
             active={activeView === "unread"}
             onClick={() => { setActiveView("unread"); setSelectedKey(null); }}
             testId="nav-unread"
@@ -1205,7 +1210,7 @@ export default function SpruceInboxPage() {
           {(["all", "unread", "urgent", "assigned", "unmatched", "archived"] as SidebarView[]).map((v) => {
             const counts: Record<SidebarView, number | undefined> = {
               all: activeConvs.length,
-              unread: activeConvs.filter((c) => !c.hasStaffReply).length,
+              unread: activeConvs.filter((c) => c.lastMessageDirection === "inbound_patient").length,
               urgent: urgentConvs.length,
               assigned: (assignedItems.length + assignedToMeConvs.length) || undefined,
               unmatched: unmatchedConvs.length,
