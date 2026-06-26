@@ -20553,6 +20553,33 @@ IMPORTANT:
         console.error(`${tag} failed to store spruce_message:`, err);
       }
 
+      // ── Auto-unarchive on new inbound patient message ────────────────
+      // If the conversation was previously archived (by staff or Spruce sync)
+      // and the patient sends a new message, surface it back into the active
+      // inbox automatically — exactly like every major messaging platform.
+      // This only fires for real inbound patient messages, never for system
+      // events or outbound staff messages.
+      if (messageDirection === "inbound_patient") {
+        const unarchiveKey = spruceConversationId || fromPhone;
+        if (unarchiveKey && matchedClinicId) {
+          try {
+            await storageDb
+              .update(schema.spruceConversationState)
+              .set({ archivedAt: null, archivedByUserId: null, archiveSource: null })
+              .where(
+                and(
+                  eq(schema.spruceConversationState.clinicId, matchedClinicId),
+                  eq(schema.spruceConversationState.conversationKey, unarchiveKey),
+                  isNotNull(schema.spruceConversationState.archivedAt),
+                )
+              );
+            console.log(`${tag} AUTO-UNARCHIVE: inbound message surfaced archived conversation "${unarchiveKey}"`);
+          } catch (unarchErr) {
+            console.warn(`${tag} AUTO-UNARCHIVE failed (non-fatal):`, unarchErr);
+          }
+        }
+      }
+
       // ── Direction gate ────────────────────────────────────────────────
       if (messageDirection === "spruce_system_event") {
         // Spruce automation / action event — store only, skip everything else.
