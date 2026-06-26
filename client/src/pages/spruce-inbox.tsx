@@ -35,6 +35,8 @@ import {
   CheckCheck,
   X as XIcon,
   Tag,
+  CheckSquare,
+  Square,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -251,29 +253,52 @@ function ConversationRow({
   conv,
   selected,
   onClick,
+  selectMode = false,
+  isChecked = false,
+  onToggle,
 }: {
   conv: SpruceConversation;
   selected: boolean;
   onClick: () => void;
+  selectMode?: boolean;
+  isChecked?: boolean;
+  onToggle?: (key: string) => void;
 }) {
   const name = getDisplayName(conv);
   const initials = getInitials(conv.patientFirstName, conv.patientLastName, conv.fromPhone);
   const isPatient = !!conv.patientId;
 
+  const handleClick = () => {
+    if (selectMode && onToggle) {
+      onToggle(conv.conversationKey);
+    } else {
+      onClick();
+    }
+  };
+
   return (
     <button
       className={`w-full text-left px-3 py-3 flex gap-3 transition-colors border-b border-[#eeeae4] ${
-        selected ? "bg-[#eaf3ec]" : "hover:bg-[#f5f2ee]"
+        isChecked ? "bg-[#eaf3ec]" : selected && !selectMode ? "bg-[#eaf3ec]" : "hover:bg-[#f5f2ee]"
       }`}
-      onClick={onClick}
+      onClick={handleClick}
       data-testid={`conv-row-${conv.conversationKey}`}
     >
+      {selectMode ? (
+        <div className="w-9 h-9 flex-shrink-0 flex items-center justify-center mt-0.5">
+          {isChecked
+            ? <CheckSquare className="w-5 h-5 text-[#2e7d52]" />
+            : <Square className="w-5 h-5 text-[#c0bdb5]" />
+          }
+        </div>
+      ) : (
       <div
         className="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-semibold text-white mt-0.5"
         style={{ backgroundColor: isPatient ? "#2e7d52" : "#5c4a7a" }}
       >
         {initials}
       </div>
+      )}
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline justify-between gap-2 mb-0.5">
           <span className="text-sm font-semibold text-[#1c2414] truncate">{name}</span>
@@ -568,6 +593,8 @@ export default function SpruceInboxPage() {
   const [mentionedUsers, setMentionedUsers] = useState<ClinicMember[]>([]);
   const [showMentionPicker, setShowMentionPicker] = useState(false);
   const [mentionSearch, setMentionSearch] = useState("");
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const threadBottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -958,6 +985,52 @@ export default function SpruceInboxPage() {
     },
   });
 
+  // ── Bulk archive selected conversations ───────────────────────────────
+  const bulkArchiveMutation = useMutation({
+    mutationFn: async (keys: string[]) => {
+      const results = await Promise.allSettled(
+        keys.map((key) =>
+          apiRequest("POST", `/api/spruce/conversations/${encodeURIComponent(key)}/archive`, {})
+            .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`Failed: ${key}`))))
+        ),
+      );
+      const succeeded = results.filter((r) => r.status === "fulfilled").length;
+      const failed = results.filter((r) => r.status === "rejected").length;
+      return { succeeded, failed };
+    },
+    onSuccess: ({ succeeded, failed }) => {
+      qc.invalidateQueries({ queryKey: ["/api/spruce/conversations"] });
+      setSelectedKeys(new Set());
+      setSelectMode(false);
+      if (selectedKey && selectedKeys.has(selectedKey) && activeView !== "archived") {
+        setSelectedKey(null);
+      }
+      if (failed > 0) {
+        toast({
+          title: `Archived ${succeeded}`,
+          description: `${failed} conversation${failed !== 1 ? "s" : ""} could not be archived.`,
+        });
+      } else {
+        toast({
+          title: `Archived ${succeeded} conversation${succeeded !== 1 ? "s" : ""}`,
+          description: "Conversations moved to archive.",
+        });
+      }
+    },
+    onError: (err: Error) => {
+      toast({ variant: "destructive", title: "Archive failed", description: err.message });
+    },
+  });
+
+  // helper: toggle one key in the selection set
+  const toggleSelectKey = (key: string) => {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
   // ── View filtering ──────────────────────────────────────────────────────
   // Non-archived views exclude archived conversations; archived view shows only archived.
   const activeConvs = conversations.filter((c) => !c.isArchived);
@@ -1242,28 +1315,91 @@ export default function SpruceInboxPage() {
         <div className="px-3 py-2.5 border-b border-[#eeeae4] bg-[#fdfcfa]">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-semibold text-[#3a4a30]">{viewLabel[activeView]}</span>
-            {activeView === "all" && (
-              <Users className="w-3.5 h-3.5 text-[#a0a880]" />
-            )}
-            {activeView === "archived" && archivedConvs.length > 0 && (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={bulkUnarchiveMutation.isPending}
-                onClick={() => bulkUnarchiveMutation.mutate()}
-                data-testid="button-restore-all-archived"
-                className="h-6 text-[10px] px-2 text-[#2e7d52] border-[#b6d9c3]"
-                title="Restore all archived conversations to inbox"
-              >
-                {bulkUnarchiveMutation.isPending ? (
-                  <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
-                ) : (
-                  <ArchiveRestore className="w-3 h-3 mr-1" />
-                )}
-                Restore all
-              </Button>
-            )}
+            <div className="flex items-center gap-1">
+              {activeView !== "archived" && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setSelectMode((v) => !v);
+                    setSelectedKeys(new Set());
+                  }}
+                  data-testid="button-toggle-select-mode"
+                  className={`h-6 text-[10px] px-2 ${selectMode ? "text-[#2e7d52] bg-[#e6f4ec]" : "text-[#7a8060]"}`}
+                  title={selectMode ? "Exit selection mode" : "Select conversations to bulk archive"}
+                >
+                  {selectMode ? (
+                    <><XIcon className="w-3 h-3 mr-1" />Cancel</>
+                  ) : (
+                    <><CheckSquare className="w-3 h-3 mr-1" />Select</>
+                  )}
+                </Button>
+              )}
+              {activeView === "all" && !selectMode && (
+                <Users className="w-3.5 h-3.5 text-[#a0a880]" />
+              )}
+              {activeView === "archived" && archivedConvs.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={bulkUnarchiveMutation.isPending}
+                  onClick={() => bulkUnarchiveMutation.mutate()}
+                  data-testid="button-restore-all-archived"
+                  className="h-6 text-[10px] px-2 text-[#2e7d52] border-[#b6d9c3]"
+                  title="Restore all archived conversations to inbox"
+                >
+                  {bulkUnarchiveMutation.isPending ? (
+                    <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
+                  ) : (
+                    <ArchiveRestore className="w-3 h-3 mr-1" />
+                  )}
+                  Restore all
+                </Button>
+              )}
+            </div>
           </div>
+          {/* Bulk action toolbar — shown when one or more conversations are selected */}
+          {selectMode && (
+            <div className="flex items-center gap-1.5 mb-2 px-1 py-1.5 rounded-md bg-[#f0f9f4] border border-[#b6d9c3]">
+              <button
+                className="text-[10px] text-[#2e7d52] font-medium hover:underline flex-shrink-0"
+                onClick={() => setSelectedKeys(new Set(filtered.map((c) => c.conversationKey)))}
+                data-testid="button-select-all"
+              >
+                All
+              </button>
+              <span className="text-[#c4b9a5] text-[10px]">·</span>
+              <button
+                className="text-[10px] text-[#7a8060] hover:underline flex-shrink-0"
+                onClick={() => setSelectedKeys(new Set())}
+                data-testid="button-select-none"
+              >
+                None
+              </button>
+              <span className="flex-1" />
+              {selectedKeys.size > 0 && (
+                <>
+                  <span className="text-[10px] text-[#4a5a40] font-medium flex-shrink-0">
+                    {selectedKeys.size} selected
+                  </span>
+                  <Button
+                    size="sm"
+                    disabled={bulkArchiveMutation.isPending}
+                    onClick={() => bulkArchiveMutation.mutate(Array.from(selectedKeys))}
+                    data-testid="button-bulk-archive"
+                    className="h-6 text-[10px] px-2 bg-[#2e7d52] text-white"
+                  >
+                    {bulkArchiveMutation.isPending ? (
+                      <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
+                    ) : (
+                      <Archive className="w-3 h-3 mr-1" />
+                    )}
+                    Archive
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
           <div className="relative">
             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9a9a8a]" />
             <Input
@@ -1394,6 +1530,9 @@ export default function SpruceInboxPage() {
                   conv={conv}
                   selected={selectedKey === conv.conversationKey}
                   onClick={() => setSelectedKey(conv.conversationKey)}
+                  selectMode={selectMode}
+                  isChecked={selectedKeys.has(conv.conversationKey)}
+                  onToggle={toggleSelectKey}
                 />
               ))}
             </>
