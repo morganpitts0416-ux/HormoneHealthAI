@@ -5590,7 +5590,11 @@ export interface AssignedToMeItem {
 ): Promise<SpruceConversationMessageRow[]> {
   // ── 1. Spruce messages for this conversation ─────────────────────────────
   // conversationKey is either a spruceConversationId or a phone number
-  const spruceRows = await db
+  // ── Pass 1: match by conversationId OR phone (no isNull restriction —
+  // a message can have both fields set; the old isNull guard was dropping
+  // messages that arrived with a spruceConversationId when selectedKey is
+  // the patient's phone number, and vice-versa).
+  const spruceRowsPass1 = await db
     .select({
       id: schema.spruceMessages.id,
       spruceConversationId: schema.spruceMessages.spruceConversationId,
@@ -5613,14 +5617,55 @@ export interface AssignedToMeItem {
         eq(schema.spruceMessages.clinicId, clinicId),
         or(
           eq(schema.spruceMessages.spruceConversationId, conversationKey),
-          and(
-            isNull(schema.spruceMessages.spruceConversationId),
-            eq(schema.spruceMessages.fromPhone, conversationKey),
-          ),
+          eq(schema.spruceMessages.fromPhone, conversationKey),
         ),
       ),
     )
     .orderBy(asc(schema.spruceMessages.receivedAt));
+
+  // ── Pass 2: when conversationKey is a spruceConversationId, also pull
+  // any phone-only messages (spruceConversationId IS NULL) from the same
+  // patient phone so they appear in the same thread.
+  const seenIds = new Set(spruceRowsPass1.map(r => r.id));
+  const phonesInConv = [...new Set(
+    spruceRowsPass1
+      .map(r => r.messageDirection === 'inbound_patient' ? r.fromPhone : r.toPhone)
+      .filter((p): p is string => !!p && p !== conversationKey),
+  )];
+
+  let spruceRowsPass2: typeof spruceRowsPass1 = [];
+  if (phonesInConv.length > 0) {
+    const extra = await db
+      .select({
+        id: schema.spruceMessages.id,
+        spruceConversationId: schema.spruceMessages.spruceConversationId,
+        fromPhone: schema.spruceMessages.fromPhone,
+        toPhone: schema.spruceMessages.toPhone,
+        messageBody: schema.spruceMessages.messageBody,
+        messageDirection: schema.spruceMessages.messageDirection,
+        eventType: schema.spruceMessages.eventType,
+        staffRepliedAt: schema.spruceMessages.staffRepliedAt,
+        receivedAt: schema.spruceMessages.receivedAt,
+        patientId: schema.spruceMessages.patientId,
+        patientFirstName: schema.patients.firstName,
+        patientLastName: schema.patients.lastName,
+        spruceContactName: schema.spruceMessages.spruceContactName,
+      })
+      .from(schema.spruceMessages)
+      .leftJoin(schema.patients, eq(schema.spruceMessages.patientId, schema.patients.id))
+      .where(
+        and(
+          eq(schema.spruceMessages.clinicId, clinicId),
+          isNull(schema.spruceMessages.spruceConversationId),
+          inArray(schema.spruceMessages.fromPhone, phonesInConv),
+        ),
+      )
+      .orderBy(asc(schema.spruceMessages.receivedAt));
+    spruceRowsPass2 = extra.filter(r => !seenIds.has(r.id));
+  }
+
+  const spruceRows = [...spruceRowsPass1, ...spruceRowsPass2]
+    .sort((a, b) => a.receivedAt.getTime() - b.receivedAt.getTime());
 
   const tagged: SpruceConversationMessageRow[] = spruceRows.map(r => ({
     ...r,
