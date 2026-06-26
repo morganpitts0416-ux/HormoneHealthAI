@@ -6236,6 +6236,47 @@ export interface AssignedToMeItem {
 ): Promise<CommunicationTimelineItem[]> {
   const items: CommunicationTimelineItem[] = [];
 
+  // ── 0. Pre-fetch sender display names for this clinic ──────────────────
+  // Two-pass lookup: providers table (has credentials) then users as fallback.
+  // Both queries are clinic-scoped and bounded — safe to run up-front.
+  const clinicProviderRows = await db
+    .select({
+      userId: schema.providers.userId,
+      displayName: schema.providers.displayName,
+      credentials: schema.providers.credentials,
+    })
+    .from(schema.providers)
+    .where(eq(schema.providers.clinicId, clinicId));
+  const providerByUserId = new Map(clinicProviderRows.map((p) => [p.userId, p]));
+
+  const clinicMemberRows = await db
+    .select({
+      userId: schema.clinicMemberships.userId,
+      firstName: schema.users.firstName,
+      lastName: schema.users.lastName,
+      title: schema.users.title,
+    })
+    .from(schema.clinicMemberships)
+    .innerJoin(schema.users, eq(schema.clinicMemberships.userId, schema.users.id))
+    .where(eq(schema.clinicMemberships.clinicId, clinicId));
+  const userByUserId = new Map(clinicMemberRows.map((u) => [u.userId, u]));
+
+  // Returns the sender's display name for a given user/clinician ID.
+  const getSenderLabel = (userId: number | null | undefined): string => {
+    if (!userId) return 'Staff';
+    const provider = providerByUserId.get(userId);
+    if (provider?.displayName) {
+      return provider.credentials
+        ? `${provider.displayName}, ${provider.credentials}`
+        : provider.displayName;
+    }
+    const user = userByUserId.get(userId);
+    if (user) {
+      return [user.title, user.firstName, user.lastName].filter(Boolean).join(' ') || 'Staff';
+    }
+    return 'Staff';
+  };
+
   // ── 1. Portal messages (ALL — includes internal notes, staff replies) ───
   const portalRows = await db
     .select()
@@ -6277,7 +6318,7 @@ export interface AssignedToMeItem {
       : messageType === 'workflow_note' ? 'Workflow Note'
       : messageType === 'system_event'  ? 'System'
       : msg.senderType === 'patient'    ? 'Patient'
-      : 'Staff';
+      : getSenderLabel(msg.clinicianId);
 
     items.push({
       id: `portal:${msg.id}`,
@@ -6386,7 +6427,7 @@ export interface AssignedToMeItem {
         id: `spruce_out:${msg.id}`,
         source: 'spruce',
         direction: 'outbound',
-        senderLabel: msg.sentByAI ? 'June AI' : 'Staff',
+        senderLabel: msg.sentByAI ? 'June AI' : getSenderLabel(msg.sentByUserId),
         body: msg.messageBody,
         timestamp: msg.sentAt.toISOString(),
         conversationKey: msg.conversationKey,
