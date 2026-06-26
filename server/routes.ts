@@ -7935,11 +7935,12 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
     }
   });
 
-  // GET /api/clinic/members — list all full-clinician members of this clinic (for team view)
-  app.get("/api/clinic/members", requireClinicianOnly, async (req, res) => {
+  // GET /api/clinic/members — list all active members of this clinic.
+  // Used by the Spruce inbox @mention picker — must be accessible to both
+  // clinicians and staff sessions, so requireAuth (not requireClinicianOnly).
+  app.get("/api/clinic/members", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
-      const clinicId = user.defaultClinicId;
+      const clinicId = getEffectiveClinicId(req);
       if (!clinicId) return res.json([]);
       const members = await storageDb
         .select({
@@ -7962,6 +7963,9 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
         lastName: m.lastName,
         email: m.email,
         title: m.title,
+        // `role` is the field the Spruce inbox @mention picker renders as a
+        // secondary label — derive it from clinicalRole so it is always populated.
+        role: m.clinicalRole ?? (m.adminRole === "owner" ? "Owner" : null),
         clinicalRole: m.clinicalRole,
         adminRole: m.adminRole,
         isOwner: m.adminRole === "owner",
