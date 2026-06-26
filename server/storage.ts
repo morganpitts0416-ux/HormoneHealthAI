@@ -5640,7 +5640,17 @@ export interface AssignedToMeItem {
     .where(eq(schema.portalMessages.patientId, patientId))
     .orderBy(asc(schema.portalMessages.createdAt));
 
-  const portalTagged: SpruceConversationMessageRow[] = portalRows.map(p => {
+  const portalTagged: SpruceConversationMessageRow[] = portalRows
+    .filter(p => {
+      // Clinician messages delivered via Spruce are already captured by the
+      // spruce_messages mirror row (spruceContactName = provider name).
+      // Including them here would create a duplicate "Staff (Portal)" bubble
+      // next to the properly-attributed "Morgan Pitts" bubble.
+      const deliveryChannel = (p as any).deliveryChannel;
+      if (deliveryChannel === 'spruce' && p.senderType === 'clinician') return false;
+      return true;
+    })
+    .map(p => {
     const messageType = (p as any).messageType ?? 'message';
     const senderType = p.senderType;
     // Map portal senderType + messageType → Spruce-compatible messageDirection

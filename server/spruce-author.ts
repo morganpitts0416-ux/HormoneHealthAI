@@ -37,7 +37,12 @@ export async function getSpruceAuthorId(
     const res = await fetch("https://api.sprucehealth.com/v1/organization/members", {
       headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      // Transient Spruce API error — keep any stale cache entry rather than
+      // falling back to org-default sender (which would show the wrong name in Spruce).
+      const stale = _cache.get(clinicId);
+      return stale?.byEmail.get(email) ?? null;
+    }
     const data: any = await res.json();
     const members: any[] = data?.members ?? [];
 
@@ -50,7 +55,9 @@ export async function getSpruceAuthorId(
     _cache.set(clinicId, { byEmail, expiresAt: now + TTL_MS });
     return byEmail.get(email) ?? null;
   } catch {
-    return null;
+    // Network failure — same: prefer stale cache over org-default attribution.
+    const stale = _cache.get(clinicId);
+    return stale?.byEmail.get(email) ?? null;
   }
 }
 
