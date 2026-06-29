@@ -593,6 +593,7 @@ export default function SpruceInboxPage() {
   const [mentionedUsers, setMentionedUsers] = useState<ClinicMember[]>([]);
   const [showMentionPicker, setShowMentionPicker] = useState(false);
   const [mentionSearch, setMentionSearch] = useState("");
+  const [mentionAnchorIdx, setMentionAnchorIdx] = useState<number | null>(null);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const threadBottomRef = useRef<HTMLDivElement>(null);
@@ -1114,7 +1115,49 @@ export default function SpruceInboxPage() {
     }
   }
 
+  function handleTextareaChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const val = e.target.value;
+    setReplyText(val);
+    if (composeMode !== "note") return;
+    const cursor = e.target.selectionStart ?? val.length;
+    const textBeforeCursor = val.slice(0, cursor);
+    const atMatch = textBeforeCursor.match(/@(\w*)$/);
+    if (atMatch) {
+      setMentionAnchorIdx(cursor - atMatch[0].length);
+      setMentionSearch(atMatch[1]);
+      setShowMentionPicker(true);
+    } else {
+      if (showMentionPicker && mentionAnchorIdx !== null) {
+        setShowMentionPicker(false);
+        setMentionAnchorIdx(null);
+        setMentionSearch("");
+      }
+    }
+  }
+
+  function insertMention(member: ClinicMember) {
+    const name = [member.firstName, member.lastName].filter(Boolean).join(" ");
+    if (mentionAnchorIdx !== null) {
+      const queryLen = mentionSearch.length;
+      const before = replyText.slice(0, mentionAnchorIdx);
+      const after = replyText.slice(mentionAnchorIdx + 1 + queryLen);
+      setReplyText(before + `@${name} ` + after);
+    }
+    setMentionedUsers(prev => prev.find(u => u.id === member.id) ? prev : [...prev, member]);
+    setShowMentionPicker(false);
+    setMentionAnchorIdx(null);
+    setMentionSearch("");
+    setTimeout(() => textareaRef.current?.focus(), 0);
+  }
+
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Escape" && showMentionPicker) {
+      e.preventDefault();
+      setShowMentionPicker(false);
+      setMentionAnchorIdx(null);
+      setMentionSearch("");
+      return;
+    }
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       handleSend();
@@ -2019,16 +2062,60 @@ export default function SpruceInboxPage() {
                 backgroundColor: composeMode === "note" ? "#faf8ff" : "#fafaf8",
               }}
             >
-              <Textarea
-                ref={textareaRef}
-                value={replyText}
-                onChange={(e) => setReplyText(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={composeMode === "note" ? "Write a staff-only internal note… (⌘↵ to save)" : "Type a reply… (⌘↵ to send)"}
-                className="resize-none border-0 rounded-none text-sm bg-transparent focus-visible:ring-0 min-h-[80px] max-h-[160px]"
-                style={{ color: composeMode === "note" ? "#2e1065" : undefined }}
-                data-testid="textarea-reply"
-              />
+              <div className="relative">
+                {/* Inline @mention dropdown — floats above the textarea when @ is typed */}
+                {showMentionPicker && mentionAnchorIdx !== null && composeMode === "note" && (
+                  <div className="absolute bottom-full left-2 mb-1 z-50 bg-white rounded-lg border border-[#ddd6fe] shadow-lg w-56 overflow-hidden">
+                    <div className="px-2 pt-1.5 pb-1 border-b border-[#f0ede8]">
+                      <p className="text-[10px] text-[#7c3aed] font-medium flex items-center gap-1">
+                        <AtSign className="w-2.5 h-2.5" />
+                        Mention a staff member
+                      </p>
+                    </div>
+                    <div className="max-h-40 overflow-y-auto py-1">
+                      {clinicMembers
+                        .filter(m => {
+                          const q = mentionSearch.toLowerCase();
+                          const name = [m.firstName, m.lastName].filter(Boolean).join(" ").toLowerCase();
+                          return !q || name.includes(q);
+                        })
+                        .slice(0, 8)
+                        .map(m => (
+                          <button
+                            key={m.id}
+                            onMouseDown={(e) => { e.preventDefault(); insertMention(m); }}
+                            className="w-full text-left px-3 py-1.5 text-xs hover:bg-[#f5f3ff] transition-colors"
+                            data-testid={`mention-option-${m.id}`}
+                          >
+                            <span className="font-medium text-[#2d1f4a]">
+                              {[m.title, m.firstName, m.lastName].filter(Boolean).join(" ")}
+                            </span>
+                            {m.role && (
+                              <span className="ml-1 text-[10px] text-[#9a8a9a]">{m.role}</span>
+                            )}
+                          </button>
+                        ))}
+                      {clinicMembers.filter(m => {
+                        const q = mentionSearch.toLowerCase();
+                        const name = [m.firstName, m.lastName].filter(Boolean).join(" ").toLowerCase();
+                        return !q || name.includes(q);
+                      }).length === 0 && (
+                        <p className="text-[10px] text-[#9a9a8a] text-center py-2">No staff found</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+                <Textarea
+                  ref={textareaRef}
+                  value={replyText}
+                  onChange={handleTextareaChange}
+                  onKeyDown={handleKeyDown}
+                  placeholder={composeMode === "note" ? "Write a staff-only internal note… type @ to mention staff (⌘↵ to save)" : "Type a reply… (⌘↵ to send)"}
+                  className="resize-none border-0 rounded-none text-sm bg-transparent focus-visible:ring-0 min-h-[80px] max-h-[160px]"
+                  style={{ color: composeMode === "note" ? "#2e1065" : undefined }}
+                  data-testid="textarea-reply"
+                />
+              </div>
               <div
                 className="flex items-center justify-between px-3 py-2 border-t"
                 style={{ borderColor: composeMode === "note" ? "#ddd6fe" : "#eeeae4" }}
