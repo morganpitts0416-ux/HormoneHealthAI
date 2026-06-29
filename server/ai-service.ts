@@ -176,7 +176,20 @@ REQUIREMENTS:
 Write the summary now:`;
 
     const therapyBlock = buildTherapyPromptBlock(therapyContext);
-    const finalPrompt = therapyBlock ? `${therapyBlock}\n\n${prompt}` : prompt;
+
+    // If the patient is on HRT, prepend an explicit framing block so the AI
+    // never describes estradiol/progesterone as endogenous production.
+    const onHRTForSummary = gender === 'female' && (labs as any).onHRT === true;
+    const hrtSummaryBlock = onHRTForSummary
+      ? `PATIENT CONTEXT — ON HORMONE REPLACEMENT THERAPY (HRT):
+This patient is actively on female Hormone Replacement Therapy. Apply these rules without exception:
+- NEVER say "estrogen production," "your body is producing estrogen," or "estrogen levels are sufficient/adequate/normal." These values reflect response to prescribed therapy, not the patient's own output.
+- Frame estradiol and progesterone as therapy response: "Your estrogen level on therapy is at goal," "Your estradiol is responding well to your HRT at X pg/mL," "Your progesterone is at the target range on therapy."
+- If estradiol is 60–100 pg/mL: tell the patient her estrogen therapy is working well and is at the target level for bone protection and symptom relief.
+- Testosterone values reflect therapy as well — frame any testosterone in range as the intended therapeutic response.\n\n`
+      : '';
+
+    const finalPrompt = [hrtSummaryBlock, therapyBlock, prompt].filter(Boolean).join('\n\n');
 
     try {
       console.log('[AI Service] Generating patient summary with prompt length:', finalPrompt.length);
@@ -484,6 +497,13 @@ PCOS RULE — ABSOLUTE:
 ESTRADIOL & PROGESTERONE TARGETS ON HRT:
 - Estradiol goal: 60–100 pg/mL (minimum 40 pg/mL for bone protection).
 - Progesterone goal: 8–10 ng/mL.
+
+ESTRADIOL & PROGESTERONE FRAMING — ABSOLUTE RULE:
+- NEVER describe estradiol or progesterone as "production," "endogenous," or "sufficient." These values reflect the patient's RESPONSE TO THERAPY, not her natural output.
+- Always frame as response to therapy. Examples: "Estradiol is responding well to estrogen therapy at 72 pg/mL — within the clinic optimization target of 60–100 pg/mL." / "Estradiol is at the therapeutic goal on current HRT dosing." / "Progesterone is responding appropriately to progesterone therapy."
+- For estradiol 60–100 pg/mL on HRT: state it is at therapeutic goal, bone protection is achieved, maintain current dosing.
+- For estradiol <40 pg/mL on HRT: state absorption or dose inadequacy — do NOT say "low production."
+- For progesterone at goal: state it is responding appropriately to progesterone therapy.
 
 TREND INTERPRETATION ON HRT:
 - Rising testosterone from pre-HRT baseline to therapeutic range = success.
