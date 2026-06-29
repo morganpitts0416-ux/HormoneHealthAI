@@ -1663,6 +1663,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const mitoScore = calculateMitoScore(labs, 'male', insulinResistance) || undefined;
 
+      // Merge mito-identified supplements into the main list (dedup by name).
+      // Any supplement the mito score identifies that is not already recommended
+      // by a standing protocol will appear once in the main Supplement Recommendations.
+      if (mitoScore?.supplementRecommendations?.length) {
+        const existingNames = new Set(supplements.map((s: any) => s.name.toLowerCase()));
+        for (const mitoSupp of mitoScore.supplementRecommendations) {
+          if (!existingNames.has(mitoSupp.name.toLowerCase())) {
+            supplements = [...supplements, mitoSupp as any];
+            existingNames.add(mitoSupp.name.toLowerCase());
+          }
+        }
+      }
+
       const result: InterpretationResult = {
         redFlags,
         interpretations,
@@ -2065,6 +2078,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
 
       const mitoScore = calculateMitoScore(labs, 'female', insulinResistance) || undefined;
+
+      // Merge mito-identified supplements into the main list (dedup by name).
+      // Any supplement the mito score identifies that is not already recommended
+      // by a standing protocol will appear once in the main Supplement Recommendations.
+      if (mitoScore?.supplementRecommendations?.length) {
+        const existingNames = new Set(supplements.map((s: any) => s.name.toLowerCase()));
+        for (const mitoSupp of mitoScore.supplementRecommendations) {
+          if (!existingNames.has(mitoSupp.name.toLowerCase())) {
+            supplements = [...supplements, mitoSupp as any];
+            existingNames.add(mitoSupp.name.toLowerCase());
+          }
+        }
+      }
 
       const result: InterpretationResult = {
         redFlags,

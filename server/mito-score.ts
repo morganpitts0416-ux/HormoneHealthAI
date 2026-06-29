@@ -363,13 +363,13 @@ const GLOBAL_RECS = [
 
 const PATTERN_RECS: Record<PatternName, string[]> = {
   'Nutrient Depletion Pattern': [
-    'Optimize ferritin to 75–150 ng/mL',
-    'Optimize vitamin B12 (target >600 pg/mL)',
-    'Optimize folate status',
-    'Optimize vitamin D (target >50 ng/mL)',
+    'Ferritin deficiency contributing to mito dysfunction — optimize to 75–150 ng/mL per standing iron/ferritin protocol (see Supplement Recommendations)',
+    'Vitamin B12 deficiency contributing to mito dysfunction — optimize to >600 pg/mL per standing B12 protocol (see Supplement Recommendations)',
+    'Folate insufficiency contributing to mito dysfunction — optimize per standing folate protocol (see Supplement Recommendations)',
+    'Vitamin D deficiency contributing to mito dysfunction — optimize to >50 ng/mL per standing Vitamin D protocol (see Supplement Recommendations)',
     'Consider magnesium glycinate supplementation',
     'Evaluate for methylated B-complex support',
-    'Consider CoQ10 supplementation',
+    'CoQ10 recommended for mitochondrial energy support — see Supplement Recommendations',
     'Consider creatine monohydrate 3–5 g/day if appropriate',
   ],
   'Inflammatory Pattern': [
@@ -503,6 +503,31 @@ function getMitoSupplementRecommendations(
 
   const impairedCount = domains.filter(d => d.available && d.points > 0).length;
   const recs: SupplementRecommendation[] = [];
+
+  // ── NutraGems CoQ10 300: primary mito-specific supplement ────────────────
+  // Fires whenever any mito dysfunction is detected (percentage > 0).
+  // Priority scales with score severity.
+  if (percentage > 0) {
+    const coq10Priority: 'high' | 'medium' | 'low' =
+      percentage >= 60 ? 'high' : percentage >= 40 ? 'medium' : 'low';
+    const coq10Drivers: string[] = [];
+    if (hasNutrientDepletion) coq10Drivers.push('Nutrient Depletion Pattern — micronutrient insufficiency impairs coenzyme Q10-dependent mitochondrial complexes I–III');
+    if (hasInflammatory)      coq10Drivers.push('Inflammatory Pattern — oxidative stress accelerates CoQ10 consumption in mitochondrial membranes');
+    if (hasMetabolic)         coq10Drivers.push('Metabolic Pattern — insulin resistance reduces endogenous CoQ10 biosynthesis');
+    if (hasThyroidHormonal)   coq10Drivers.push('Thyroid/Hormonal Pattern — hormonal imbalance alters mitochondrial biogenesis and CoQ10 utilization');
+    if (hasOxygenDelivery)    coq10Drivers.push('Oxygen Delivery Pattern — impaired oxygen availability limits electron transport chain efficiency');
+    if (coq10Drivers.length === 0) coq10Drivers.push(`Mito Score ${percentage}% — cellular energy dysfunction pattern supports CoQ10 supplementation`);
+    recs.push({
+      name: "NutraGems® CoQ10 300",
+      dose: "1 chew daily with a fat-containing meal",
+      indication: coq10Drivers.slice(0, 2).join('; '),
+      rationale: "NutraGems CoQ10 300 provides 300 mg of ubiquinone in an emulsified chewable form for enhanced absorption. CoQ10 is an essential electron carrier in mitochondrial complexes I–III and a critical membrane antioxidant. The Mito Score pattern identified here reflects impaired cellular energy production in which CoQ10 repletion directly supports the electron transport chain, reduces mitochondrial oxidative stress, and improves ATP synthesis capacity. Indicated for any patient with a measurable mito score.",
+      priority: coq10Priority,
+      category: 'general',
+      patientExplanation: "Your Mito Score shows your cells are not producing energy efficiently. CoQ10 is a key molecule your mitochondria need to generate energy — this supplement provides a high-potency, highly absorbable form to support cellular energy production.",
+      confidenceLevel: percentage >= 40 ? 'moderate' : 'supportive',
+    });
+  }
 
   // ── PhytoMulti: broadbase foundation ─────────────────────────────────────
   // Fires when Nutrient Depletion is present OR 3+ domains are impaired
