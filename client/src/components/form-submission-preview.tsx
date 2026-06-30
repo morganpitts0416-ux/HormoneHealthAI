@@ -824,7 +824,20 @@ async function generateSubmissionPdf(detail: SubmissionDetail, clinic: ClinicInf
       } else if (field.fieldType === "symptom_checklist" && typeof value === "object" && value !== null && !Array.isArray(value)) {
         rawDisplay = Object.entries(value).filter(([, v]) => v && String(v).trim()).map(([k, v]) => `${k}: ${v}`).join("\n") || "—";
       } else if (Array.isArray(value)) {
-        rawDisplay = value.filter(Boolean).map(v => typeof v === "object" ? JSON.stringify(v) : String(v)).join("\n") || "—";
+        rawDisplay = value.filter(Boolean).map(v => {
+          if (typeof v !== "object" || v === null) return String(v);
+          if (field.fieldType === "medication_list") {
+            return [
+              v.drugName,
+              v.strength && v.strengthUnit ? `${v.strength} ${v.strengthUnit}` : v.strength || null,
+              v.form || null,
+              v.sig ? `Sig: ${v.sig}` : null,
+              v.quantity ? `Qty: ${v.quantity}` : null,
+              v.refills ? `Refills: ${v.refills}` : null,
+            ].filter(Boolean).join(" · ") || JSON.stringify(v);
+          }
+          return JSON.stringify(v);
+        }).join("\n") || "—";
       } else if (value === null || value === undefined || String(value).trim() === "") {
         rawDisplay = "—";
       } else {
