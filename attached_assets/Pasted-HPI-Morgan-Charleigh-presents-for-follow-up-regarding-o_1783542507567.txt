@@ -1,0 +1,73 @@
+HPI: Morgan Charleigh presents for follow-up regarding ongoing hormone therapy and symptom management. She reports persistent lack of energy and sex drive despite current hormone therapy, which includes testosterone and estrogen pills, and a vaginal suppository. Morgan notes that while the estrogen patch previously stopped her hot flashes, it did not improve her energy or libido. Her sister suggested considering testosterone pellet therapy, described as life-changing, though Morgan has not pursued this option yet. She is currently taking testosterone and estrogen orally, which is unusual as oral testosterone is generally not recommended. Morgan has checked off anxiety and depression on her intake form but is not currently on medication for these conditions. She remains concerned about her ongoing symptoms and is seeking further guidance on optimizing her hormone therapy.
+
+Current Medications: 
+
+Testosterone [dose not specified] orally
+
+Estrogen [dose not specified] orally
+
+Vaginal suppository [dose not specified] for genitourinary syndrome of menopause
+
+CoQ10 300 mg daily
+
+Omega fish oils 1000 mg daily
+
+Compounded topical testosterone gel 2 mg daily
+
+Pregnenolone 10 mg daily
+
+Medical History: 
+
+Allergies: NKDA
+
+Past Medical Hx: none
+
+Past Surgical Hx: Breast augmentation 2013
+
+Social Hx: Single mother of four children; works out at LaGree studio 3-4 days a week
+
+Family Hx: Not reported
+
+ROS
+
+Constitutional
+Reports lack of energy; denies recent weight changes.
+Genitourinary
+Vaginal suppository use for genitourinary syndrome of menopause.
+Psychiatric
+Reports anxiety and depression; not currently on medication.
+Endocrine
+Lack of energy and sex drive; previously experienced hot flashes resolved with estrogen patch.
+OBJECTIVE
+Vitals: Not obtained at this encounter
+
+ASSESSMENT/PLAN
+1. Early Hormonal Transition with Symptom Complex (F52.0, E34.9, R53.83)
+
+Morgan's symptoms of fatigue and low libido, alongside her history of resolved hot flashes with estrogen patch use, align with an early hormonal transition pattern. Current oral testosterone and estrogen therapy are atypical; generally, testosterone is not administered orally. Discussed the potential benefits and administration routes of testosterone therapy. Her sister's suggestion of testosterone pellet therapy was noted but not pursued at this time.
+
+Plan: Continue current hormone therapy regimen. Consider alternative administration routes for testosterone if symptoms persist. Follow up in 4 weeks to reassess symptoms and therapy efficacy.
+
+2. Anxiety and Depression (F41.9, F32.9)
+
+Morgan reports anxiety and depression on her intake form but is not currently receiving treatment. These symptoms may contribute to her overall fatigue and low libido.
+
+Plan: Discuss potential treatment options for anxiety and depression at the next visit. Consider referral to mental health services if symptoms persist.
+
+CARE PLAN
+Continue taking testosterone and estrogen orally as prescribed.
+
+Use vaginal suppository as directed for genitourinary syndrome of menopause.
+
+Maintain regular physical activity at LaGree studio 3-4 times a week.
+
+Consider discussing testosterone pellet therapy further if interested.
+
+Monitor for any changes in energy and libido; report any significant changes.
+
+Follow up in 4 weeks to reassess hormone therapy and discuss mental health treatment options.
+
+FOLLOW-UP
+Return in 4 weeks for reassessment of hormone therapy efficacy and discussion of potential mental health treatment options.
+
+Use Copy Note to paste the clean note into your EHR. Evidence pills on each diagnosis open guideline citations inline.
