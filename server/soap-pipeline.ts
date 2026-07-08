@@ -529,6 +529,10 @@ PRIOR LAB COMPARISONS: When the provider references a prior lab result from a pr
 
 PROVIDER CLINICAL EXPLANATIONS: When the provider explains a clinical mechanism, lab result meaning, or physiologic process to the patient during the visit (e.g., FSH mechanism explanation, what low iron means, how hormones interact), capture the substance in "provider_reasoning_statements". These are part of the documented encounter and belong in the HPI narrative as documented education.
 
+PATIENT EXPLICIT REFUSALS: When the patient explicitly declines a specific recommendation — a medication, procedure, diagnostic test, referral, or lifestyle intervention — capture each refusal in "explicit_patient_refusals" with the recommendation and the patient's stated reason if given. These are clinically and medicolegally required documentation events. Do NOT capture general hesitation or deferral here — only clear explicit declines ("No," "I don't want that," "I'm not going to do that," "I'd rather not"). Examples: patient refuses statin therapy and states she wants to pursue diet first; patient declines referral to endocrinology; patient refuses a specific medication because of a prior bad experience.
+
+VISIT EARLY TERMINATION: If the transcript indicates the patient abruptly ended the visit before all planned topics were fully addressed — by saying they need to leave, indicating time constraints, or the transcript clearly ends before counseling is complete — set "visit_terminated_early" to true. In "visit_termination_context" describe what was addressed and what was left incomplete. If the visit concluded normally, leave "visit_terminated_early" as false and "visit_termination_context" as an empty string.
+
 ═══════════════════════════════════════
 PART 4 — PLAN DECISION CLASSIFICATION
 ═══════════════════════════════════════
@@ -659,7 +663,10 @@ Return this exact JSON structure:
     "patient_perspective_statements": ["direct or paraphrased patient statements that are medically relevant"],
     "provider_reasoning_statements": ["provider explanations, interpretations, or clinical reasoning shared with patient"],
     "education_provided": ["specific clinical education topics discussed with depth of what was explained"],
-    "patient_decisions": ["patient-stated decisions, preferences, or deferred choices"]
+    "patient_decisions": ["patient-stated decisions, preferences, or deferred choices"],
+    "explicit_patient_refusals": ["each recommendation the patient explicitly declined — include what was refused and why if stated (e.g., 'Patient refused statin therapy, stating she wants to try diet first'; 'Patient declined referral to endocrinology')"],
+    "visit_terminated_early": false,
+    "visit_termination_context": "empty string if visit concluded normally; if patient abruptly ended the visit early, describe what was addressed and what was left incomplete (e.g., 'Patient indicated time constraints and left before lipid management discussion was completed; statin therapy and dietary counseling deferred to next visit')"
   }
 }`;
 
@@ -801,6 +808,14 @@ STATE D — Clinically relevant follow-up (for needs_clinician_review only; neve
 
   const patientDecisions = normalized.enhanced_extraction?.patient_decisions?.length
     ? `\nPATIENT DECISIONS (document in HPI + Plan):\n${normalized.enhanced_extraction.patient_decisions.map((s: string) => `- ${s}`).join('\n')}`
+    : "";
+
+  const explicitRefusalsContext = normalized.enhanced_extraction?.explicit_patient_refusals?.length
+    ? `\nPATIENT EXPLICIT REFUSALS (MEDICOLEGALLY REQUIRED — each must appear in Assessment/Plan for that topic with explicit refusal language; do NOT silently omit):\n${normalized.enhanced_extraction.explicit_patient_refusals.map((s: string) => `- ${s}`).join('\n')}`
+    : "";
+
+  const visitTerminationContext = normalized.enhanced_extraction?.visit_terminated_early
+    ? `\nVISIT TERMINATED EARLY — MEDICO-LEGAL FLAG: Patient ended the visit before all planned topics were addressed. Context: ${normalized.enhanced_extraction.visit_termination_context || "Visit ended abruptly at patient request; some topics may be incomplete."}\nApply SECTION 3E rules: document what was covered, flag what was not addressed, and add incomplete topics to needs_clinician_review.`
     : "";
 
   const extractionSummary = buildExtractionSummary(extraction);
@@ -1096,6 +1111,25 @@ VOICE VARIETY — IMPORTANT:
 Do NOT overuse any single phrasing pattern. Vary naturally between "she reports," "she describes," "she notes," "she endorses," "per patient," and direct clinical statements. A well-written HPI reads naturally, not formulaically. Mix patient-reported phrasing with direct clinical observations and provider reasoning.
 
 HPI RECONSTRUCTION RULES:
+0. VISIT TYPE MODULATION — HPI FRAMING AND DEPTH:
+The HPI framing and depth must match the visit type provided in the Visit Type field.
+
+NEW PATIENT / INITIAL CONSULTATION:
+- Begin with a brief orienting statement: patient's age, sex, presenting concern(s), and how or why they came to this practice ("46-year-old female presenting for initial hormone evaluation, referred by...").
+- PMH, prior diagnoses, prior treatments tried and their outcomes (including discontinued or failed therapies), surgical history, relevant family history, and relevant social history mentioned in the transcript are ALWAYS part of the HPI for new patients — they establish the clinical baseline for all future encounters. Do not treat these as optional.
+- When chart data is available (PATIENT CHART DATA block), use it as the foundation; supplement with anything new from the transcript.
+- The HPI must answer: Who is this patient? What is the full clinical story leading up to today? What have they tried before, and what happened?
+
+FOLLOW-UP VISIT:
+- Lead with interval changes since the last visit: what has changed, improved, or worsened since the prior encounter.
+- Document medication response, tolerability, side effects, and adherence since last visit.
+- New concerns raised at this visit come next.
+- Stable, unchanged chronic conditions may be acknowledged in one clause per condition — do not re-narrate history already documented at the initial visit.
+
+ACUTE / PROBLEM-FOCUSED VISIT:
+- Lead immediately with the acute concern, onset, timeline, and associated symptoms.
+- Stable chronic conditions are acknowledged briefly at the end if relevant. They should not dominate the HPI.
+
 1. NARRATIVE CONTINUITY AND GROUPING — HIGHEST PRIORITY: The HPI must follow the natural clinical flow of the encounter, with related symptoms and conditions kept together. Do not scatter a symptom cluster across multiple paragraphs. Do not jump abruptly between unrelated topics. Group clinically related concerns into unified paragraphs, then transition clearly to the next topic. The note should read like a coherent clinical story, not a list of disconnected observations.
 
    GROUPING GUIDE — keep these together in a single paragraph or contiguous passage:
@@ -1347,6 +1381,28 @@ STATE B — FUTURE CONSIDERATION (deferred with specific trigger):
   EXAMPLE OF INCORRECT DOCUMENTATION (applies to any of the above): "Discussed potential future use of [medication]." (This is medicolegally deficient — it erases the clinical conversation that actually occurred.)
   INLINE FIELD PRIORITY RULE: Each STATE B item in the FUTURE CONSIDERATIONS context above carries inline fields (education, patient response, provider reasoning, follow-up plan) when the normalization stage captured them. For each STATE B Assessment entry, prefer these inline fields as the primary source for writing the clinical reasoning paragraph — they are already attributed to this specific treatment. The global EDUCATION PROVIDED, PATIENT DECISIONS, PATIENT PERSPECTIVE STATEMENTS, and PROVIDER REASONING blocks supplement STATE B items only when the inline fields are sparse or absent. Do NOT duplicate counseling language: if the substance is already expressed through the inline fields, do not restate it again from the global blocks. Each treatment's clinical story belongs in its own Assessment entry, drawn from its own inline fields.
 
+═══════════════════════════════════════
+PATIENT EXPLICIT REFUSAL DOCUMENTATION — MEDICOLEGALLY REQUIRED
+═══════════════════════════════════════
+When the PATIENT EXPLICIT REFUSALS context lists one or more explicit refusals, or when the transcript contains a clear patient decline of a provider recommendation, this is a medicolegally required documentation event. An undocumented refusal is a liability gap.
+
+RULE: Every explicit patient refusal MUST appear in the Assessment/Plan as part of the numbered item for that clinical topic. It may NOT be silently omitted, reduced to HPI-only mention, or folded into a vague "patient declined" statement without specifics.
+
+Required documentation format — integrate into the Assessment item's clinical reasoning paragraph:
+"Recommended [specific treatment/referral/test/intervention]; patient declined at this time[, stating (patient's reason if given)]. [Clinical consequence if any.] [Follow-up plan — when/if to revisit.]"
+
+Examples:
+- "Statin therapy reviewed given LDL [X] and 10-year ASCVD risk of [X]%. Risks, benefits, and monitoring discussed. Patient declined initiation, preferring to pursue dietary modification first. Lipid panel to be rechecked in 3 months; statin candidacy to be reassessed at that visit."
+- "Referral to endocrinology recommended for further thyroid evaluation. Patient declined referral at this time, preferring to continue management with this practice. Plan to reassess thyroid trajectory at next visit; referral to be revisited if levels do not respond to current protocol."
+- "Pap smear due per screening guidelines; patient declined at this visit, citing personal preference. Documented refusal; to be re-offered at next annual visit."
+
+Rules:
+- Patient refusal of an active recommendation = a numbered Assessment/Plan entry documenting the recommendation AND the refusal, NOT a silent omission or a STATE C note-only mention
+- The Plan line must explicitly reflect the refusal: "No [prescription/referral/procedure] issued at patient request" or "[Treatment] declined by patient; to be reconsidered at follow-up under condition [X]"
+- If the refusal carries a clinical safety consequence (e.g., declining anticoagulation, declining urgent imaging), add a brief note: "Consequences of deferral reviewed with patient"
+- Do NOT frame the refusal as a deferral or State B item unless the patient expressed intent to revisit the decision — a clear "No" is documented as a refusal, not a deferral
+- If reason was given, include it; if no reason was stated, write "reason not stated" rather than omitting
+
 STATE C — EXPLORATORY DISCUSSION (conversational possibility, no near-term plan):
 - MUST appear in the HPI narrative — this is non-negotiable. "State C" means excluded from A/P, NOT excluded from the note.
 - Do NOT create a numbered Assessment entry
@@ -1403,6 +1459,26 @@ WHEN NO MATCHED BUNDLES ARE PRESENT:
 SECTION 3 — PLAN REFLECTING ACTUAL DECISIONS + COUNSELING/SDM PRESERVATION
 ═══════════════════════════════════════
 The Plan must ONLY reflect what was actually decided during the visit. AND it must preserve the clinical counseling and shared decision-making that actually occurred — not collapse it into vague summary phrases.
+
+═══════════════════════════════════════
+VISIT OUTCOME MANDATE — DOCUMENT WHAT HAPPENED, NOT JUST WHAT TO DO NEXT
+═══════════════════════════════════════
+The Assessment & Plan must document the OUTCOME of this encounter — what was accomplished — not merely list future action items. The A/P is not a to-do list. It is a record of what occurred at this visit.
+
+The OPENING SYNTHESIS PARAGRAPH (required before all numbered items) must anchor every note in what happened:
+- Which medications were INITIATED at this visit (name them, note the initiation explicitly: "Initiated [X] at this visit")
+- Which medications were CHANGED at this visit (name the change and why)
+- Which medications were REVIEWED AND CONTINUED unchanged (note they were reviewed: "Current regimen reviewed; [X] continued")
+- Which clinical topics were DISCUSSED BUT DEFERRED (name them: "Statin candidacy discussed; patient electing dietary-first approach; to reassess at next visit")
+- Which topics were NOT ADDRESSED due to time or scope (flag them: "Lipid management not addressed at this visit; to be completed at next encounter")
+
+ANTI-FUTURE-LIST RULE: Every Assessment item must be grounded in what was done, said, decided, or documented at THIS visit. Future-tense action items that were not explicitly discussed and decided during this encounter must NOT appear as if they were.
+
+WRONG (future-action list only): "Start testosterone. Check labs in 6 weeks. Consider estrogen at follow-up."
+RIGHT (outcome-grounded): "Testosterone [X mg] initiated at this visit for female androgen insufficiency — free testosterone [value], below therapeutic range. Initiation counseling provided regarding [specific content]. Labs ordered at initiation; follow-up in [timeframe] to assess response."
+
+WRONG: "Patient to follow up with cardiology."
+RIGHT: "Cardiology referral placed at this visit for [indication]." OR "Cardiology referral discussed; patient preferred to defer; to be revisited if [condition]."
 
 CRITICAL PLAN RULE — DECISION CLASSIFICATION:
 - Items in "explicitly_decided_plan_items" → include in the Plan as a definitive order/decision with full specificity (drug name, dose, route, frequency, monitoring)
@@ -1606,6 +1682,30 @@ Rules:
   d) Preventative medicine opportunities grounded in the visit context
 - NEVER recommend an action the provider already decided to take
 - Example: If provider explicitly decided "start testosterone" → do NOT put "Consider initiating testosterone" in needs_clinician_review
+
+═══════════════════════════════════════
+SECTION 3E — PATIENT-TERMINATED VISIT / EARLY DEPARTURE DOCUMENTATION
+═══════════════════════════════════════
+When the VISIT TERMINATED EARLY flag is set, or when the transcript clearly shows the patient ended the visit before all planned topics were addressed, this is a MEDICOLEGAL EVENT that must be explicitly documented. An abrupt visit ending without documentation creates a liability gap — it implies that incomplete counseling never happened rather than that it was cut short at the patient's request.
+
+REQUIRED ACTIONS when visit was terminated early:
+
+1. HPI CLOSING SENTENCE: End the HPI with a brief, factual statement: "Visit was concluded at patient request due to time constraints. [Topics addressed] were covered during the encounter; [topics not addressed] were deferred to follow-up."
+
+2. ASSESSMENT/PLAN CLOSING STATEMENT: After the final numbered item, add a plain-text closing line (not a numbered item):
+"Note: Visit concluded at patient request prior to addressing [topic(s)]. Recommended follow-up to complete discussion of [deferred topic(s)]."
+
+3. NEEDS_CLINICIAN_REVIEW FLAGS: Add each incomplete topic to needs_clinician_review with the prefix:
+"NOT ADDRESSED — VISIT TERMINATED EARLY: [topic] — recommend completing at follow-up visit."
+
+4. DO NOT INVENT WHAT WAS "PROBABLY" DISCUSSED: If the transcript ends abruptly, only document what is actually present in the transcript. Incomplete visits produce shorter notes — not speculative completions.
+
+TONE: Clinical, neutral, factual. No editorial judgment about the patient leaving early. "Patient indicated time constraints; visit concluded before [X] was fully addressed" is the appropriate register.
+
+EXAMPLE:
+HPI ending: "Visit was concluded at patient request due to time constraints. Hormone optimization and metabolic labs were reviewed; lipid management and thyroid discussion were deferred to the next visit."
+A/P closing: "Note: Visit concluded at patient request before completing lipid management review and thyroid optimization discussion. Follow-up scheduled to address remaining topics."
+needs_clinician_review: ["NOT ADDRESSED — VISIT TERMINATED EARLY: Lipid management (statin candidacy and dietary plan) — recommend completing at follow-up visit.", "NOT ADDRESSED — VISIT TERMINATED EARLY: Thyroid optimization discussion — pending lab review at next visit."]
 
 ═══════════════════════════════════════
 SECTION 4B — REVIEW OF SYSTEMS (ROS) FORMATTING — STRICT
@@ -1901,7 +2001,7 @@ PATIENT vs. CLINICIAN IDENTITY (apply while drafting — never include this head
 
   const userPrompt = `Visit Type: ${encounter.visitType}
 Chief Complaint: ${encounter.chiefComplaint || "Not specified"}
-Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${patientLine}${historicalBlock}${labContext}${extractionSummary}${patternContext}${medicationContext}${normalizedMedsContext}${conditionsContext}${preventativeContext}${symptomTimelineContext}${planClassification}${futureConsiderationsContext}${exploratoryContext}${treatmentRationaleContext}${bundleContext}${hpiElements}${patientPerspective}${providerReasoning}${educationProvided}${patientDecisions}
+Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${patientLine}${historicalBlock}${labContext}${extractionSummary}${patternContext}${medicationContext}${normalizedMedsContext}${conditionsContext}${preventativeContext}${symptomTimelineContext}${planClassification}${futureConsiderationsContext}${exploratoryContext}${treatmentRationaleContext}${bundleContext}${hpiElements}${patientPerspective}${providerReasoning}${educationProvided}${patientDecisions}${explicitRefusalsContext}${visitTerminationContext}
 ${speakerConflictContext2}
 TRANSCRIPT (CLINICIAN[?] = uncertain speaker assignment — treat with extra care in Assessment/Plan):
 ${diarizedInput}
