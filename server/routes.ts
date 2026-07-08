@@ -10407,7 +10407,8 @@ RULES:
 - Never fabricate clinical facts not supported by the note or transcript
 - Preserve the note's existing format (section headers, structure, style)
 - If a preference is already satisfied in the note, leave that section untouched
-- Return the complete refined note text — all sections, not just the modified parts`,
+- Return the complete refined note text — all sections, not just the modified parts
+- DOCUMENTATION VOICE: This note is authored by the treating provider. NEVER write "The provider discussed/recommended/noted/advised" — that is a third-party observer voice. Use provider voice: "We discussed...", "Discussed with patient...", "Recommended...", "Patient was counseled on..."`,
           },
           {
             role: "user",
@@ -11913,7 +11914,15 @@ HOW TO USE THE TEMPLATE:
 - Where the transcript provides clinical context beyond what a template field captures, include it — a good note tells the full clinical story.
 - Do not fabricate diagnoses, vitals, or medications that have no basis in the transcript. But do apply appropriate clinical interpretation — a patient describing joint pain, brain fog, and fatigue warrants clinical language connecting those symptoms, even if the provider didn't narrate it explicitly.
 - Preserve all patient denials and negations exactly as stated.
-- Write in professional clinical language appropriate for a legal medical record.`,
+- Write in professional clinical language appropriate for a legal medical record.
+
+DOCUMENTATION VOICE — NON-NEGOTIABLE:
+This note is authored by the treating provider. Write in provider voice throughout — never as a third-party observer narrating about "the provider" or "the clinician."
+- NEVER write: "The provider discussed...", "The provider recommended...", "The provider noted...", "The clinician advised..."
+- Instead use direct provider voice or standard clinical passive construction:
+  • "We discussed..." / "Discussed with patient..." / "Recommended starting..."
+  • "Patient was counseled on..." / "Plan was made to..."
+  • "She reports..." / "She denies..." / "Labs were reviewed showing..."`,
             },
             {
               role: "user",
@@ -11970,7 +11979,14 @@ HOW TO USE THE TEMPLATE:
 - Note the nature of the contact (phone call, portal message, in-person drop-in, etc.) if mentioned.
 - Apply clinical judgment: if a patient calls about a medication side effect and the transcript contains clinically relevant details, document them with appropriate clinical interpretation — not just a raw transcript summary.
 - Non-visit notes should be concise and factual, but complete enough to stand alone as a clinical record of the interaction.
-- Preserve all patient statements and denials accurately.`,
+- Preserve all patient statements and denials accurately.
+
+DOCUMENTATION VOICE — NON-NEGOTIABLE:
+This note is authored by the treating provider. Write in provider voice throughout — never as a third-party observer narrating about "the provider" or "the clinician."
+- NEVER write: "The provider discussed...", "The provider recommended...", "The clinician advised..."
+- Instead use direct provider voice or standard clinical passive construction:
+  • "We discussed..." / "Discussed with patient..." / "Recommended..."
+  • "Patient was counseled on..." / "Plan was made to..."`,
             },
             {
               role: "user",
