@@ -7428,3 +7428,58 @@ const TEAM_MEMBER_ID_RE = /^(user|staff):\d+$/;
     .returning();
   return order;
 };
+
+// Cancels this order plus every other active/scheduled order that belongs to
+// the same recurring series (e.g. all future testosterone refills).
+(DbStorage.prototype as any).cancelClinicalOrderSeries = async function(
+  id: number,
+  clinicId: number,
+  reason: string | null,
+): Promise<{ cancelled: schema.ClinicalOrder[] } | undefined> {
+  const [target] = await db.select().from(schema.clinicalOrders)
+    .where(and(eq(schema.clinicalOrders.id, id), eq(schema.clinicalOrders.clinicId, clinicId)))
+    .limit(1);
+  if (!target) return undefined;
+  const seriesId = target.recurrenceSeriesId ?? target.id;
+  const cancelled = await db.update(schema.clinicalOrders)
+    .set({ status: 'cancelled', cancelledAt: new Date(), cancelReason: reason })
+    .where(and(
+      eq(schema.clinicalOrders.clinicId, clinicId),
+      or(
+        eq(schema.clinicalOrders.id, seriesId),
+        eq(schema.clinicalOrders.recurrenceSeriesId, seriesId),
+      ),
+      or(
+        eq(schema.clinicalOrders.status, 'active'),
+        eq(schema.clinicalOrders.status, 'scheduled'),
+      ),
+    ))
+    .returning();
+  return { cancelled };
+};
+
+// Alias so callers using the more descriptive name reuse the same
+// createInboxNotification implementation defined above.
+(DbStorage.prototype as any).createProviderInboxNotification = async function(data: {
+  clinicId: number;
+  patientId: number;
+  providerId: number | null;
+  type: string;
+  title: string;
+  message: string;
+  relatedEntityType?: string | null;
+  relatedEntityId?: number | null;
+  severity?: string;
+}): Promise<schema.ProviderInboxNotification> {
+  return (this as any).createInboxNotification({
+    clinicId: data.clinicId,
+    patientId: data.patientId,
+    providerId: data.providerId,
+    type: data.type,
+    title: data.title,
+    message: data.message,
+    relatedEntityType: data.relatedEntityType ?? null,
+    relatedEntityId: data.relatedEntityId ?? null,
+    severity: data.severity ?? 'normal',
+  } as any);
+};

@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { Search, Printer } from "lucide-react";
@@ -18,6 +19,7 @@ import {
   Activity, Heart, FlaskConical, Loader2, Check,
   ChevronDown, ChevronRight, RotateCcw, User, Phone,
   CalendarDays, MapPin, FileText, CheckCircle2, Circle,
+  Pill, DollarSign, ShieldAlert,
 } from "lucide-react";
 import { useClinicBranding } from "@/hooks/use-clinic-branding";
 import { generateOrderPDF } from "@/lib/order-pdf-export";
@@ -60,6 +62,8 @@ interface ClinicalOrderData {
   targetDate: string | null;
   activateOn: string | null;
   recurrenceMonths: number | null;
+  recurrenceWeeks: number | null;
+  recurrenceSeriesId: number | null;
   assignedToUserId: number | null;
   assignedToStaffId: number | null;
   assignees: { teamMemberId: string; displayName: string }[];
@@ -74,6 +78,16 @@ interface ClinicalOrderData {
   cancelReason: string | null;
   createdAt: string;
   taskCompletions: TaskCompletion[];
+  // Medication refill fields
+  medicationName: string | null;
+  medicationDose: string | null;
+  pharmacyName: string | null;
+  pharmacyPhone: string | null;
+  isControlledSubstance: boolean;
+  pmpChecked: boolean;
+  uaChecked: boolean;
+  requiresPayment: boolean;
+  paymentCollected: boolean;
 }
 
 interface TeamMember {
@@ -88,6 +102,7 @@ export const ORDER_TASK_WORKFLOWS: Record<string, string[]> = {
   imaging: ["order_sent", "appointment_scheduled", "patient_notified", "results_received", "provider_notified"],
   health_maintenance: ["order_sent", "appointment_scheduled", "patient_notified", "results_received", "provider_notified"],
   lab: ["labs_drawn", "results_received", "provider_notified"],
+  medication_refill: ["provider_notified", "rx_sent", "patient_charged", "patient_notified"],
 };
 
 const TASK_LABELS: Record<string, string> = {
@@ -95,8 +110,10 @@ const TASK_LABELS: Record<string, string> = {
   appointment_scheduled: "Appointment scheduled",
   patient_notified: "Patient notified",
   results_received: "Results received",
-  provider_notified: "Provider notified of results",
+  provider_notified: "Provider notified",
   labs_drawn: "Labs drawn",
+  rx_sent: "Rx sent to pharmacy",
+  patient_charged: "Patient charged",
 };
 
 const ORDER_TYPE_CONFIG: Record<string, { label: string; shortLabel: string; color: string; Icon: React.ComponentType<{ className?: string }> }> = {
@@ -104,6 +121,7 @@ const ORDER_TYPE_CONFIG: Record<string, { label: string; shortLabel: string; col
   imaging: { label: "Imaging Order", shortLabel: "Imaging", color: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300", Icon: Activity },
   health_maintenance: { label: "Health Maintenance", shortLabel: "Health Maint.", color: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300", Icon: Heart },
   lab: { label: "Lab Order", shortLabel: "Lab", color: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300", Icon: FlaskConical },
+  medication_refill: { label: "Medication / Refill", shortLabel: "Refill", color: "bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300", Icon: Pill },
 };
 
 const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
@@ -116,10 +134,20 @@ function daysSince(dateStr: string) {
   return Math.floor((Date.now() - new Date(dateStr).getTime()) / 86_400_000);
 }
 
-function getTaskProgress(order: ClinicalOrderData) {
+// For medication refills that don't require patient payment, the
+// "patient_charged" step is skipped entirely — mirrors server effectiveTaskKeys().
+function effectiveTaskKeys(order: Pick<ClinicalOrderData, "orderType" | "requiresPayment">): string[] {
   const tasks = ORDER_TASK_WORKFLOWS[order.orderType] ?? [];
+  if (order.orderType === "medication_refill" && !order.requiresPayment) {
+    return tasks.filter((k) => k !== "patient_charged");
+  }
+  return tasks;
+}
+
+function getTaskProgress(order: ClinicalOrderData) {
+  const tasks = effectiveTaskKeys(order);
   const doneKeys = new Set(order.taskCompletions.map((c) => c.taskKey));
-  return { done: doneKeys.size, total: tasks.length };
+  return { done: Array.from(doneKeys).filter((k) => tasks.includes(k)).length, total: tasks.length };
 }
 
 function formatDate(str: string | null | undefined) {
@@ -246,10 +274,15 @@ function OrderDetailDrawer({
     }
   }
 
-  const tasks = ORDER_TASK_WORKFLOWS[order.orderType] ?? [];
+  const tasks = effectiveTaskKeys(order);
   const completionMap = Object.fromEntries(order.taskCompletions.map((c) => [c.taskKey, c]));
   const typeConfig = ORDER_TYPE_CONFIG[order.orderType] ?? ORDER_TYPE_CONFIG.referral;
   const priorityCfg = PRIORITY_CONFIG[order.priority] ?? PRIORITY_CONFIG.routine;
+  const isMedicationRefill = order.orderType === "medication_refill";
+  const isRecurring = !!(order.recurrenceMonths || order.recurrenceWeeks);
+  const [savingChecks, setSavingChecks] = useState(false);
+  const rxSentDone = !!completionMap["rx_sent"];
+  const canSendRx = !order.isControlledSubstance || (order.pmpChecked && order.uaChecked);
 
   const completeTaskMutation = useMutation({
     mutationFn: async ({ taskKey, note }: { taskKey: string; note: string | null }) => {
@@ -324,6 +357,28 @@ function OrderDetailDrawer({
     (editDiagnosis?.code ?? null) !== (order.diagnosisCode ?? null) ||
     (editCpt?.code ?? null) !== (order.cptCode ?? null);
 
+  async function toggleCheck(field: "pmpChecked" | "uaChecked", value: boolean) {
+    setSavingChecks(true);
+    try {
+      await apiRequest("PATCH", `/api/clinical-orders/${order.id}`, { [field]: value });
+      onOrderChange();
+    } catch {
+      toast({ variant: "destructive", title: "Failed to update verification" });
+    } finally {
+      setSavingChecks(false);
+    }
+  }
+
+  const cancelSeriesMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("DELETE", `/api/clinical-orders/${order.id}`, { reason: cancelReason || null, cancelSeries: true });
+      if (!res.ok) throw new Error("Failed to cancel series");
+      return res.json();
+    },
+    onSuccess: () => { onOrderChange(); onClose(); toast({ title: "Recurring series cancelled" }); },
+    onError: () => toast({ variant: "destructive", title: "Failed to cancel series" }),
+  });
+
   return (
     <div className="fixed inset-0 z-50 flex">
       <div className="flex-1 bg-black/40" onClick={onClose} />
@@ -371,6 +426,69 @@ function OrderDetailDrawer({
               </p>
               <p className="text-sm font-medium leading-snug break-words whitespace-pre-wrap" data-testid="text-order-subtype-detail">{order.subtype}</p>
             </div>
+            {isMedicationRefill && (
+              <div className="rounded-md bg-muted/50 border px-3 py-2.5 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Medication</p>
+                  {order.isControlledSubstance && (
+                    <Badge variant="outline" className="text-[10px] gap-1">
+                      <ShieldAlert className="w-3 h-3" /> Controlled
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-sm font-medium" data-testid="text-medication-name">
+                  {order.medicationName}{order.medicationDose ? ` — ${order.medicationDose}` : ""}
+                </p>
+                {order.pharmacyName && (
+                  <div className="flex items-start gap-2 text-sm">
+                    <MapPin className="w-3.5 h-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
+                    <span className="text-muted-foreground">Pharmacy:</span>
+                    <span className="font-medium">{order.pharmacyName}{order.pharmacyPhone ? ` (${order.pharmacyPhone})` : ""}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-2 text-sm">
+                  <DollarSign className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                  <span className="text-muted-foreground">
+                    {order.requiresPayment ? "Patient will be charged" : "No charge to patient"}
+                  </span>
+                </div>
+                {isRecurring && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <RotateCcw className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                    <span className="text-muted-foreground">
+                      Recurring every {order.recurrenceWeeks ? `${order.recurrenceWeeks} week${order.recurrenceWeeks === 1 ? "" : "s"}` : `${order.recurrenceMonths} month${order.recurrenceMonths === 1 ? "" : "s"}`}
+                    </span>
+                  </div>
+                )}
+                {order.isControlledSubstance && (
+                  <div className="pt-1 border-t space-y-1.5">
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <Checkbox
+                        checked={order.pmpChecked}
+                        disabled={savingChecks}
+                        onCheckedChange={(v) => toggleCheck("pmpChecked", !!v)}
+                        data-testid="checkbox-pmp-checked"
+                      />
+                      <span>PMP checked / updated</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <Checkbox
+                        checked={order.uaChecked}
+                        disabled={savingChecks}
+                        onCheckedChange={(v) => toggleCheck("uaChecked", !!v)}
+                        data-testid="checkbox-ua-checked"
+                      />
+                      <span>UA up-to-date</span>
+                    </label>
+                    {!canSendRx && !rxSentDone && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" /> Both checks required before sending Rx
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
             {/* Assignees — multi-assignee with legacy fallback */}
             {(() => {
               const names = (order.assignees ?? []).map((a) => a.displayName);
@@ -471,10 +589,14 @@ function OrderDetailDrawer({
                 </span>
               </div>
             )}
-            {order.recurrenceMonths && (
+            {!isMedicationRefill && (order.recurrenceMonths || order.recurrenceWeeks) && (
               <div className="flex items-center gap-2 text-sm">
                 <RotateCcw className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                <span className="text-muted-foreground">Recurs every {order.recurrenceMonths} month{order.recurrenceMonths !== 1 ? "s" : ""}</span>
+                <span className="text-muted-foreground">
+                  {order.recurrenceWeeks
+                    ? `Recurs every ${order.recurrenceWeeks} week${order.recurrenceWeeks !== 1 ? "s" : ""}`
+                    : `Recurs every ${order.recurrenceMonths} month${order.recurrenceMonths !== 1 ? "s" : ""}`}
+                </span>
               </div>
             )}
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -609,9 +731,14 @@ function OrderDetailDrawer({
                   data-testid="input-cancel-reason"
                 />
                 <div className="flex gap-2">
-                  <Button size="sm" variant="destructive" className="flex-1 text-xs h-7" onClick={() => cancelMutation.mutate()} disabled={cancelMutation.isPending} data-testid="button-confirm-cancel">
-                    {cancelMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Confirm cancel"}
+                  <Button size="sm" variant="destructive" className="flex-1 text-xs h-7" onClick={() => cancelMutation.mutate()} disabled={cancelMutation.isPending || cancelSeriesMutation.isPending} data-testid="button-confirm-cancel">
+                    {cancelMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Cancel this order only"}
                   </Button>
+                  {isRecurring && (
+                    <Button size="sm" variant="destructive" className="flex-1 text-xs h-7" onClick={() => cancelSeriesMutation.mutate()} disabled={cancelMutation.isPending || cancelSeriesMutation.isPending} data-testid="button-confirm-cancel-series">
+                      {cancelSeriesMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Cancel entire series"}
+                    </Button>
+                  )}
                   <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => setShowCancelConfirm(false)}>Keep</Button>
                 </div>
               </div>
@@ -754,9 +881,16 @@ function NewOrderDialog({
   const [orderingProviderId, setOrderingProviderId] = useState<string>("");
   const [recurring, setRecurring] = useState(false);
   const [recurrenceMonths, setRecurrenceMonths] = useState("12");
+  const [recurrenceWeeks, setRecurrenceWeeks] = useState("10");
   const [notes, setNotes] = useState("");
   const [diagnosis, setDiagnosis] = useState<{ code: string; label: string } | null>(null);
   const [cpt, setCpt] = useState<{ code: string; label: string } | null>(null);
+  const [medicationName, setMedicationName] = useState("");
+  const [medicationDose, setMedicationDose] = useState("");
+  const [pharmacyName, setPharmacyName] = useState("");
+  const [pharmacyPhone, setPharmacyPhone] = useState("");
+  const [isControlledSubstance, setIsControlledSubstance] = useState(false);
+  const [requiresPayment, setRequiresPayment] = useState(false);
 
   const { data: team = [] } = useQuery<TeamMember[]>({
     queryKey: ["/api/clinical-orders/team"],
@@ -774,9 +908,10 @@ function NewOrderDialog({
         ? parseInt(effectiveOrderingProvider.slice(5))
         : null;
 
+      const isMedRefill = orderType === "medication_refill";
       const res = await apiRequest("POST", `/api/patients/${patientId}/clinical-orders`, {
         orderType,
-        subtype: subtype.trim(),
+        subtype: isMedRefill ? `${medicationName.trim()}${medicationDose.trim() ? ` ${medicationDose.trim()}` : ""}` : subtype.trim(),
         referringTo: referringTo.trim() || null,
         facilityFax: facilityFax.trim() || null,
         facilityAddress: facilityAddress.trim() || null,
@@ -784,7 +919,8 @@ function NewOrderDialog({
         priority,
         targetDate: targetDate || null,
         notifyDaysBefore: targetDate ? parseInt(notifyDaysBefore) : undefined,
-        recurrenceMonths: recurring ? parseInt(recurrenceMonths) : null,
+        recurrenceMonths: recurring && !isMedRefill ? parseInt(recurrenceMonths) : null,
+        recurrenceWeeks: recurring && isMedRefill ? parseInt(recurrenceWeeks) : null,
         assignees: selectedAssignees.map((a) => ({ teamMemberId: a.id, displayName: a.label })),
         orderingProviderUserId,
         notes: notes.trim() || null,
@@ -792,6 +928,12 @@ function NewOrderDialog({
         diagnosisName: diagnosis?.label ?? null,
         cptCode: cpt?.code ?? null,
         cptDescription: cpt?.label ?? null,
+        medicationName: isMedRefill ? medicationName.trim() : null,
+        medicationDose: isMedRefill ? medicationDose.trim() || null : null,
+        pharmacyName: isMedRefill ? pharmacyName.trim() || null : null,
+        pharmacyPhone: isMedRefill ? pharmacyPhone.trim() || null : null,
+        isControlledSubstance: isMedRefill ? isControlledSubstance : false,
+        requiresPayment: isMedRefill ? requiresPayment : false,
       });
       if (!res.ok) throw new Error("Failed to create order");
       return res.json();
@@ -804,14 +946,18 @@ function NewOrderDialog({
       setOrderType("referral"); setSubtype(""); setPriority("routine");
       setReferringTo(""); setFacilityFax(""); setFacilityAddress("");
       setReason(""); setTargetDate(""); setNotifyDaysBefore("3"); setSelectedAssignees([]); setOrderingProviderId("");
-      setRecurring(false); setRecurrenceMonths("12"); setNotes("");
+      setRecurring(false); setRecurrenceMonths("12"); setRecurrenceWeeks("10"); setNotes("");
       setDiagnosis(null); setCpt(null);
+      setMedicationName(""); setMedicationDose(""); setPharmacyName(""); setPharmacyPhone("");
+      setIsControlledSubstance(false); setRequiresPayment(false);
     },
     onError: () => toast({ variant: "destructive", title: "Failed to create order" }),
   });
 
+  const isMedicationRefill = orderType === "medication_refill";
   const showFacility = ["referral", "imaging", "health_maintenance", "lab"].includes(orderType);
-  const showRecurrence = orderType === "health_maintenance";
+  const showRecurrence = orderType === "health_maintenance" || isMedicationRefill;
+  const canSubmit = isMedicationRefill ? !!medicationName.trim() : !!subtype.trim();
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
@@ -833,6 +979,7 @@ function NewOrderDialog({
                   <SelectItem value="imaging">Imaging</SelectItem>
                   <SelectItem value="lab">Lab Order</SelectItem>
                   <SelectItem value="health_maintenance">Health Maintenance</SelectItem>
+                  <SelectItem value="medication_refill">Medication / Refill</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -852,17 +999,92 @@ function NewOrderDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-xs">
-              {orderType === "referral" ? "Specialty / Service *" : orderType === "imaging" ? "Imaging Study *" : orderType === "lab" ? "Panel / Test *" : "Screening / Service *"}
-            </Label>
-            <Input
-              placeholder={orderType === "referral" ? "e.g. Physical Therapy" : orderType === "imaging" ? "e.g. MRI — Lumbar Spine" : orderType === "lab" ? "e.g. CBC with Differential, CMP, Lipid Panel" : "e.g. Mammogram"}
-              value={subtype}
-              onChange={(e) => setSubtype(e.target.value)}
-              className="h-8 text-xs"
-              data-testid="input-order-subtype"
-            />
+            {!isMedicationRefill && (
+              <>
+                <Label className="text-xs">
+                  {orderType === "referral" ? "Specialty / Service *" : orderType === "imaging" ? "Imaging Study *" : orderType === "lab" ? "Panel / Test *" : "Screening / Service *"}
+                </Label>
+                <Input
+                  placeholder={orderType === "referral" ? "e.g. Physical Therapy" : orderType === "imaging" ? "e.g. MRI — Lumbar Spine" : orderType === "lab" ? "e.g. CBC with Differential, CMP, Lipid Panel" : "e.g. Mammogram"}
+                  value={subtype}
+                  onChange={(e) => setSubtype(e.target.value)}
+                  className="h-8 text-xs"
+                  data-testid="input-order-subtype"
+                />
+              </>
+            )}
           </div>
+
+          {isMedicationRefill && (
+            <div className="rounded-md border border-pink-200/60 bg-pink-50/40 dark:border-pink-800/40 dark:bg-pink-950/20 p-3 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Medication *</Label>
+                  <Input
+                    placeholder="e.g. Testosterone Cypionate"
+                    value={medicationName}
+                    onChange={(e) => setMedicationName(e.target.value)}
+                    className="h-8 text-xs"
+                    data-testid="input-medication-name"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Dose</Label>
+                  <Input
+                    placeholder="e.g. 200mg/mL, 0.5mL weekly"
+                    value={medicationDose}
+                    onChange={(e) => setMedicationDose(e.target.value)}
+                    className="h-8 text-xs"
+                    data-testid="input-medication-dose"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Pharmacy</Label>
+                  <Input
+                    placeholder="e.g. CVS Main St"
+                    value={pharmacyName}
+                    onChange={(e) => setPharmacyName(e.target.value)}
+                    className="h-8 text-xs"
+                    data-testid="input-pharmacy-name"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Pharmacy Phone</Label>
+                  <Input
+                    placeholder="555-555-5555"
+                    value={pharmacyPhone}
+                    onChange={(e) => setPharmacyPhone(e.target.value)}
+                    className="h-8 text-xs"
+                    data-testid="input-pharmacy-phone"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="controlled-substance"
+                  checked={isControlledSubstance}
+                  onChange={(e) => setIsControlledSubstance(e.target.checked)}
+                  className="rounded"
+                  data-testid="checkbox-controlled-substance"
+                />
+                <Label htmlFor="controlled-substance" className="text-xs font-medium cursor-pointer">Controlled substance (requires PMP + UA check before sending Rx)</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="requires-payment"
+                  checked={requiresPayment}
+                  onChange={(e) => setRequiresPayment(e.target.checked)}
+                  className="rounded"
+                  data-testid="checkbox-requires-payment"
+                />
+                <Label htmlFor="requires-payment" className="text-xs font-medium cursor-pointer">Patient will be charged for this medication</Label>
+              </div>
+            </div>
+          )}
 
           {showFacility && (
             <>
@@ -979,7 +1201,22 @@ function NewOrderDialog({
                 />
                 <Label htmlFor="recurring" className="text-xs font-medium cursor-pointer">Auto-schedule next order when this one is complete</Label>
               </div>
-              {recurring && (
+              {recurring && isMedicationRefill && (
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs text-muted-foreground whitespace-nowrap">Repeat every</Label>
+                  <Select value={recurrenceWeeks} onValueChange={setRecurrenceWeeks}>
+                    <SelectTrigger className="h-7 text-xs w-28" data-testid="select-recurrence-weeks">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[2, 4, 6, 8, 10, 12].map((w) => (
+                        <SelectItem key={w} value={String(w)}>{w} weeks</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {recurring && !isMedicationRefill && (
                 <div className="flex items-center gap-2">
                   <Label className="text-xs text-muted-foreground whitespace-nowrap">Repeat every</Label>
                   <Select value={recurrenceMonths} onValueChange={setRecurrenceMonths}>
@@ -1080,7 +1317,7 @@ function NewOrderDialog({
           <Button
             size="sm"
             className="text-xs"
-            disabled={!subtype.trim() || createMutation.isPending}
+            disabled={!canSubmit || createMutation.isPending}
             onClick={() => createMutation.mutate()}
             data-testid="button-submit-new-order"
           >

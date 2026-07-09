@@ -1782,6 +1782,19 @@ ALTER TABLE clinical_orders ADD COLUMN IF NOT EXISTS cpt_description  TEXT;
 ALTER TABLE clinical_orders ADD COLUMN IF NOT EXISTS draw_date        TEXT;
 ALTER TABLE clinical_orders ADD COLUMN IF NOT EXISTS activate_on      TEXT;
 
+-- Medication / refill order type support
+ALTER TABLE clinical_orders ADD COLUMN IF NOT EXISTS recurrence_weeks        INTEGER;
+ALTER TABLE clinical_orders ADD COLUMN IF NOT EXISTS recurrence_series_id    INTEGER;
+ALTER TABLE clinical_orders ADD COLUMN IF NOT EXISTS medication_name         VARCHAR(150);
+ALTER TABLE clinical_orders ADD COLUMN IF NOT EXISTS medication_dose         VARCHAR(100);
+ALTER TABLE clinical_orders ADD COLUMN IF NOT EXISTS pharmacy_name           VARCHAR(150);
+ALTER TABLE clinical_orders ADD COLUMN IF NOT EXISTS pharmacy_phone          VARCHAR(30);
+ALTER TABLE clinical_orders ADD COLUMN IF NOT EXISTS is_controlled_substance BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE clinical_orders ADD COLUMN IF NOT EXISTS pmp_checked             BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE clinical_orders ADD COLUMN IF NOT EXISTS ua_checked              BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE clinical_orders ADD COLUMN IF NOT EXISTS requires_payment        BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE clinical_orders ADD COLUMN IF NOT EXISTS payment_collected       BOOLEAN NOT NULL DEFAULT FALSE;
+
 -- ── order_task_completions ────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS order_task_completions (
   id                    SERIAL PRIMARY KEY,

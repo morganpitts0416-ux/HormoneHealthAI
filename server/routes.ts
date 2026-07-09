@@ -21383,7 +21383,18 @@ IMPORTANT:
     imaging: ['order_sent', 'appointment_scheduled', 'patient_notified', 'results_received', 'provider_notified'],
     health_maintenance: ['order_sent', 'appointment_scheduled', 'patient_notified', 'results_received', 'provider_notified'],
     lab: ['labs_drawn', 'results_received', 'provider_notified'],
+    medication_refill: ['provider_notified', 'rx_sent', 'patient_charged', 'patient_notified'],
   };
+
+  // For medication_refill orders, 'patient_charged' only applies when the
+  // order requires payment — otherwise it's excluded from the workflow.
+  function effectiveTaskKeys(orderType: string, requiresPayment: boolean | null | undefined): string[] {
+    const base = ORDER_TASK_WORKFLOWS[orderType] ?? [];
+    if (orderType === 'medication_refill' && !requiresPayment) {
+      return base.filter((k) => k !== 'patient_charged');
+    }
+    return base;
+  }
 
   // GET /api/clinical-orders/team — combined list of providers + staff for the assign-to dropdown
   app.get("/api/clinical-orders/team", requireAuth, async (req, res) => {
@@ -21467,8 +21478,8 @@ IMPORTANT:
         displayName: z.string().min(1).max(200),
       });
       const schema2 = z.object({
-        orderType: z.enum(["referral", "imaging", "health_maintenance", "lab"]),
-        subtype: z.string().min(1).max(150),
+        orderType: z.enum(["referral", "imaging", "health_maintenance", "lab", "medication_refill"]),
+        subtype: z.string().max(150).optional().nullable(),
         referringTo: z.string().max(200).optional().nullable(),
         facilityAddress: z.string().optional().nullable(),
         facilityFax: z.string().max(30).optional().nullable(),
@@ -21477,6 +21488,7 @@ IMPORTANT:
         targetDate: z.string().optional().nullable(),
         notifyDaysBefore: z.number().int().min(0).max(365).optional().nullable(),
         recurrenceMonths: z.number().int().positive().optional().nullable(),
+        recurrenceWeeks: z.number().int().positive().optional().nullable(),
         assignees: z.array(assigneeSchema).max(20).optional().default([]),
         notes: z.string().optional().nullable(),
         orderingProviderUserId: z.number().int().positive().optional().nullable(),
@@ -21484,11 +21496,26 @@ IMPORTANT:
         diagnosisName: z.string().max(300).optional().nullable(),
         cptCode: z.string().max(20).optional().nullable(),
         cptDescription: z.string().max(300).optional().nullable(),
-      });
+        // Medication refill fields
+        medicationName: z.string().max(150).optional().nullable(),
+        medicationDose: z.string().max(100).optional().nullable(),
+        pharmacyName: z.string().max(150).optional().nullable(),
+        pharmacyPhone: z.string().max(30).optional().nullable(),
+        isControlledSubstance: z.boolean().optional().default(false),
+        requiresPayment: z.boolean().optional().default(false),
+      }).refine((d) => {
+        if (d.orderType === "medication_refill") return !!d.medicationName?.trim();
+        return !!d.subtype?.trim();
+      }, { message: "Medication name (or subtype) is required" });
       const parsed = schema2.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: "Invalid input", details: parsed.error.format() });
       const { data } = parsed;
       const staffId = sess.staffId ? Number(sess.staffId) : null;
+
+      // Medication refill: derive a human-readable subtype label if not supplied
+      if (data.orderType === "medication_refill" && !data.subtype?.trim()) {
+        data.subtype = [data.medicationName, data.medicationDose].filter(Boolean).join(" ").trim();
+      }
 
       // Derive legacy single-assignment fields from first assignee for backward compat
       let legacyAssignedToUserId: number | null = null;
@@ -21517,13 +21544,15 @@ IMPORTANT:
         if (activateDate > today) computedStatus = "scheduled";
       }
       const { notifyDaysBefore: _notifyDays, assignees, ...orderData } = data;
+      const orderingProviderUserId = data.orderingProviderUserId ?? clinicianId;
       const order = await (storage as any).createClinicalOrder({
         ...orderData,
+        subtype: orderData.subtype ?? "",
         clinicId: effectiveClinicId,
         patientId,
         createdByUserId: clinicianId,
         createdByStaffId: staffId,
-        orderingProviderUserId: data.orderingProviderUserId ?? clinicianId,
+        orderingProviderUserId,
         assignedToUserId: legacyAssignedToUserId,
         assignedToStaffId: legacyAssignedToStaffId,
         status: computedStatus,
@@ -21533,6 +21562,24 @@ IMPORTANT:
       // Insert multi-assignee rows
       if (assignees && assignees.length > 0) {
         await (storage as any).setOrderAssignees(order.id, assignees);
+      }
+      // Medication refills notify the ordering provider (staff can assign; providers can self-initiate)
+      if (data.orderType === "medication_refill" && orderingProviderUserId && orderingProviderUserId !== clinicianId) {
+        try {
+          await (storage as any).createProviderInboxNotification?.({
+            clinicId: effectiveClinicId,
+            patientId,
+            providerId: orderingProviderUserId,
+            type: "medication_refill_order_assigned",
+            title: "New medication refill order",
+            message: `${orderData.subtype || orderData.medicationName || "Medication"} refill needs your attention.`,
+            relatedEntityType: "clinical_order",
+            relatedEntityId: order.id,
+            severity: "normal",
+          });
+        } catch (notifyErr) {
+          console.error("[clinical-orders POST] notify provider failed", notifyErr);
+        }
       }
       res.status(201).json({ ...order, assignees: assignees ?? [] });
     } catch (err) {
@@ -21566,6 +21613,18 @@ IMPORTANT:
         diagnosisName: z.string().max(300).optional().nullable(),
         cptCode: z.string().max(20).optional().nullable(),
         cptDescription: z.string().max(300).optional().nullable(),
+        // Medication refill fields
+        medicationName: z.string().max(150).optional().nullable(),
+        medicationDose: z.string().max(100).optional().nullable(),
+        pharmacyName: z.string().max(150).optional().nullable(),
+        pharmacyPhone: z.string().max(30).optional().nullable(),
+        isControlledSubstance: z.boolean().optional(),
+        pmpChecked: z.boolean().optional(),
+        uaChecked: z.boolean().optional(),
+        requiresPayment: z.boolean().optional(),
+        paymentCollected: z.boolean().optional(),
+        recurrenceMonths: z.number().int().positive().optional().nullable(),
+        recurrenceWeeks: z.number().int().positive().optional().nullable(),
       });
       const parsed = patchSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: "Invalid input" });
@@ -21614,32 +21673,46 @@ IMPORTANT:
       const effectiveClinicId = clinicId ?? clinicianId;
       const staffId = sess.staffId ? Number(sess.staffId) : null;
       // Fetch order to get its type
-      const [orderRow] = await storageDb.select({ orderType: schema.clinicalOrders.orderType })
+      const [orderRow] = await storageDb.select({
+        orderType: schema.clinicalOrders.orderType,
+        requiresPayment: schema.clinicalOrders.requiresPayment,
+        isControlledSubstance: schema.clinicalOrders.isControlledSubstance,
+        pmpChecked: schema.clinicalOrders.pmpChecked,
+        uaChecked: schema.clinicalOrders.uaChecked,
+      })
         .from(schema.clinicalOrders)
         .where(and(eq(schema.clinicalOrders.id, id), eq(schema.clinicalOrders.clinicId, effectiveClinicId)))
         .limit(1);
       if (!orderRow) return res.status(404).json({ error: "Order not found" });
-      const allTaskKeys = ORDER_TASK_WORKFLOWS[orderRow.orderType] ?? [];
+      const allTaskKeys = effectiveTaskKeys(orderRow.orderType, orderRow.requiresPayment);
       if (!allTaskKeys.includes(taskKey)) return res.status(400).json({ error: "Invalid task key" });
+      if (taskKey === "rx_sent" && orderRow.isControlledSubstance && (!orderRow.pmpChecked || !orderRow.uaChecked)) {
+        return res.status(400).json({ error: "PMP and UA verification must be checked before sending a controlled-substance Rx" });
+      }
       const result = await (storage as any).completeClinicalOrderTask(
         id, taskKey, clinicianId, staffId, note, effectiveClinicId, allTaskKeys,
       );
       // If order auto-completed + has recurrence → schedule next order
       if (result.orderCompleted) {
         const [fullOrder] = await storageDb.select().from(schema.clinicalOrders).where(eq(schema.clinicalOrders.id, id)).limit(1);
-        if (fullOrder?.recurrenceMonths) {
+        if (fullOrder?.recurrenceMonths || fullOrder?.recurrenceWeeks) {
           const next = new Date();
-          next.setMonth(next.getMonth() + fullOrder.recurrenceMonths);
+          if (fullOrder.recurrenceWeeks) {
+            next.setDate(next.getDate() + fullOrder.recurrenceWeeks * 7);
+          } else {
+            next.setMonth(next.getMonth() + (fullOrder.recurrenceMonths as number));
+          }
           const nextStr = next.toISOString().split('T')[0];
-          // Activate 30 days before due
+          // Activate window before due: 7 days for weekly-cadence refills, 30 days otherwise
           const activateDate = new Date(next);
-          activateDate.setDate(activateDate.getDate() - 30);
+          activateDate.setDate(activateDate.getDate() - (fullOrder.recurrenceWeeks ? 7 : 30));
           const activateStr = activateDate.toISOString().split('T')[0];
-          await (storage as any).createClinicalOrder({
+          const nextOrder = await (storage as any).createClinicalOrder({
             clinicId: fullOrder.clinicId,
             patientId: fullOrder.patientId,
             createdByUserId: fullOrder.createdByUserId,
             createdByStaffId: null,
+            orderingProviderUserId: fullOrder.orderingProviderUserId,
             orderType: fullOrder.orderType,
             subtype: fullOrder.subtype,
             referringTo: fullOrder.referringTo,
@@ -21650,11 +21723,43 @@ IMPORTANT:
             priority: fullOrder.priority,
             targetDate: nextStr,
             recurrenceMonths: fullOrder.recurrenceMonths,
+            recurrenceWeeks: fullOrder.recurrenceWeeks,
+            recurrenceSeriesId: fullOrder.recurrenceSeriesId ?? fullOrder.id,
+            activateOn: activateStr,
             assignedToUserId: fullOrder.assignedToUserId,
             assignedToStaffId: fullOrder.assignedToStaffId,
             status: "scheduled",
             notes: null,
+            // Medication refill: carry over the drug/pharmacy details but reset
+            // per-fill verification checkboxes and payment state.
+            medicationName: fullOrder.medicationName,
+            medicationDose: fullOrder.medicationDose,
+            pharmacyName: fullOrder.pharmacyName,
+            pharmacyPhone: fullOrder.pharmacyPhone,
+            isControlledSubstance: fullOrder.isControlledSubstance,
+            requiresPayment: fullOrder.requiresPayment,
+            pmpChecked: false,
+            uaChecked: false,
+            paymentCollected: false,
           });
+          // Auto-created medication refills notify the provider right away
+          if (fullOrder.orderType === "medication_refill" && fullOrder.orderingProviderUserId) {
+            try {
+              await (storage as any).createProviderInboxNotification?.({
+                clinicId: fullOrder.clinicId,
+                patientId: fullOrder.patientId,
+                providerId: fullOrder.orderingProviderUserId,
+                type: "medication_refill_order_assigned",
+                title: "Recurring medication refill due",
+                message: `${fullOrder.subtype || fullOrder.medicationName || "Medication"} refill is scheduled and will need review.`,
+                relatedEntityType: "clinical_order",
+                relatedEntityId: nextOrder.id,
+                severity: "normal",
+              });
+            } catch (notifyErr) {
+              console.error("[clinical-orders task complete] notify provider failed", notifyErr);
+            }
+          }
         }
       }
       res.json({ ...result, orderCompleted: result.orderCompleted });
@@ -21690,6 +21795,12 @@ IMPORTANT:
       if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
       const effectiveClinicId = clinicId ?? clinicianId;
       const reason = req.body?.reason ?? null;
+      const cancelSeries = req.body?.cancelSeries === true;
+      if (cancelSeries) {
+        const result = await (storage as any).cancelClinicalOrderSeries(id, effectiveClinicId, reason);
+        if (!result) return res.status(404).json({ error: "Order not found" });
+        return res.json(result);
+      }
       const order = await (storage as any).cancelClinicalOrder(id, effectiveClinicId, reason);
       if (!order) return res.status(404).json({ error: "Order not found" });
       res.json(order);
