@@ -642,8 +642,8 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
     : (interp?.patientSummary || '');
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" data-testid="lab-detail-modal">
-      <div className="w-full max-w-5xl max-h-[92vh] flex flex-col m-4 rounded-lg border bg-card shadow-xl overflow-hidden">
+    <div className="fixed inset-y-0 right-0 z-50 flex justify-end pointer-events-none" data-testid="lab-detail-modal">
+      <div className="w-full max-w-3xl h-full flex flex-col border-l bg-card shadow-2xl overflow-hidden pointer-events-auto">
         {/* Sticky header */}
         <div className="flex-shrink-0 px-5 py-3 border-b bg-card flex items-start justify-between gap-3 flex-wrap">
           <div>
