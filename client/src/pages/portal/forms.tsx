@@ -912,9 +912,23 @@ function renderReadOnlyValue(field: FormField, value: any): JSX.Element {
   }
   if (Array.isArray(value)) {
     if (value.length === 0) return <p className="text-sm italic text-muted-foreground">No response</p>;
+    const formatItem = (v: any): string => {
+      if (typeof v !== "object" || v === null) return String(v);
+      if (field.fieldType === "medication_list") {
+        return [
+          v.drugName,
+          v.strength && v.strengthUnit ? `${v.strength} ${v.strengthUnit}` : v.strength || null,
+          v.form || null,
+          v.sig ? `— ${v.sig}` : null,
+          v.quantity ? `Qty: ${v.quantity}` : null,
+          v.refills ? `Refills: ${v.refills}` : null,
+        ].filter(Boolean).join(" ") || JSON.stringify(v);
+      }
+      return JSON.stringify(v);
+    };
     return (
       <ul className="list-disc list-inside text-sm space-y-0.5" style={{ color: "#2e3a20" }}>
-        {value.map((v, i) => <li key={i}>{typeof v === "object" ? JSON.stringify(v) : String(v)}</li>)}
+        {value.map((v, i) => <li key={i}>{formatItem(v)}</li>)}
       </ul>
     );
   }
@@ -931,6 +945,21 @@ function renderReadOnlyValue(field: FormField, value: any): JSX.Element {
             </div>
           ))}
         </div>
+      );
+    }
+    if (field.fieldType === "medication_list") {
+      const formatted = [
+        (value as any).drugName,
+        (value as any).strength && (value as any).strengthUnit ? `${(value as any).strength} ${(value as any).strengthUnit}` : (value as any).strength || null,
+        (value as any).form || null,
+        (value as any).sig ? `— ${(value as any).sig}` : null,
+        (value as any).quantity ? `Qty: ${(value as any).quantity}` : null,
+        (value as any).refills ? `Refills: ${(value as any).refills}` : null,
+      ].filter(Boolean).join(" ");
+      return (
+        <ul className="list-disc list-inside text-sm space-y-0.5" style={{ color: "#2e3a20" }}>
+          <li>{formatted || "—"}</li>
+        </ul>
       );
     }
     return (
