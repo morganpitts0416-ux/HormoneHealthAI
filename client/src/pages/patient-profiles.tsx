@@ -60,6 +60,7 @@ import { SOAPNote } from "@/components/soap-note";
 import { RedFlagAlert } from "@/components/red-flag-alert";
 import { SoapNoteViewer } from "@/components/soap-note-viewer";
 import { ManualSoapBuilder } from "@/components/manual-soap-builder";
+import { useFloatingPanel } from "@/hooks/use-floating-panel";
 import { NurseNoteBuilder } from "@/components/nurse-note-builder";
 import { PhoneNoteDialog } from "@/components/phone-note-dialog";
 import { FormSubmissionPreviewDialog } from "@/components/form-submission-preview";
@@ -642,38 +643,7 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
     : (interp?.patientSummary || '');
 
   // ── Draggable / minimizable panel state ───────────────────────────────────
-  const [panelPos, setPanelPos] = useState<{ x: number; y: number } | null>(null);
-  const [minimized, setMinimized] = useState(false);
-  const panelRef = useRef<HTMLDivElement | null>(null);
-  const dragState = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
-
-  const startDrag = useCallback((e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('button')) return;
-    const rect = panelRef.current?.getBoundingClientRect();
-    const origX = panelPos?.x ?? rect?.left ?? 0;
-    const origY = panelPos?.y ?? rect?.top ?? 0;
-    dragState.current = { startX: e.clientX, startY: e.clientY, origX, origY };
-    const onMove = (ev: MouseEvent) => {
-      if (!dragState.current) return;
-      const dx = ev.clientX - dragState.current.startX;
-      const dy = ev.clientY - dragState.current.startY;
-      const maxX = window.innerWidth - 80;
-      const maxY = window.innerHeight - 40;
-      setPanelPos({
-        x: Math.min(Math.max(dragState.current.origX + dx, 0), maxX),
-        y: Math.min(Math.max(dragState.current.origY + dy, 0), maxY),
-      });
-    };
-    const onUp = () => {
-      dragState.current = null;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  }, [panelPos]);
-
-  const floating = panelPos !== null;
+  const { panelPos, minimized, setMinimized, panelRef, startDrag, floating } = useFloatingPanel();
 
   return (
     <div
@@ -683,7 +653,7 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
         floating ? "rounded-lg border w-full max-w-3xl" : "inset-y-0 right-0 border-l w-full max-w-3xl h-full",
         minimized && "h-auto w-80 max-w-80"
       )}
-      style={floating ? { left: panelPos.x, top: panelPos.y, height: minimized ? undefined : '80vh', maxHeight: '85vh' } : undefined}
+      style={panelPos ? { left: panelPos.x, top: panelPos.y, height: minimized ? undefined : '80vh', maxHeight: '85vh' } : undefined}
       data-testid="lab-detail-modal"
     >
       {/* Draggable header */}
@@ -6281,39 +6251,31 @@ export default function PatientProfiles() {
               )}
 
               {showManualSoap && selectedPatient && (
-                <Dialog open={showManualSoap} onOpenChange={setShowManualSoap}>
-                  <DialogContent className="max-w-3xl h-[85vh] p-0 overflow-hidden !flex flex-col [&>button:last-child]:hidden" data-testid="dialog-manual-soap">
-                    <ManualSoapBuilder
-                      patientId={selectedPatient.id}
-                      patientName={`${selectedPatient.firstName} ${selectedPatient.lastName}`}
-                      clinicianId={(user as any)?.id ?? 0}
-                      onClose={() => setShowManualSoap(false)}
-                      onSaved={() => {
-                        queryClient.invalidateQueries({ queryKey: ['/api/encounters', selectedPatient.id] });
-                        setShowManualSoap(false);
-                        setShowEncounters(true);
-                      }}
-                    />
-                  </DialogContent>
-                </Dialog>
+                <ManualSoapBuilder
+                  patientId={selectedPatient.id}
+                  patientName={`${selectedPatient.firstName} ${selectedPatient.lastName}`}
+                  clinicianId={(user as any)?.id ?? 0}
+                  onClose={() => setShowManualSoap(false)}
+                  onSaved={() => {
+                    queryClient.invalidateQueries({ queryKey: ['/api/encounters', selectedPatient.id] });
+                    setShowManualSoap(false);
+                    setShowEncounters(true);
+                  }}
+                />
               )}
 
               {editingManualSoapId !== null && selectedPatient && (
-                <Dialog open onOpenChange={(o) => { if (!o) setEditingManualSoapId(null); }}>
-                  <DialogContent className="max-w-3xl h-[85vh] p-0 overflow-hidden !flex flex-col [&>button:last-child]:hidden" data-testid="dialog-edit-manual-soap">
-                    <ManualSoapBuilder
-                      patientId={selectedPatient.id}
-                      patientName={`${selectedPatient.firstName} ${selectedPatient.lastName}`}
-                      clinicianId={(user as any)?.id ?? 0}
-                      initialEncounterId={editingManualSoapId}
-                      onClose={() => setEditingManualSoapId(null)}
-                      onSaved={() => {
-                        queryClient.invalidateQueries({ queryKey: ['/api/encounters', selectedPatient.id] });
-                        setEditingManualSoapId(null);
-                      }}
-                    />
-                  </DialogContent>
-                </Dialog>
+                <ManualSoapBuilder
+                  patientId={selectedPatient.id}
+                  patientName={`${selectedPatient.firstName} ${selectedPatient.lastName}`}
+                  clinicianId={(user as any)?.id ?? 0}
+                  initialEncounterId={editingManualSoapId}
+                  onClose={() => setEditingManualSoapId(null)}
+                  onSaved={() => {
+                    queryClient.invalidateQueries({ queryKey: ['/api/encounters', selectedPatient.id] });
+                    setEditingManualSoapId(null);
+                  }}
+                />
               )}
 
               <FormSubmissionPreviewDialog

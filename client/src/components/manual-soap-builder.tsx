@@ -4,6 +4,8 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { NoteTemplate, PatientChart } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
+import { useFloatingPanel } from "@/hooks/use-floating-panel";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -15,7 +17,7 @@ import {
   Plus, X, GripVertical, ChevronDown, ChevronUp, Save, FileText,
   Stethoscope, Pill, Heart, Brain, ClipboardList, Activity, Users,
   Scissors, AlertTriangle, ListChecks, CalendarCheck, ToggleLeft, ToggleRight,
-  Search, Loader2, Download, Upload,
+  Search, Loader2, Download, Upload, Maximize2, Minus,
 } from "lucide-react";
 import { useDiagnosisSearch } from "@/components/diagnosis-search";
 import { usePhraseSearch } from "@/components/phrase-search";
@@ -1431,6 +1433,10 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
   const [loadingExisting, setLoadingExisting] = useState(!!initialEncounterId);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const addMenuRef = useRef<HTMLDivElement>(null);
+  const { panelPos, minimized, setMinimized, panelRef, startDrag, floating } = useFloatingPanel();
+  const draftKey = `manual-soap-draft:${patientId}:${initialEncounterId ?? "new"}`;
+  const draftRestored = useRef(false);
+  const [draftRestoredAt, setDraftRestoredAt] = useState<string | null>(null);
 
   const { data: templates = [] } = useQuery<NoteTemplate[]>({
     queryKey: ["/api/note-templates", { noteType: "soap_provider" }],
@@ -1478,11 +1484,60 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
         const vt = sn?.visitType ?? enc.visitType;
         if (vt) setVisitType(vt);
       } finally {
+        // Restore a local draft (if present) on top of the loaded encounter,
+        // since it reflects more recent unsaved edits than the server copy.
+        restoreDraftIfPresent();
         setLoadingExisting(false);
       }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialEncounterId]);
+
+  // For brand-new notes, restore any unsaved draft immediately on mount.
+  useEffect(() => {
+    if (!initialEncounterId) restoreDraftIfPresent();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function restoreDraftIfPresent() {
+    if (draftRestored.current) return;
+    draftRestored.current = true;
+    try {
+      const raw = localStorage.getItem(draftKey);
+      if (!raw) return;
+      const draft = JSON.parse(raw);
+      if (!draft || typeof draft !== "object") return;
+      if (Array.isArray(draft.blocks) && draft.blocks.length > 0) setBlocks(draft.blocks);
+      if (typeof draft.chiefComplaint === "string") setChiefComplaint(draft.chiefComplaint);
+      if (typeof draft.visitDate === "string") setVisitDate(draft.visitDate);
+      if (typeof draft.visitType === "string") setVisitType(draft.visitType);
+      if (draft.savedAt) setDraftRestoredAt(draft.savedAt);
+    } catch {
+      // Ignore corrupt drafts
+    }
+  }
+
+  // Autosave: debounce-persist the in-progress note to localStorage so an
+  // accidental close (or crash) doesn't lose the provider's work.
+  useEffect(() => {
+    if (loadingExisting) return;
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(draftKey, JSON.stringify({
+          blocks, chiefComplaint, visitDate, visitType, savedAt: new Date().toISOString(),
+        }));
+      } catch {
+        // Storage full/unavailable — silently skip autosave.
+      }
+    }, 1000);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blocks, chiefComplaint, visitDate, visitType, loadingExisting]);
+
+  const clearDraft = useCallback(() => {
+    try { localStorage.removeItem(draftKey); } catch { /* ignore */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey]);
 
   const applyTemplate = useCallback((templateId: string) => {
     setSelectedTemplateId(templateId);
@@ -1778,6 +1833,7 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
       toast({ title: "Note saved", description: "Manual SOAP note has been saved to the patient's encounter history." });
       queryClient.invalidateQueries({ queryKey: ["/api/encounters"] });
       queryClient.invalidateQueries({ queryKey: ["/api/encounters", patientId] });
+      clearDraft();
       onSaved();
     },
     onError: (err: Error) => {
@@ -1798,8 +1854,20 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
   }
 
   return (
-    <div className="flex flex-col h-full min-h-0" data-testid="manual-soap-builder">
-      <div className="flex items-center justify-between gap-2 px-4 py-3 border-b bg-muted/30 flex-shrink-0">
+    <div
+      ref={panelRef}
+      className={cn(
+        "fixed z-50 flex flex-col bg-card shadow-2xl overflow-hidden",
+        floating ? "rounded-lg border w-full max-w-3xl" : "inset-y-0 right-0 border-l w-full max-w-3xl h-full",
+        minimized && "h-auto w-80 max-w-80"
+      )}
+      style={panelPos ? { left: panelPos.x, top: panelPos.y, height: minimized ? undefined : "85vh", maxHeight: "90vh" } : undefined}
+      data-testid="manual-soap-builder"
+    >
+      <div
+        onMouseDown={startDrag}
+        className="flex items-center justify-between gap-2 px-4 py-3 border-b bg-muted/30 flex-shrink-0 cursor-move select-none"
+      >
         <div className="flex items-center gap-2 min-w-0">
           <FileText className="w-4 h-4 flex-shrink-0" style={{ color: "#2e3a20" }} />
           <div className="min-w-0">
@@ -1808,16 +1876,26 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
+          {!minimized && (
+            <Button
+              size="sm"
+              onClick={() => saveMutation.mutate()}
+              disabled={saveMutation.isPending}
+              className="text-xs gap-1.5"
+              style={{ backgroundColor: "#2e3a20", color: "#fff" }}
+              data-testid="button-save-manual-soap"
+            >
+              {saveMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+              {savedEncounterId ? "Update" : "Save Note"}
+            </Button>
+          )}
           <Button
-            size="sm"
-            onClick={() => saveMutation.mutate()}
-            disabled={saveMutation.isPending}
-            className="text-xs gap-1.5"
-            style={{ backgroundColor: "#2e3a20", color: "#fff" }}
-            data-testid="button-save-manual-soap"
+            size="icon"
+            variant="ghost"
+            onClick={() => setMinimized(m => !m)}
+            data-testid="button-minimize-manual-soap"
           >
-            {saveMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-            {savedEncounterId ? "Update" : "Save Note"}
+            {minimized ? <Maximize2 className="w-4 h-4" /> : <Minus className="w-4 h-4" />}
           </Button>
           <Button size="icon" variant="ghost" onClick={onClose} data-testid="button-close-manual-soap">
             <X className="w-4 h-4" />
@@ -1825,6 +1903,7 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
         </div>
       </div>
 
+      {minimized ? null : (
       <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
@@ -1982,6 +2061,7 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
           ))}
         </div>
       </div>
+      )}
     </div>
   );
 }
