@@ -26,6 +26,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AppointmentDialog } from "@/components/appointment-dialog";
 import { AddMedicationDialog, formatMedSig, type PatientMedication } from "@/components/add-medication-dialog";
+import { HealthMaintenanceCard } from "@/components/health-maintenance-card";
 import { Link, useLocation, useSearch } from "wouter";
 import { cn } from "@/lib/utils";
 import { PatientTrendCharts } from "@/components/patient-trend-charts";
@@ -1564,6 +1565,7 @@ function PatientChartPanel({
                 </div>
               );
             })}
+            <HealthMaintenanceCard patientId={patientId} />
           </div>
         </div>
       ) : (

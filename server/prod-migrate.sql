@@ -1929,3 +1929,44 @@ CREATE INDEX IF NOT EXISTS form_submissions_clinic_id_idx     ON form_submission
 CREATE INDEX IF NOT EXISTS form_submissions_clinician_id_idx  ON form_submissions (clinician_id);
 CREATE INDEX IF NOT EXISTS form_submissions_patient_id_idx    ON form_submissions (patient_id);
 CREATE INDEX IF NOT EXISTS form_submissions_form_id_idx       ON form_submissions (form_id);
+
+-- ── Health Maintenance (USPSTF screenings) ─────────────────────────────────────
+ALTER TABLE patient_charts ADD COLUMN IF NOT EXISTS smoking_status     VARCHAR(10);
+ALTER TABLE patient_charts ADD COLUMN IF NOT EXISTS smoking_pack_years REAL;
+ALTER TABLE patient_charts ADD COLUMN IF NOT EXISTS smoking_quit_date  TEXT;
+
+CREATE TABLE IF NOT EXISTS patient_screenings (
+  id                      SERIAL PRIMARY KEY,
+  clinic_id               INTEGER NOT NULL,
+  patient_id              INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  screening_key           VARCHAR(50) NOT NULL,
+  status                  VARCHAR(20) NOT NULL DEFAULT 'due',
+  added_manually          BOOLEAN NOT NULL DEFAULT FALSE,
+  next_due_date           TEXT,
+  last_completed_date     TEXT,
+  last_ordered_by         VARCHAR(150),
+  last_facility           VARCHAR(200),
+  last_result_summary     TEXT,
+  last_linked_document_id INTEGER REFERENCES patient_documents(id) ON DELETE SET NULL,
+  linked_order_id         INTEGER REFERENCES clinical_orders(id) ON DELETE SET NULL,
+  flag_dismissed_at       TIMESTAMP,
+  updated_at              TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS patient_screenings_patient_key_idx ON patient_screenings (patient_id, screening_key);
+CREATE INDEX IF NOT EXISTS patient_screenings_clinic_status_idx ON patient_screenings (clinic_id, status);
+
+CREATE TABLE IF NOT EXISTS patient_screening_events (
+  id                  SERIAL PRIMARY KEY,
+  patient_id          INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  screening_key       VARCHAR(50) NOT NULL,
+  completed_date      TEXT NOT NULL,
+  ordered_by          VARCHAR(150),
+  facility            VARCHAR(200),
+  result_summary      TEXT,
+  linked_document_id  INTEGER REFERENCES patient_documents(id) ON DELETE SET NULL,
+  linked_order_id     INTEGER REFERENCES clinical_orders(id) ON DELETE SET NULL,
+  source              VARCHAR(20) NOT NULL DEFAULT 'staff',
+  recorded_by_user_id INTEGER,
+  created_at          TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS patient_screening_events_patient_key_idx ON patient_screening_events (patient_id, screening_key);

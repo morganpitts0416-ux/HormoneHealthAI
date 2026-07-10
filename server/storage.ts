@@ -18,6 +18,7 @@ import type {
   SavedRecipe, InsertSavedRecipe,
   SupplementOrder, InsertSupplementOrder,
   PatientDocument, InsertPatientDocument, PatientDocumentSummary,
+  PatientScreening, InsertPatientScreening, PatientScreeningEvent, InsertPatientScreeningEvent,
   ClinicianSupplementSettings, InsertClinicianSupplementSettings,
   ClinicianSupplement, InsertClinicianSupplement,
   ClinicianSupplementRule, InsertClinicianSupplementRule,
@@ -201,6 +202,15 @@ export interface IStorage {
   listPatientDocuments(patientId: number, clinicId: number): Promise<PatientDocumentSummary[]>;
   getPatientDocument(docId: number, clinicId: number): Promise<PatientDocument | undefined>;
   deletePatientDocument(docId: number, clinicId: number): Promise<boolean>;
+
+  // Health Maintenance / Screening Tracker
+  listPatientScreenings(patientId: number, clinicId: number): Promise<PatientScreening[]>;
+  getPatientScreening(patientId: number, screeningKey: string, clinicId: number): Promise<PatientScreening | undefined>;
+  upsertPatientScreening(row: InsertPatientScreening): Promise<PatientScreening>;
+  updatePatientScreening(id: number, clinicId: number, patch: Partial<InsertPatientScreening>): Promise<PatientScreening | undefined>;
+  deletePatientScreening(id: number, clinicId: number): Promise<boolean>;
+  addPatientScreeningEvent(event: InsertPatientScreeningEvent): Promise<PatientScreeningEvent>;
+  listPatientScreeningEvents(patientId: number, screeningKey: string): Promise<PatientScreeningEvent[]>;
 
   // Clinician notification helpers
   getUnreadMessageSummaryForClinician(clinicianId: number): Promise<Array<{ patientId: number; patientFirstName: string; patientLastName: string; count: number; lastAt: string }>>;
@@ -1755,6 +1765,74 @@ export class DbStorage implements IStorage {
       ))
       .returning({ id: schema.patientDocuments.id });
     return result.length > 0;
+  }
+
+  // ── Health Maintenance / Screening Tracker ──────────────────────────────
+  async listPatientScreenings(patientId: number, clinicId: number): Promise<PatientScreening[]> {
+    return db.select().from(schema.patientScreenings)
+      .where(and(
+        eq(schema.patientScreenings.patientId, patientId),
+        eq(schema.patientScreenings.clinicId, clinicId),
+      ));
+  }
+
+  async getPatientScreening(patientId: number, screeningKey: string, clinicId: number): Promise<PatientScreening | undefined> {
+    const rows = await db.select().from(schema.patientScreenings)
+      .where(and(
+        eq(schema.patientScreenings.patientId, patientId),
+        eq(schema.patientScreenings.screeningKey, screeningKey),
+        eq(schema.patientScreenings.clinicId, clinicId),
+      ))
+      .limit(1);
+    return rows[0];
+  }
+
+  async upsertPatientScreening(row: InsertPatientScreening): Promise<PatientScreening> {
+    const existing = await this.getPatientScreening(row.patientId, row.screeningKey, row.clinicId);
+    if (existing) {
+      const result = await db.update(schema.patientScreenings)
+        .set({ ...row, updatedAt: new Date() })
+        .where(eq(schema.patientScreenings.id, existing.id))
+        .returning();
+      return result[0];
+    }
+    const result = await db.insert(schema.patientScreenings).values(row).returning();
+    return result[0];
+  }
+
+  async updatePatientScreening(id: number, clinicId: number, patch: Partial<InsertPatientScreening>): Promise<PatientScreening | undefined> {
+    const result = await db.update(schema.patientScreenings)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(and(
+        eq(schema.patientScreenings.id, id),
+        eq(schema.patientScreenings.clinicId, clinicId),
+      ))
+      .returning();
+    return result[0];
+  }
+
+  async deletePatientScreening(id: number, clinicId: number): Promise<boolean> {
+    const result = await db.delete(schema.patientScreenings)
+      .where(and(
+        eq(schema.patientScreenings.id, id),
+        eq(schema.patientScreenings.clinicId, clinicId),
+      ))
+      .returning({ id: schema.patientScreenings.id });
+    return result.length > 0;
+  }
+
+  async addPatientScreeningEvent(event: InsertPatientScreeningEvent): Promise<PatientScreeningEvent> {
+    const result = await db.insert(schema.patientScreeningEvents).values(event).returning();
+    return result[0];
+  }
+
+  async listPatientScreeningEvents(patientId: number, screeningKey: string): Promise<PatientScreeningEvent[]> {
+    return db.select().from(schema.patientScreeningEvents)
+      .where(and(
+        eq(schema.patientScreeningEvents.patientId, patientId),
+        eq(schema.patientScreeningEvents.screeningKey, screeningKey),
+      ))
+      .orderBy(desc(schema.patientScreeningEvents.completedDate));
   }
 
   async getUnreadMessageSummaryForClinician(clinicianId: number): Promise<Array<{ patientId: number; patientFirstName: string; patientLastName: string; count: number; lastAt: string }>> {

@@ -103,6 +103,63 @@ const portalPasswordLimiter = rateLimit({
  *     any entry whose value is an object rather than a string is treated as a
  *     matrix cell and skipped if there is no row label to resolve it against.
  */
+async function syncScreeningSmartFields(
+  patientId: number,
+  clinicId: number,
+  fields: any[],
+  responses: Record<string, any>,
+): Promise<void> {
+  for (const field of fields) {
+    if (!field.syncConfigJson) continue;
+    const sync = field.syncConfigJson as any;
+    if (sync.domain !== "screening" || !sync.smartTarget) continue;
+    const value = responses[field.fieldKey];
+    if (value === undefined || value === null || value === "") continue;
+    const completedDate = String(Array.isArray(value) ? value[0] : value);
+    if (!completedDate) continue;
+    const key = String(sync.smartTarget).replace(/^screening\./, "");
+    try {
+      await storage.addPatientScreeningEvent({
+        patientId,
+        screeningKey: key,
+        completedDate,
+        orderedBy: null,
+        facility: null,
+        resultSummary: null,
+        linkedDocumentId: null,
+        linkedOrderId: null,
+        source: "patient_reported",
+        recordedByUserId: null,
+      });
+      const def = getScreeningDefinition(key);
+      const nextDueDate = def ? computeNextDueDate(def, completedDate) : null;
+      const existing = await storage.getPatientScreening(patientId, key, clinicId);
+      // Only overwrite the snapshot if this report is newer than what's on file,
+      // so a staff-verified completion is never silently clobbered by a stale
+      // patient-reported date.
+      if (!existing?.lastCompletedDate || completedDate > existing.lastCompletedDate) {
+        await storage.upsertPatientScreening({
+          clinicId,
+          patientId,
+          screeningKey: key,
+          status: "completed",
+          addedManually: existing?.addedManually ?? !def,
+          nextDueDate,
+          lastCompletedDate: completedDate,
+          lastOrderedBy: existing?.lastOrderedBy ?? null,
+          lastFacility: existing?.lastFacility ?? null,
+          lastResultSummary: existing?.lastResultSummary ?? null,
+          lastLinkedDocumentId: existing?.lastLinkedDocumentId ?? null,
+          linkedOrderId: existing?.linkedOrderId ?? null,
+          flagDismissedAt: null,
+        });
+      }
+    } catch (err) {
+      console.error("[Screening Smart Field Sync]", err);
+    }
+  }
+}
+
 function extractFamilyHistoryEntries(field: any, value: Record<string, any>): string[] {
   const entries: string[] = [];
 
@@ -216,6 +273,7 @@ import { LAB_MARKER_DEFAULTS, SYMPTOM_KEYS, SUPPLEMENT_CATEGORIES, LAB_MARKER_KE
 import { sendInviteEmail, sendPasswordResetEmail, sendPatientPortalInviteEmail, sendProtocolPublishedEmail, sendNewPortalMessageEmail, sendStaffInviteEmail, sendPortalPasswordResetEmail, sendProviderInviteEmail, sendExternalCollaboratorInviteEmail, sendEmail } from "./email-service";
 import { findUserForCollaboratorInvite, isValidNpi, listMembershipsForUser, getMembership, isExternalReviewerMembership, listPendingInvitesForAgreement } from "./external-reviewer";
 import { buildMedicalTermsList, buildNormalizationRules, buildWhisperPrompt, NORMALIZATION_EXAMPLES } from "./clinical-lexicon";
+import { SCREENING_DEFINITIONS, getScreeningDefinition, computeAge, computeEligibleScreenings, computeNextDueDate, computeStatus, shouldReflag, type EligibilityContext } from "./screening-rules";
 import Stripe from "stripe";
 import bcrypt from "bcrypt";
 
@@ -4036,6 +4094,7 @@ Rules:
         currentMedications, medicalHistory, familyHistory,
         socialHistory, allergies, surgicalHistory,
         draftExtraction, draftFromEncounterId, lastReviewedAt,
+        smokingStatus, smokingPackYears, smokingQuitDate,
       } = req.body;
       const chart = await storage.upsertPatientChart(patientId, clinicianId, {
         ...(currentMedications !== undefined && { currentMedications }),
@@ -4047,6 +4106,9 @@ Rules:
         ...(draftExtraction !== undefined && { draftExtraction }),
         ...(draftFromEncounterId !== undefined && { draftFromEncounterId }),
         ...(lastReviewedAt !== undefined && { lastReviewedAt: new Date(lastReviewedAt) }),
+        ...(smokingStatus !== undefined && { smokingStatus }),
+        ...(smokingPackYears !== undefined && { smokingPackYears }),
+        ...(smokingQuitDate !== undefined && { smokingQuitDate }),
       });
       res.json(chart);
     } catch (err) {
@@ -6594,6 +6656,9 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
           if (genderFromSync) {
             await storage.updatePatient(patientId, { gender: genderFromSync as "male" | "female" }, form.clinicianId ?? 0);
           }
+          if (form.clinicId) {
+            await syncScreeningSmartFields(patientId, form.clinicId, fields, responses as Record<string, any>);
+          }
           await storage.updateFormSubmission(submission.id, { syncStatus: "synced" });
         } catch (syncErr) {
           console.error("[Portal Form Submit Sync]", syncErr);
@@ -7016,6 +7081,282 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       res.json({ ok });
     } catch (e: any) {
       res.status(500).json({ message: e?.message ?? "Failed to delete document" });
+    }
+  });
+
+  // ── Health Maintenance / Screening Tracker ──────────────────────────────
+  // Merges rule-engine eligibility with any persisted patient_screenings rows,
+  // so newly-eligible screenings show up even before a row exists, and
+  // manually-added off-criteria screenings always show up too.
+  async function buildScreeningView(patientId: number, clinicId: number, clinicianId: number) {
+    const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+    if (!patient) return null;
+    const chart = await storage.getPatientChart(patientId, clinicianId).catch(() => null);
+    const age = computeAge(patient.dateOfBirth ? new Date(patient.dateOfBirth).toISOString().slice(0, 10) : null);
+    const ctx: EligibilityContext = {
+      age,
+      gender: patient.gender,
+      smokingStatus: chart?.smokingStatus ?? null,
+      smokingPackYears: chart?.smokingPackYears ?? null,
+      smokingQuitDate: chart?.smokingQuitDate ?? null,
+    };
+    const eligibleDefs = computeEligibleScreenings(ctx);
+    const existingRows = await storage.listPatientScreenings(patientId, clinicId);
+    const rowsByKey = new Map(existingRows.map((r) => [r.screeningKey, r]));
+
+    const results: any[] = [];
+    const seenKeys = new Set<string>();
+
+    for (const def of eligibleDefs) {
+      seenKeys.add(def.key);
+      const row = rowsByKey.get(def.key);
+      const nextDueDate = row?.nextDueDate ?? computeNextDueDate(def, null);
+      const hasOpenOrder = !!row?.linkedOrderId && row.status === "ordered";
+      let status = computeStatus(nextDueDate, hasOpenOrder);
+      let flagVisible = status === "overdue";
+      if (status === "overdue" && row?.flagDismissedAt && !shouldReflag(row.flagDismissedAt)) {
+        flagVisible = false;
+      }
+      results.push({
+        screeningKey: def.key,
+        label: def.label,
+        criteriaLabel: def.criteriaLabel,
+        eligible: true,
+        addedManually: false,
+        status,
+        flagVisible,
+        nextDueDate,
+        lastCompletedDate: row?.lastCompletedDate ?? null,
+        lastOrderedBy: row?.lastOrderedBy ?? null,
+        lastFacility: row?.lastFacility ?? null,
+        lastResultSummary: row?.lastResultSummary ?? null,
+        lastLinkedDocumentId: row?.lastLinkedDocumentId ?? null,
+        linkedOrderId: row?.linkedOrderId ?? null,
+        id: row?.id ?? null,
+      });
+    }
+
+    // Manually-added rows for screenings the patient isn't currently eligible for.
+    for (const row of existingRows) {
+      if (seenKeys.has(row.screeningKey)) continue;
+      if (!row.addedManually) continue;
+      const def = getScreeningDefinition(row.screeningKey);
+      const hasOpenOrder = !!row.linkedOrderId && row.status === "ordered";
+      let status = computeStatus(row.nextDueDate, hasOpenOrder);
+      let flagVisible = status === "overdue";
+      if (status === "overdue" && row.flagDismissedAt && !shouldReflag(row.flagDismissedAt)) {
+        flagVisible = false;
+      }
+      results.push({
+        screeningKey: row.screeningKey,
+        label: def?.label ?? row.screeningKey,
+        criteriaLabel: def?.criteriaLabel ?? "Manually added",
+        eligible: false,
+        addedManually: true,
+        status,
+        flagVisible,
+        nextDueDate: row.nextDueDate,
+        lastCompletedDate: row.lastCompletedDate,
+        lastOrderedBy: row.lastOrderedBy,
+        lastFacility: row.lastFacility,
+        lastResultSummary: row.lastResultSummary,
+        lastLinkedDocumentId: row.lastLinkedDocumentId,
+        linkedOrderId: row.linkedOrderId,
+        id: row.id,
+      });
+    }
+
+    return results;
+  }
+
+  // GET /api/patients/:id/screenings — merged rule-engine + persisted view
+  app.get("/api/patients/:id/screenings", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const patientId = parseInt(req.params.id);
+      if (Number.isNaN(patientId)) return res.status(400).json({ message: "Invalid patient id" });
+      if (clinicId == null) return res.status(403).json({ message: "Clinic context required" });
+      const view = await buildScreeningView(patientId, clinicId, clinicianId);
+      if (!view) return res.status(404).json({ message: "Patient not found" });
+      res.json(view);
+    } catch (e: any) {
+      res.status(500).json({ message: e?.message ?? "Failed to load screenings" });
+    }
+  });
+
+  // GET /api/patients/:id/screenings/:key/events — completion history
+  app.get("/api/patients/:id/screenings/:key/events", requireAuth, async (req, res) => {
+    try {
+      const patientId = parseInt(req.params.id);
+      if (Number.isNaN(patientId)) return res.status(400).json({ message: "Invalid patient id" });
+      const events = await storage.listPatientScreeningEvents(patientId, req.params.key);
+      res.json(events);
+    } catch (e: any) {
+      res.status(500).json({ message: e?.message ?? "Failed to load screening history" });
+    }
+  });
+
+  // POST /api/patients/:id/screenings/:key/manual — add an off-criteria screening
+  app.post("/api/patients/:id/screenings/:key/manual", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      const patientId = parseInt(req.params.id);
+      if (Number.isNaN(patientId)) return res.status(400).json({ message: "Invalid patient id" });
+      if (clinicId == null) return res.status(403).json({ message: "Clinic context required" });
+      const key = req.params.key;
+      const nextDueDate = typeof req.body?.nextDueDate === "string" ? req.body.nextDueDate : new Date().toISOString().slice(0, 10);
+      const row = await storage.upsertPatientScreening({
+        clinicId,
+        patientId,
+        screeningKey: key,
+        status: "due",
+        addedManually: true,
+        nextDueDate,
+      });
+      res.status(201).json(row);
+    } catch (e: any) {
+      res.status(500).json({ message: e?.message ?? "Failed to add manual screening" });
+    }
+  });
+
+  // POST /api/patients/:id/screenings/:key/complete — record completion details
+  app.post("/api/patients/:id/screenings/:key/complete", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const patientId = parseInt(req.params.id);
+      if (Number.isNaN(patientId)) return res.status(400).json({ message: "Invalid patient id" });
+      if (clinicId == null) return res.status(403).json({ message: "Clinic context required" });
+      const key = req.params.key;
+      const { completedDate, orderedBy, facility, resultSummary, linkedDocumentId } = req.body ?? {};
+      if (!completedDate || typeof completedDate !== "string") {
+        return res.status(400).json({ message: "completedDate is required" });
+      }
+
+      await storage.addPatientScreeningEvent({
+        patientId,
+        screeningKey: key,
+        completedDate,
+        orderedBy: orderedBy ?? null,
+        facility: facility ?? null,
+        resultSummary: resultSummary ?? null,
+        linkedDocumentId: linkedDocumentId ?? null,
+        linkedOrderId: null,
+        source: "staff",
+        recordedByUserId: clinicianId,
+      });
+
+      const def = getScreeningDefinition(key);
+      const nextDueDate = def ? computeNextDueDate(def, completedDate) : null;
+      const existing = await storage.getPatientScreening(patientId, key, clinicId);
+      const row = await storage.upsertPatientScreening({
+        clinicId,
+        patientId,
+        screeningKey: key,
+        status: "completed",
+        addedManually: existing?.addedManually ?? !def,
+        nextDueDate,
+        lastCompletedDate: completedDate,
+        lastOrderedBy: orderedBy ?? null,
+        lastFacility: facility ?? null,
+        lastResultSummary: resultSummary ?? null,
+        lastLinkedDocumentId: linkedDocumentId ?? null,
+        linkedOrderId: null,
+        flagDismissedAt: null,
+      });
+      res.json(row);
+    } catch (e: any) {
+      res.status(500).json({ message: e?.message ?? "Failed to record screening completion" });
+    }
+  });
+
+  // POST /api/patients/:id/screenings/:key/dismiss — dismiss the overdue flag (reappears in 30 days)
+  app.post("/api/patients/:id/screenings/:key/dismiss", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      const patientId = parseInt(req.params.id);
+      if (Number.isNaN(patientId)) return res.status(400).json({ message: "Invalid patient id" });
+      if (clinicId == null) return res.status(403).json({ message: "Clinic context required" });
+      const key = req.params.key;
+      const existing = await storage.getPatientScreening(patientId, key, clinicId);
+      const def = getScreeningDefinition(key);
+      const row = await storage.upsertPatientScreening({
+        clinicId,
+        patientId,
+        screeningKey: key,
+        status: existing?.status ?? "overdue",
+        addedManually: existing?.addedManually ?? !def,
+        nextDueDate: existing?.nextDueDate ?? (def ? computeNextDueDate(def, null) : null),
+        flagDismissedAt: new Date(),
+      });
+      res.json(row);
+    } catch (e: any) {
+      res.status(500).json({ message: e?.message ?? "Failed to dismiss flag" });
+    }
+  });
+
+  // POST /api/patients/:id/screenings/:key/order — send a clinical order for this screening
+  app.post("/api/patients/:id/screenings/:key/order", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const patientId = parseInt(req.params.id);
+      if (Number.isNaN(patientId)) return res.status(400).json({ message: "Invalid patient id" });
+      if (clinicId == null) return res.status(403).json({ message: "Clinic context required" });
+      const key = req.params.key;
+      const def = getScreeningDefinition(key);
+      if (!def) return res.status(400).json({ message: "Unknown screening type" });
+
+      const order = await (storage as any).createClinicalOrder({
+        clinicId,
+        patientId,
+        createdByUserId: clinicianId,
+        createdByStaffId: null,
+        orderingProviderUserId: clinicianId,
+        orderType: "health_maintenance",
+        subtype: def.orderSubtype,
+        referringTo: req.body?.referringTo ?? null,
+        facilityAddress: req.body?.facilityAddress ?? null,
+        facilityFax: null,
+        reason: req.body?.reason ?? def.label,
+        icd10Codes: [],
+        priority: "routine",
+        targetDate: req.body?.targetDate ?? null,
+        status: "active",
+        notes: req.body?.notes ?? null,
+      });
+
+      const existing = await storage.getPatientScreening(patientId, key, clinicId);
+      const row = await storage.upsertPatientScreening({
+        clinicId,
+        patientId,
+        screeningKey: key,
+        status: "ordered",
+        addedManually: existing?.addedManually ?? false,
+        nextDueDate: existing?.nextDueDate ?? computeNextDueDate(def, null),
+        linkedOrderId: order.id,
+        flagDismissedAt: null,
+      });
+      res.status(201).json({ order, screening: row });
+    } catch (e: any) {
+      res.status(500).json({ message: e?.message ?? "Failed to create order" });
+    }
+  });
+
+  // DELETE /api/patients/:id/screenings/:key — remove a manually-added screening
+  app.delete("/api/patients/:id/screenings/:key", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      const patientId = parseInt(req.params.id);
+      if (Number.isNaN(patientId)) return res.status(400).json({ message: "Invalid patient id" });
+      if (clinicId == null) return res.status(403).json({ message: "Clinic context required" });
+      const existing = await storage.getPatientScreening(patientId, req.params.key, clinicId);
+      if (!existing) return res.status(404).json({ message: "Screening not found" });
+      const ok = await storage.deletePatientScreening(existing.id, clinicId);
+      res.json({ ok });
+    } catch (e: any) {
+      res.status(500).json({ message: e?.message ?? "Failed to remove screening" });
     }
   });
 
@@ -15251,6 +15592,9 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
                 }
               }
             }
+            if (resolvedPatientId && form.clinicId) {
+              await syncScreeningSmartFields(resolvedPatientId, form.clinicId, fields, responses as Record<string, any>);
+            }
           } catch (syncErr) {
             console.error("[FormSubmit] smart-field sync error:", syncErr);
           }
@@ -16010,6 +16354,11 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
           familyHistory: merged.family_history,
           socialHistory: merged.social_history,
         });
+      }
+
+      const screeningClinicId = clinicId ?? (submission as any).clinicId ?? null;
+      if (screeningClinicId) {
+        await syncScreeningSmartFields(patientId, screeningClinicId, fields, responses);
       }
 
       for (const r of syncResults) {

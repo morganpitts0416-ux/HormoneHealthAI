@@ -197,11 +197,17 @@ const SMART_FIELDS: SmartFieldDef[] = [
   { key: "surgical_history", label: "Surgical History", fieldType: "surgical_history_list", placeholder: "Surgery name and approximate date", category: "clinical", syncTarget: "chart.surgicalHistory", helpText: "Add each surgery individually" },
   { key: "family_history", label: "Family History", fieldType: "family_history_chart", placeholder: "Medical conditions by family member", category: "clinical", syncTarget: "chart.familyHistory", helpText: "Enter conditions for each family member" },
   { key: "social_history", label: "Social History", fieldType: "long_text", placeholder: "Tobacco, alcohol, exercise, occupation, etc.", category: "clinical", syncTarget: "chart.socialHistory" },
+  { key: "screening_mammogram_date", label: "Last Mammogram Date", fieldType: "date", placeholder: "MM/DD/YYYY", category: "screening", syncTarget: "screening.mammogram", helpText: "Date of your most recent mammogram, if any" },
+  { key: "screening_pap_smear_date", label: "Last Pap Smear Date", fieldType: "date", placeholder: "MM/DD/YYYY", category: "screening", syncTarget: "screening.pap_smear", helpText: "Date of your most recent Pap smear, if any" },
+  { key: "screening_dexa_date", label: "Last DEXA Scan Date", fieldType: "date", placeholder: "MM/DD/YYYY", category: "screening", syncTarget: "screening.dexa", helpText: "Date of your most recent bone density (DEXA) scan, if any" },
+  { key: "screening_colonoscopy_date", label: "Last Colonoscopy Date", fieldType: "date", placeholder: "MM/DD/YYYY", category: "screening", syncTarget: "screening.colonoscopy", helpText: "Date of your most recent colonoscopy, if any" },
+  { key: "screening_lung_ct_date", label: "Last Lung CT Date", fieldType: "date", placeholder: "MM/DD/YYYY", category: "screening", syncTarget: "screening.lung_ct", helpText: "Date of your most recent low-dose lung CT, if any" },
 ];
 
 const SMART_FIELD_CATEGORIES = [
   { key: "demographics", label: "Demographics", description: "Auto-link to patient profile" },
   { key: "clinical", label: "Clinical History", description: "Auto-link to patient chart" },
+  { key: "screening", label: "Health Screenings", description: "Patient-reported screening dates" },
 ];
 
 const STATUS_COLORS: Record<string, string> = {
@@ -1400,6 +1406,9 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
       "chart.familyHistory": "family_history",
       "chart.socialHistory": "social_history",
     };
+    const domain = sf.syncTarget.startsWith("screening.")
+      ? "screening"
+      : chartDomainMap[sf.syncTarget];
     addFieldMutation.mutate({
       fieldType: sf.fieldType,
       label: sf.label,
@@ -1408,8 +1417,8 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
       helpText: sf.helpText || null,
       isRequired: sf.isRequired || false,
       optionsJson: sf.optionsJson || null,
-      syncConfigJson: chartDomainMap[sf.syncTarget]
-        ? { domain: chartDomainMap[sf.syncTarget], mode: "append", smartTarget: sf.syncTarget }
+      syncConfigJson: domain
+        ? { domain, mode: domain === "screening" ? "screening_date" : "append", smartTarget: sf.syncTarget }
         : { domain: "none", smartTarget: sf.syncTarget },
     });
   };
