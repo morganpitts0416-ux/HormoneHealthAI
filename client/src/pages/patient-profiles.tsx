@@ -21,7 +21,7 @@ import {
   Loader2, Sparkles, ShoppingBag, CheckCircle, XCircle, Stethoscope, ChevronRight, Plus,
   ChevronLeft, Pill, Shield, Scissors, X, Pencil, Lock, ChevronDown, FileDown, Check, BookOpen, PenLine, ArrowRightLeft,
   Link2, Clock, Building2, Eye, EyeOff, CalendarDays, Phone, Paperclip,
-  LayoutDashboard, FolderOpen, FlaskConical, Home, Archive, Save, Zap, ListChecks, MapPin,
+  LayoutDashboard, FolderOpen, FlaskConical, Home, Archive, Save, Zap, ListChecks, MapPin, Maximize2,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AppointmentDialog } from "@/components/appointment-dialog";
@@ -641,13 +641,60 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
     ? overrides.patientSummaryDraft
     : (interp?.patientSummary || '');
 
+  // ── Draggable / minimizable panel state ───────────────────────────────────
+  const [panelPos, setPanelPos] = useState<{ x: number; y: number } | null>(null);
+  const [minimized, setMinimized] = useState(false);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const dragState = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+
+  const startDrag = useCallback((e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+    const rect = panelRef.current?.getBoundingClientRect();
+    const origX = panelPos?.x ?? rect?.left ?? 0;
+    const origY = panelPos?.y ?? rect?.top ?? 0;
+    dragState.current = { startX: e.clientX, startY: e.clientY, origX, origY };
+    const onMove = (ev: MouseEvent) => {
+      if (!dragState.current) return;
+      const dx = ev.clientX - dragState.current.startX;
+      const dy = ev.clientY - dragState.current.startY;
+      const maxX = window.innerWidth - 80;
+      const maxY = window.innerHeight - 40;
+      setPanelPos({
+        x: Math.min(Math.max(dragState.current.origX + dx, 0), maxX),
+        y: Math.min(Math.max(dragState.current.origY + dy, 0), maxY),
+      });
+    };
+    const onUp = () => {
+      dragState.current = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [panelPos]);
+
+  const floating = panelPos !== null;
+
   return (
-    <div className="fixed inset-y-0 right-0 z-50 flex justify-end pointer-events-none" data-testid="lab-detail-modal">
-      <div className="w-full max-w-3xl h-full flex flex-col border-l bg-card shadow-2xl overflow-hidden pointer-events-auto">
-        {/* Sticky header */}
-        <div className="flex-shrink-0 px-5 py-3 border-b bg-card flex items-start justify-between gap-3 flex-wrap">
-          <div>
-            <h2 className="text-base font-semibold">Full Evaluation — {safeDate(lab.labDate)}</h2>
+    <div
+      ref={panelRef}
+      className={cn(
+        "fixed z-50 flex flex-col bg-card shadow-2xl overflow-hidden",
+        floating ? "rounded-lg border w-full max-w-3xl" : "inset-y-0 right-0 border-l w-full max-w-3xl h-full",
+        minimized && "h-auto w-80 max-w-80"
+      )}
+      style={floating ? { left: panelPos.x, top: panelPos.y, height: minimized ? undefined : '80vh', maxHeight: '85vh' } : undefined}
+      data-testid="lab-detail-modal"
+    >
+      {/* Draggable header */}
+      <div
+        onMouseDown={startDrag}
+        className="flex-shrink-0 px-5 py-3 border-b bg-card flex items-start justify-between gap-3 flex-wrap cursor-move select-none"
+        data-testid="drag-handle-lab-detail"
+      >
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold truncate">Full Evaluation — {safeDate(lab.labDate)}</h2>
+          {!minimized && (
             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
               <p className="text-xs text-muted-foreground">{patientName}{user?.clinicName ? ` · ${user.clinicName}` : ''}</p>
               {hiddenCount > 0 && (
@@ -663,30 +710,37 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
                 </span>
               )}
             </div>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            {interp && (
-              <>
-                <Button variant="default" size="sm" onClick={() => wellnessPlanMutation.mutate()} disabled={wellnessPlanMutation.isPending} data-testid="button-patient-report-modal">
-                  <Heart className="w-3.5 h-3.5 mr-1" />
-                  {wellnessPlanMutation.isPending ? 'Generating...' : 'Patient Report'}
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleProviderPDF} data-testid="button-provider-pdf-modal">
-                  <Download className="w-3.5 h-3.5 mr-1" />
-                  Provider PDF
-                </Button>
-              </>
-            )}
+          )}
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {!minimized && interp && (
+            <>
+              <Button variant="default" size="sm" onClick={() => wellnessPlanMutation.mutate()} disabled={wellnessPlanMutation.isPending} data-testid="button-patient-report-modal">
+                <Heart className="w-3.5 h-3.5 mr-1" />
+                {wellnessPlanMutation.isPending ? 'Generating...' : 'Patient Report'}
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleProviderPDF} data-testid="button-provider-pdf-modal">
+                <Download className="w-3.5 h-3.5 mr-1" />
+                Provider PDF
+              </Button>
+            </>
+          )}
+          {!minimized && (
             <Button variant="outline" size="sm" onClick={onDelete} className="text-muted-foreground" data-testid="button-delete-lab-modal">
               <Trash2 className="w-3.5 h-3.5 mr-1" />
               Delete
             </Button>
-            <Button variant="outline" size="sm" onClick={onClose} data-testid="button-close-lab-detail">Close</Button>
-          </div>
+          )}
+          <Button variant="outline" size="icon" onClick={() => setMinimized(m => !m)} title={minimized ? "Restore" : "Minimize"} data-testid="button-minimize-lab-detail">
+            {minimized ? <Maximize2 className="w-3.5 h-3.5" /> : <Minus className="w-3.5 h-3.5" />}
+          </Button>
+          <Button variant="outline" size="sm" onClick={onClose} data-testid="button-close-lab-detail">Close</Button>
         </div>
+      </div>
 
-        {/* Scrollable content */}
-        <div className="flex-1 overflow-y-auto">
+      {/* Scrollable content */}
+      {!minimized && (
+      <div className="flex-1 overflow-y-auto">
           {!interp ? (
             <div className="flex items-center justify-center h-40 text-sm text-muted-foreground">
               No interpretation data saved for this lab result.
@@ -886,7 +940,7 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
             </div>
           )}
         </div>
-      </div>
+      )}
 
       {/* Add Supplement from Library Dialog */}
       {showAddSuppDialog && (() => {
