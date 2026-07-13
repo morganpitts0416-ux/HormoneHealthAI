@@ -1,0 +1,54 @@
+The migration is internally consistent, but it does not fully match the screening schema I originally requested. Please revise it before deployment.
+
+Required corrections:
+
+1. Add `clinic_id INTEGER NOT NULL` to `patient_screening_events`, with a foreign key to `clinics(id)`.
+
+2. Replace `completed_date TEXT NOT NULL` in `patient_screening_events` with:
+
+   * `event_type VARCHAR(30) NOT NULL`
+   * `event_date DATE NOT NULL`
+
+   Valid event types must support:
+
+   * completed
+   * ordered
+   * patient_reported
+
+3. Rename `recorded_by_user_id` to `recorded_by`, or confirm that the application consistently uses `recordedByUserId`. Add a nullable foreign key to `users(id)` with `ON DELETE SET NULL`, unless there is a documented codebase convention that makes retaining historical IDs without a foreign key necessary.
+
+4. Add `clinic_id` to the unique screening index so the uniqueness rule is:
+   `(patient_id, clinic_id, screening_key)`
+
+5. Change these fields from TEXT to PostgreSQL DATE in both the Drizzle schema and migration:
+
+   * patient_charts.smoking_quit_date
+   * patient_screenings.next_due_date
+   * patient_screenings.last_completed_date
+   * patient_screening_events.event_date
+
+6. Change `smoking_pack_years` from REAL to NUMERIC, unless the rules engine specifically requires a JavaScript floating-point field. Pack-years should support decimals without unnecessary floating-point behavior.
+
+7. Add `created_at TIMESTAMP NOT NULL DEFAULT NOW()` to `patient_screenings`.
+
+8. Add the missing foreign key:
+   `patient_screenings.clinic_id → clinics(id)`
+
+9. Add database CHECK constraints, idempotently, for:
+
+   * patient_screenings.status: due, overdue, ordered, completed
+   * patient_screening_events.event_type: completed, ordered, patient_reported
+   * patient_screening_events.source: staff, patient_form
+   * patient_charts.smoking_status: never, former, current
+   * smoking_pack_years must be null or greater than or equal to zero
+
+10. Update all application references in:
+
+* server/screening-rules.ts
+* server/routes.ts
+* server/storage.ts
+* client/src/components/health-maintenance-card.tsx
+
+Please inspect whether any development database already contains the current draft tables. Because `CREATE TABLE IF NOT EXISTS` will not alter an existing table, add safe, idempotent `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` and data-migration statements as needed.
+
+Do not deploy yet. Show me the revised Drizzle schema, production migration, and affected application-code changes first.
