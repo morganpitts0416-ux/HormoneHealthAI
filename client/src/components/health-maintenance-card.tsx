@@ -339,7 +339,7 @@ function ScreeningDetailDialog({
   onDismiss: () => void;
 }) {
   const { toast } = useToast();
-  const [completedDate, setCompletedDate] = useState(new Date().toISOString().slice(0, 10));
+  const [eventDate, setEventDate] = useState(new Date().toISOString().slice(0, 10));
   const [orderedBy, setOrderedBy] = useState(row.lastOrderedBy ?? "");
   const [facility, setFacility] = useState(row.lastFacility ?? "");
   const [resultSummary, setResultSummary] = useState("");
@@ -348,7 +348,7 @@ function ScreeningDetailDialog({
   const completeMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/patients/${patientId}/screenings/${row.screeningKey}/complete`, {
-        completedDate,
+        eventDate,
         orderedBy: orderedBy || null,
         facility: facility || null,
         resultSummary: resultSummary || null,

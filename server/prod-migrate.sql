@@ -1930,43 +1930,289 @@ CREATE INDEX IF NOT EXISTS form_submissions_clinician_id_idx  ON form_submission
 CREATE INDEX IF NOT EXISTS form_submissions_patient_id_idx    ON form_submissions (patient_id);
 CREATE INDEX IF NOT EXISTS form_submissions_form_id_idx       ON form_submissions (form_id);
 
--- ── Health Maintenance (USPSTF screenings) ─────────────────────────────────────
-ALTER TABLE patient_charts ADD COLUMN IF NOT EXISTS smoking_status     VARCHAR(10);
-ALTER TABLE patient_charts ADD COLUMN IF NOT EXISTS smoking_pack_years REAL;
-ALTER TABLE patient_charts ADD COLUMN IF NOT EXISTS smoking_quit_date  TEXT;
+-- ── Health Maintenance (USPSTF screenings) ── v2 (fully idempotent) ─────────
 
+-- patient_charts: smoking history columns
+ALTER TABLE patient_charts ADD COLUMN IF NOT EXISTS smoking_status VARCHAR(10);
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'patient_charts' AND column_name = 'smoking_pack_years' AND data_type = 'real'
+  ) THEN
+    ALTER TABLE patient_charts ALTER COLUMN smoking_pack_years TYPE NUMERIC(5,1);
+  END IF;
+END $$;
+ALTER TABLE patient_charts ADD COLUMN IF NOT EXISTS smoking_pack_years NUMERIC(5,1);
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'patient_charts' AND column_name = 'smoking_quit_date' AND data_type = 'text'
+  ) THEN
+    ALTER TABLE patient_charts
+      ALTER COLUMN smoking_quit_date TYPE DATE
+      USING NULLIF(smoking_quit_date, '')::date;
+  END IF;
+END $$;
+ALTER TABLE patient_charts ADD COLUMN IF NOT EXISTS smoking_quit_date DATE;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'patient_charts_smoking_status_check' AND conrelid = 'patient_charts'::regclass
+  ) THEN
+    ALTER TABLE patient_charts
+      ADD CONSTRAINT patient_charts_smoking_status_check
+      CHECK (smoking_status IS NULL OR smoking_status IN ('never','former','current'));
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'patient_charts_smoking_pack_years_check' AND conrelid = 'patient_charts'::regclass
+  ) THEN
+    ALTER TABLE patient_charts
+      ADD CONSTRAINT patient_charts_smoking_pack_years_check
+      CHECK (smoking_pack_years IS NULL OR smoking_pack_years >= 0);
+  END IF;
+END $$;
+
+-- ── patient_screenings ────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS patient_screenings (
   id                      SERIAL PRIMARY KEY,
-  clinic_id               INTEGER NOT NULL,
+  clinic_id               INTEGER NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
   patient_id              INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
   screening_key           VARCHAR(50) NOT NULL,
   status                  VARCHAR(20) NOT NULL DEFAULT 'due',
   added_manually          BOOLEAN NOT NULL DEFAULT FALSE,
-  next_due_date           TEXT,
-  last_completed_date     TEXT,
+  next_due_date           DATE,
+  last_completed_date     DATE,
   last_ordered_by         VARCHAR(150),
   last_facility           VARCHAR(200),
   last_result_summary     TEXT,
   last_linked_document_id INTEGER REFERENCES patient_documents(id) ON DELETE SET NULL,
   linked_order_id         INTEGER REFERENCES clinical_orders(id) ON DELETE SET NULL,
   flag_dismissed_at       TIMESTAMP,
+  created_at              TIMESTAMP NOT NULL DEFAULT NOW(),
   updated_at              TIMESTAMP NOT NULL DEFAULT NOW()
 );
-CREATE UNIQUE INDEX IF NOT EXISTS patient_screenings_patient_key_idx ON patient_screenings (patient_id, screening_key);
-CREATE INDEX IF NOT EXISTS patient_screenings_clinic_status_idx ON patient_screenings (clinic_id, status);
 
+-- Columns/upgrades for dev DBs that already have the draft table
+ALTER TABLE patient_screenings ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'patient_screenings' AND column_name = 'next_due_date' AND data_type = 'text'
+  ) THEN
+    ALTER TABLE patient_screenings ALTER COLUMN next_due_date TYPE DATE USING NULLIF(next_due_date,'')::date;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'patient_screenings' AND column_name = 'last_completed_date' AND data_type = 'text'
+  ) THEN
+    ALTER TABLE patient_screenings ALTER COLUMN last_completed_date TYPE DATE USING NULLIF(last_completed_date,'')::date;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'patient_screenings_clinic_id_fkey' AND conrelid = 'patient_screenings'::regclass
+  ) THEN
+    ALTER TABLE patient_screenings
+      ADD CONSTRAINT patient_screenings_clinic_id_fkey
+      FOREIGN KEY (clinic_id) REFERENCES clinics(id) ON DELETE CASCADE;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'patient_screenings_status_check' AND conrelid = 'patient_screenings'::regclass
+  ) THEN
+    ALTER TABLE patient_screenings
+      ADD CONSTRAINT patient_screenings_status_check
+      CHECK (status IN ('due','overdue','ordered','completed'));
+  END IF;
+END $$;
+
+-- Replace old 2-column unique index with new 3-column index (patient + clinic + key)
+DROP INDEX IF EXISTS patient_screenings_patient_key_idx;
+CREATE UNIQUE INDEX IF NOT EXISTS patient_screenings_patient_clinic_key_idx
+  ON patient_screenings (patient_id, clinic_id, screening_key);
+CREATE INDEX IF NOT EXISTS patient_screenings_clinic_status_idx
+  ON patient_screenings (clinic_id, status);
+
+-- ── patient_screening_events ──────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS patient_screening_events (
   id                  SERIAL PRIMARY KEY,
+  clinic_id           INTEGER REFERENCES clinics(id) ON DELETE CASCADE,
   patient_id          INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
   screening_key       VARCHAR(50) NOT NULL,
-  completed_date      TEXT NOT NULL,
+  event_type          VARCHAR(30) NOT NULL,
+  event_date          DATE NOT NULL,
   ordered_by          VARCHAR(150),
   facility            VARCHAR(200),
   result_summary      TEXT,
   linked_document_id  INTEGER REFERENCES patient_documents(id) ON DELETE SET NULL,
   linked_order_id     INTEGER REFERENCES clinical_orders(id) ON DELETE SET NULL,
   source              VARCHAR(20) NOT NULL DEFAULT 'staff',
-  recorded_by_user_id INTEGER,
+  recorded_by         INTEGER REFERENCES users(id) ON DELETE SET NULL,
   created_at          TIMESTAMP NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS patient_screening_events_patient_key_idx ON patient_screening_events (patient_id, screening_key);
+
+-- Add columns/rename for dev DBs that have the draft schema
+ALTER TABLE patient_screening_events ADD COLUMN IF NOT EXISTS clinic_id   INTEGER;
+ALTER TABLE patient_screening_events ADD COLUMN IF NOT EXISTS event_type  VARCHAR(30);
+ALTER TABLE patient_screening_events ADD COLUMN IF NOT EXISTS event_date  DATE;
+ALTER TABLE patient_screening_events ADD COLUMN IF NOT EXISTS recorded_by INTEGER;
+
+-- Migrate data from old column names → new ones (safe to re-run)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'patient_screening_events' AND column_name = 'completed_date'
+  ) THEN
+    UPDATE patient_screening_events
+       SET event_date = NULLIF(completed_date, '')::date
+     WHERE event_date IS NULL AND completed_date IS NOT NULL;
+    UPDATE patient_screening_events SET event_type = 'completed' WHERE event_type IS NULL;
+    ALTER TABLE patient_screening_events DROP COLUMN IF EXISTS completed_date;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'patient_screening_events' AND column_name = 'recorded_by_user_id'
+  ) THEN
+    UPDATE patient_screening_events
+       SET recorded_by = recorded_by_user_id
+     WHERE recorded_by IS NULL AND recorded_by_user_id IS NOT NULL;
+    ALTER TABLE patient_screening_events DROP COLUMN IF EXISTS recorded_by_user_id;
+  END IF;
+END $$;
+
+-- Tighten NOT NULL on event_date and event_type now that data is migrated
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'patient_screening_events' AND column_name = 'event_date' AND is_nullable = 'YES'
+  ) THEN
+    UPDATE patient_screening_events SET event_date = NOW()::date WHERE event_date IS NULL;
+    ALTER TABLE patient_screening_events ALTER COLUMN event_date SET NOT NULL;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'patient_screening_events' AND column_name = 'event_type' AND is_nullable = 'YES'
+  ) THEN
+    UPDATE patient_screening_events SET event_type = 'completed' WHERE event_type IS NULL;
+    ALTER TABLE patient_screening_events ALTER COLUMN event_type SET NOT NULL;
+  END IF;
+END $$;
+
+-- Back-fill clinic_id from the patient's record where missing; report any that cannot be resolved
+DO $$
+DECLARE
+  null_count INTEGER;
+BEGIN
+  UPDATE patient_screening_events e
+     SET clinic_id = (
+       SELECT p.clinic_id FROM patients p WHERE p.id = e.patient_id LIMIT 1
+     )
+   WHERE e.clinic_id IS NULL;
+
+  SELECT COUNT(*) INTO null_count
+    FROM patient_screening_events WHERE clinic_id IS NULL;
+
+  IF null_count > 0 THEN
+    RAISE WARNING '[health-maintenance] % patient_screening_events row(s) still have NULL clinic_id '
+                  'and could not be back-filled from the patients table. '
+                  'Resolve these rows before adding the NOT NULL constraint and FK.',
+                  null_count;
+  ELSE
+    -- All rows resolved — safe to tighten
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name = 'patient_screening_events' AND column_name = 'clinic_id' AND is_nullable = 'YES'
+        AND NOT EXISTS (SELECT 1 FROM patient_screening_events WHERE clinic_id IS NULL)
+    ) THEN
+      ALTER TABLE patient_screening_events ALTER COLUMN clinic_id SET NOT NULL;
+    END IF;
+
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint
+      WHERE conname = 'patient_screening_events_clinic_id_fkey'
+        AND conrelid = 'patient_screening_events'::regclass
+    ) THEN
+      ALTER TABLE patient_screening_events
+        ADD CONSTRAINT patient_screening_events_clinic_id_fkey
+        FOREIGN KEY (clinic_id) REFERENCES clinics(id) ON DELETE CASCADE;
+    END IF;
+  END IF;
+END $$;
+
+-- FK on recorded_by → users
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'patient_screening_events_recorded_by_fkey'
+      AND conrelid = 'patient_screening_events'::regclass
+  ) THEN
+    ALTER TABLE patient_screening_events
+      ADD CONSTRAINT patient_screening_events_recorded_by_fkey
+      FOREIGN KEY (recorded_by) REFERENCES users(id) ON DELETE SET NULL;
+  END IF;
+END $$;
+
+-- CHECK constraints
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'patient_screening_events_event_type_check'
+      AND conrelid = 'patient_screening_events'::regclass
+  ) THEN
+    ALTER TABLE patient_screening_events
+      ADD CONSTRAINT patient_screening_events_event_type_check
+      CHECK (event_type IN ('completed','ordered','patient_reported'));
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'patient_screening_events_source_check'
+      AND conrelid = 'patient_screening_events'::regclass
+  ) THEN
+    ALTER TABLE patient_screening_events
+      ADD CONSTRAINT patient_screening_events_source_check
+      CHECK (source IN ('staff','patient_form'));
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS patient_screening_events_patient_key_idx
+  ON patient_screening_events (patient_id, screening_key);

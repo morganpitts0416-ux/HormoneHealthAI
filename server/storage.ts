@@ -1832,7 +1832,7 @@ export class DbStorage implements IStorage {
         eq(schema.patientScreeningEvents.patientId, patientId),
         eq(schema.patientScreeningEvents.screeningKey, screeningKey),
       ))
-      .orderBy(desc(schema.patientScreeningEvents.completedDate));
+      .orderBy(desc(schema.patientScreeningEvents.eventDate));
   }
 
   async getUnreadMessageSummaryForClinician(clinicianId: number): Promise<Array<{ patientId: number; patientFirstName: string; patientLastName: string; count: number; lastAt: string }>> {

@@ -115,29 +115,31 @@ async function syncScreeningSmartFields(
     if (sync.domain !== "screening" || !sync.smartTarget) continue;
     const value = responses[field.fieldKey];
     if (value === undefined || value === null || value === "") continue;
-    const completedDate = String(Array.isArray(value) ? value[0] : value);
-    if (!completedDate) continue;
+    const eventDate = String(Array.isArray(value) ? value[0] : value);
+    if (!eventDate) continue;
     const key = String(sync.smartTarget).replace(/^screening\./, "");
     try {
       await storage.addPatientScreeningEvent({
+        clinicId,
         patientId,
         screeningKey: key,
-        completedDate,
+        eventType: "patient_reported",
+        eventDate,
         orderedBy: null,
         facility: null,
         resultSummary: null,
         linkedDocumentId: null,
         linkedOrderId: null,
         source: "patient_reported",
-        recordedByUserId: null,
+        recordedBy: null,
       });
       const def = getScreeningDefinition(key);
-      const nextDueDate = def ? computeNextDueDate(def, completedDate) : null;
+      const nextDueDate = def ? computeNextDueDate(def, eventDate) : null;
       const existing = await storage.getPatientScreening(patientId, key, clinicId);
       // Only overwrite the snapshot if this report is newer than what's on file,
       // so a staff-verified completion is never silently clobbered by a stale
       // patient-reported date.
-      if (!existing?.lastCompletedDate || completedDate > existing.lastCompletedDate) {
+      if (!existing?.lastCompletedDate || eventDate > existing.lastCompletedDate) {
         await storage.upsertPatientScreening({
           clinicId,
           patientId,
@@ -7229,26 +7231,28 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       if (Number.isNaN(patientId)) return res.status(400).json({ message: "Invalid patient id" });
       if (clinicId == null) return res.status(403).json({ message: "Clinic context required" });
       const key = req.params.key;
-      const { completedDate, orderedBy, facility, resultSummary, linkedDocumentId } = req.body ?? {};
-      if (!completedDate || typeof completedDate !== "string") {
-        return res.status(400).json({ message: "completedDate is required" });
+      const { eventDate, orderedBy, facility, resultSummary, linkedDocumentId } = req.body ?? {};
+      if (!eventDate || typeof eventDate !== "string") {
+        return res.status(400).json({ message: "eventDate is required" });
       }
 
       await storage.addPatientScreeningEvent({
+        clinicId,
         patientId,
         screeningKey: key,
-        completedDate,
+        eventType: "completed",
+        eventDate,
         orderedBy: orderedBy ?? null,
         facility: facility ?? null,
         resultSummary: resultSummary ?? null,
         linkedDocumentId: linkedDocumentId ?? null,
         linkedOrderId: null,
         source: "staff",
-        recordedByUserId: clinicianId,
+        recordedBy: clinicianId,
       });
 
       const def = getScreeningDefinition(key);
-      const nextDueDate = def ? computeNextDueDate(def, completedDate) : null;
+      const nextDueDate = def ? computeNextDueDate(def, eventDate) : null;
       const existing = await storage.getPatientScreening(patientId, key, clinicId);
       const row = await storage.upsertPatientScreening({
         clinicId,
@@ -7257,7 +7261,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
         status: "completed",
         addedManually: existing?.addedManually ?? !def,
         nextDueDate,
-        lastCompletedDate: completedDate,
+        lastCompletedDate: eventDate,
         lastOrderedBy: orderedBy ?? null,
         lastFacility: facility ?? null,
         lastResultSummary: resultSummary ?? null,
