@@ -1,0 +1,194 @@
+Thank you for completing the pipeline investigation. Based on this report, do not remove the clinical extraction stage and do not redesign the overall pipeline at this time.
+
+The full transcript reaches the extraction, note-generation, QA, and June refinement stages. Therefore, the current problem is not loss of transcript data before note generation. The problem is that clinically meaningful details are still being compressed or generalized during note writing or subsequent refinement.
+
+Please make the following targeted changes.
+
+## 1. Audit all Step 4 prompt instructions for competing compression language
+
+Review the complete system and user prompts used by `generateSoapSections`, including shared prompt fragments and section-specific instructions.
+
+Identify and remove or revise instructions that may encourage compression, including language such as:
+
+* Be concise
+* Summarize
+* Avoid repetition
+* Include only pertinent information
+* Focus on key findings
+* Keep the note efficient
+* Use brief paragraphs
+* Limit section length
+* Avoid duplicating information across sections
+* Do not restate details
+* Minimize narrative content
+
+These instructions must not override transcript preservation.
+
+Use this priority order:
+
+1. Factual accuracy and transcript fidelity
+2. Preservation of clinically relevant detail
+3. Preservation of provider reasoning and patient decision-making
+4. Clear organization
+5. Readability
+6. Brevity
+
+Brevity must never take priority over completeness.
+
+## 2. Prevent structured extraction from becoming a substitute for the transcript
+
+The extraction and normalized metadata should assist organization, medication normalization, plan-state classification, and omission detection.
+
+They must not be treated as a condensed replacement for the encounter transcript.
+
+Add this instruction to Step 4:
+
+“The structured extraction is an indexing and verification aid. It is not a sufficient narrative source by itself. Reconstruct the encounter using the full transcript, and use the extraction to verify that facts are not missed. Do not reduce transcript statements to extraction labels or topic summaries.”
+
+Example:
+
+Do not convert:
+
+“Patient stated that she would not take a daily medication consistently and expected her use to remain sporadic.”
+
+into:
+
+“Medication adherence discussed.”
+
+The note must preserve the clinically meaningful substance of the statement.
+
+## 3. Strengthen the Step 5 QA standard
+
+The QA pass must not merely verify that a topic appears somewhere in the note.
+
+It must verify that the clinically meaningful substance, context, and consequence of each material fact were preserved.
+
+Add the following QA rule:
+
+“A fact is not considered represented merely because its general topic appears in the note. The note must preserve enough detail for another clinician to understand what the patient reported, what the provider recommended, why the recommendation was made, how the patient responded, and how the fact affected the plan.”
+
+Examples:
+
+* “Medication adherence discussed” does not adequately represent a patient statement that she expects to take medication only sporadically.
+* “Risks reviewed” does not adequately represent which risks were discussed or how they affected treatment selection.
+* “Alternative therapy offered” does not adequately represent what alternative was offered and why it was preferred.
+* “Patient declined” does not adequately represent what was declined or the patient's stated reason.
+* “Labs reviewed” does not adequately represent laboratory findings that materially affected medical decision-making.
+
+The QA pass should revise the note whenever meaningful detail has been replaced with a generalized phrase.
+
+## 4. Audit the June post-pass for re-condensation
+
+The June refinement stage occurs after the QA and omission check. Therefore, it can potentially remove detail after the note has already passed QA.
+
+Please inspect all June refinement prompts and provider-preference transformations for instructions that encourage:
+
+* Shortening
+* Condensing
+* Streamlining
+* Removing repetition
+* Making the note more concise
+* Combining paragraphs
+* Simplifying the HPI
+* Reducing plan detail
+
+June must preserve every clinically relevant fact, the provider's reasoning, patient preferences, treatment decisions, and encounter outcome.
+
+June may improve grammar, tone, organization, and alignment with provider preferences, but it must not reduce factual coverage.
+
+## 5. Add a final fidelity audit after June refinement
+
+The final returned note must be audited after the last content-changing stage.
+
+Update the sequence to:
+
+1. Normalize and diarize
+2. Clinical extraction
+3. Lab-context assembly
+4. Medical normalization and inference
+5. SOAP generation
+6. QA and omission revision
+7. June refinement, when applicable
+8. Final transcript-fidelity audit
+
+The final fidelity audit must compare the actual final note against:
+
+* The complete normalized transcript
+* The structured extraction
+* The normalized clinical metadata
+* The pre-June SOAP note, when June was applied
+
+It must detect whether June removed or generalized any clinically relevant information that was present before refinement.
+
+If the final note is less complete than the pre-June note, restore the omitted detail before returning it.
+
+## 6. Preserve detail at the statement level
+
+For clinically meaningful statements, preserve:
+
+* What was reported
+* Relevant context
+* The patient's stated reason
+* The provider's response
+* Whether it affected diagnosis, treatment selection, risk assessment, adherence, consent, or follow-up
+
+Do not collapse these into topic labels.
+
+The goal is not verbatim transcription, but it is also not thematic summarization.
+
+The desired transformation is:
+
+“Detailed encounter statement → objective clinical narrative preserving meaning and consequence.”
+
+Not:
+
+“Detailed encounter statement → brief topic label.”
+
+## 7. Make the Care Plan independently usable
+
+The Care Plan must remain a bulleted, patient-facing action plan.
+
+If printed independently, it should clearly communicate:
+
+* What the provider recommends
+* Medications to start, stop, continue, or change
+* Exact administration instructions when available
+* Laboratory or imaging instructions
+* Referrals
+* Lifestyle recommendations
+* Monitoring instructions
+* Safety precautions
+* Follow-up instructions
+* Which recommendations were accepted, declined, deferred, or left pending
+
+The Care Plan should not be compressed into vague phrases such as:
+
+* Continue current plan
+* Lifestyle discussed
+* Labs as ordered
+* Follow up as needed
+
+## 8. Add development diagnostics for note compression
+
+In development mode, record:
+
+* Transcript token count
+* Extraction token count
+* Combined Step 4 prompt token count
+* Step 4 output token count
+* Step 5 revised output token count
+* Pre-June note token count
+* Post-June note token count
+* Final-audit note token count
+* Percentage reduction after June
+* Whether the final audit restored any omitted content
+
+Do not log PHI in production.
+
+Flag a development warning when:
+
+* The June pass reduces note length by more than 10%, or
+* The final HPI is disproportionately short relative to a complex transcript, or
+* The QA pass identifies that clinically meaningful statements were reduced to generalized labels.
+
+##

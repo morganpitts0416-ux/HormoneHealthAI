@@ -23,7 +23,7 @@ import {
 } from "./vital-signs-analyzer";
 import { PDFExtractionService } from "./pdf-extraction";
 import { ASCVDCalculator } from "./ascvd-calculator";
-import { runEnhancedSoapPipeline } from "./soap-pipeline";
+import { runEnhancedSoapPipeline, finalFidelityAudit } from "./soap-pipeline";
 import { runJunePipeline, shouldJuneAcknowledge } from "./spruce-june";
 import { getSpruceAuthorId, invalidateSpruceAuthorCache } from "./spruce-author";
 import { PREVENTCalculator } from "./prevent-calculator";
@@ -10753,7 +10753,20 @@ RULES:
 - Preserve the note's existing format (section headers, structure, style)
 - If a preference is already satisfied in the note, leave that section untouched
 - Return the complete refined note text — all sections, not just the modified parts
-- DOCUMENTATION VOICE: This note is authored by the treating provider. NEVER write "The provider discussed/recommended/noted/advised" — that is a third-party observer voice. Use provider voice: "We discussed...", "Discussed with patient...", "Recommended...", "Patient was counseled on..."`,
+- DOCUMENTATION VOICE: This note is authored by the treating provider. NEVER write "The provider discussed/recommended/noted/advised" — that is a third-party observer voice. Use provider voice: "We discussed...", "Discussed with patient...", "Recommended...", "Patient was counseled on..."
+
+ANTI-CONDENSATION MANDATE — NON-NEGOTIABLE:
+You may improve grammar, tone, organization, and alignment with provider preferences. You must NOT reduce factual coverage. Specifically prohibited:
+- Do not shorten or condense the HPI narrative
+- Do not combine or merge Assessment/Plan items
+- Do not remove or generalize patient statements, provider reasoning, or treatment decisions
+- Do not replace specific clinical content with general topic labels (e.g., do not replace "patient stated she would not take the medication consistently" with "adherence discussed")
+- Do not remove medication dosing, frequency, or administration details
+- Do not remove declined, deferred, or pending items from the Care Plan
+- Do not simplify the Care Plan by removing specific instructions
+- Do not remove the patient's stated reasons for decisions or refusals
+- A clinician preference for concise documentation means use concise language — it does NOT mean remove clinical facts
+If any preference appears to require shortening or condensing a section, apply it only to improve clarity of language without reducing the factual content of that section.`,
           },
           {
             role: "user",
@@ -10881,6 +10894,19 @@ CATEGORY 2 — JUNE PREFERENCE RULES (only if provider rules are provided)
 • Never fabricate clinical facts, lab values, symptoms, or diagnoses not in the note or transcript.
 • Never remove documented findings, diagnoses, medications, or plan items.
 • Never change medication states (current / new / adjusted / discontinued / discussed).
+
+ANTI-CONDENSATION MANDATE — NON-NEGOTIABLE:
+You may improve grammar, tone, organization, and alignment with provider preferences. You must NOT reduce factual coverage under any circumstance. Specifically prohibited:
+• Do not shorten or condense the HPI narrative
+• Do not combine or merge Assessment/Plan items to save space
+• Do not remove or generalize patient statements, provider reasoning, or treatment decisions
+• Do not replace specific clinical content with general topic labels
+• Do not remove medication dosing, frequency, or administration details
+• Do not remove declined, deferred, or pending items from the Care Plan
+• Do not simplify the Care Plan by omitting specific instructions
+• Do not remove the patient's stated reasons for decisions or refusals
+• A clinician preference for concise documentation means use concise language — it does NOT mean remove clinical facts
+If a preference appears to require condensing a section, apply it only to improve clarity of language while preserving all factual content.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 FORMAT RULES — NON-NEGOTIABLE
@@ -11866,8 +11892,18 @@ Return a JSON object:
         }
       }
 
+      // ── Dev diagnostics: token counts pre-June ────────────────────────────
+      const preJuneNote = soapNote.fullNote ?? "";
+      const isDev = process.env.NODE_ENV !== "production";
+      if (isDev) {
+        const transcriptTokens = Math.round(transcriptText.length / 4);
+        const extractionTokens = Math.round(JSON.stringify(freshExtraction).length / 4);
+        const preJuneTokens = Math.round(preJuneNote.length / 4);
+        console.log(`[SOAP DIAGNOSTICS] transcript≈${transcriptTokens}tk | extraction≈${extractionTokens}tk | pre-June note≈${preJuneTokens}tk`);
+      }
+
       const personalization = await applyProviderPersonalizationPass(
-        soapNote.fullNote ?? "",
+        preJuneNote,
         getClinicianId(req),
         clinicId,
         transcriptText,
@@ -11882,6 +11918,43 @@ Return a JSON object:
           console.log(`[SOAP] Personalization: bundles applied (${personalization.bundlesApplied.join(", ")})`);
         if (personalization.juneTriggersApplied.length > 0)
           console.log(`[SOAP] Personalization: June rules applied (${personalization.juneTriggersApplied.join(", ")})`);
+      }
+
+      // ── Dev diagnostics: post-June token count ────────────────────────────
+      if (isDev && personalization.changed) {
+        const postJuneTokens = Math.round((soapNote.fullNote ?? "").length / 4);
+        const preJuneTokens = Math.round(preJuneNote.length / 4);
+        const reductionPct = preJuneTokens > 0
+          ? Math.round(((preJuneTokens - postJuneTokens) / preJuneTokens) * 100)
+          : 0;
+        console.log(`[SOAP DIAGNOSTICS] post-June note≈${postJuneTokens}tk | reduction=${reductionPct}%`);
+        if (reductionPct > 10) {
+          console.warn(`[SOAP DIAGNOSTICS] WARNING: June pass reduced note by ${reductionPct}% — fidelity audit will run.`);
+        }
+      }
+
+      // ── Final fidelity audit (Step 8) ─────────────────────────────────────
+      // Compares final note against pre-June note + transcript to detect and
+      // restore any clinically meaningful detail removed by refinement passes.
+      const fidelityResult = await finalFidelityAudit({
+        finalNote: soapNote.fullNote ?? "",
+        preJuneNote: personalization.changed ? preJuneNote : null,
+        transcriptText,
+        extraction: freshExtraction,
+        normalized: null,
+        openai,
+      });
+      if (fidelityResult.restoredDetail) {
+        soapNote = { ...soapNote, fullNote: fidelityResult.note };
+      }
+
+      // ── Dev diagnostics: final audit token count ──────────────────────────
+      if (isDev) {
+        const finalTokens = Math.round((soapNote.fullNote ?? "").length / 4);
+        console.log(`[SOAP DIAGNOSTICS] final note≈${finalTokens}tk | fidelityRestored=${fidelityResult.restoredDetail}`);
+        if (fidelityResult.warnings.length > 0) {
+          fidelityResult.warnings.forEach(w => console.warn(w));
+        }
       }
 
       // ── SOAP Validation Gate (read-only) ──────────────────────────────────
@@ -11916,6 +11989,7 @@ Return a JSON object:
         clinicalExtraction: freshExtraction,
         junePrefsApplied: personalization.juneTriggersApplied,
         bundlesApplied: personalization.bundlesApplied,
+        fidelityRestoredDetail: fidelityResult.restoredDetail,
         validationGate,
       });
 
@@ -12346,7 +12420,8 @@ This note is authored by the treating provider. Write in provider voice througho
       // Same pass as the regular SOAP pipeline. Only runs when the clinician
       // has active preferences. Trigger rules are evaluated against the
       // transcript — only fire if their phrases actually appear in the visit.
-      let finalNote = generatedNote.trim();
+      const preJuneTemplateNote = generatedNote.trim();
+      let finalNote = preJuneTemplateNote;
       let junePrefsApplied: string[] = [];
       const juneRefinement = await applyJuneRefinement(
         finalNote,
@@ -12354,10 +12429,25 @@ This note is authored by the treating provider. Write in provider voice througho
         transcriptText,
         openai,
       );
-      if (juneRefinement.applied.length > 0) {
+      const templateJuneApplied = juneRefinement.applied.length > 0;
+      if (templateJuneApplied) {
         finalNote = juneRefinement.note;
         junePrefsApplied = juneRefinement.applied;
         console.log(`[Template Note] June refinement applied (${junePrefsApplied.join(", ")})`);
+      }
+
+      // ── Final fidelity audit (after June) ─────────────────────────────────
+      const templateFidelity = await finalFidelityAudit({
+        finalNote,
+        preJuneNote: templateJuneApplied ? preJuneTemplateNote : null,
+        transcriptText,
+        extraction: null,
+        normalized: null,
+        openai,
+      });
+      if (templateFidelity.restoredDetail) {
+        finalNote = templateFidelity.note;
+        console.log(`[Template Note] Fidelity audit restored omitted detail.`);
       }
 
       // Store in soapNote.fullNote — the existing viewer renders this format

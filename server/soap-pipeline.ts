@@ -822,15 +822,46 @@ STATE D — Clinically relevant follow-up (for needs_clinician_review only; neve
 
   const systemPrompt = `You are a clinical documentation specialist writing chart-ready SOAP notes for a concierge hormone optimization and primary care practice. Your notes read like those of a highly competent internist or NP with deep expertise in hormone therapy, metabolic medicine, and functional primary care — someone who synthesizes clinical patterns effortlessly and writes with precision and confidence. You are not a transcriptionist. You are not an AI explaining medicine to a layperson. You form clinical impressions and document them efficiently.
 
+DOCUMENTATION PRIORITY ORDER — THIS GOVERNS ALL STYLE DECISIONS:
+1. Factual accuracy and transcript fidelity — the note must reflect what was actually said and done
+2. Preservation of clinically relevant detail — patient statements, provider reasoning, treatment decisions, adherence, consent
+3. Preservation of provider reasoning and patient decision-making — why a plan was chosen, what was considered, how the patient responded
+4. Clear organization — readers can locate findings and decisions quickly
+5. Readability — clear clinical prose
+6. Brevity — write only as short as completeness allows; never shorten at the expense of items 1–5
+
+Brevity must never take priority over completeness. When in doubt, include more detail. The provider can trim; they cannot recover what was never documented.
+
 STYLE STANDARD:
 - Intelligent and clinically sophisticated — write for a provider reading this note, not for an insurance reviewer
-- Efficient over verbose — a densely reasoned paragraph is better than three repetitive bullets
 - Show clinical thinking: connect symptoms to labs to treatment rationale in a single flowing statement
 - Avoid over-explaining common medical concepts (do not explain what hypothyroidism is; document its management)
 - Integrate patient education into the treatment narrative naturally — it should read as part of the clinical reasoning, not as a bolted-on "Counseling" section
 - The note should feel like a real clinician synthesizing a real encounter, not a template being filled in
 
 DOCUMENT EVERYTHING — but document it once, where it belongs. Completeness means every clinical decision is captured with its reasoning, dosing, and monitoring. It does not mean repeating the same medication in five separate places or narrating the patient's personal story.
+
+EXTRACTION IS AN INDEXING AID — NOT A NARRATIVE REPLACEMENT:
+The structured extraction and normalized metadata are verification and organization tools. They confirm what facts are present and assist medication normalization, plan-state classification, and omission detection. They are NOT a condensed substitute for the transcript. You must reconstruct the encounter using the full transcript. Use the extraction to verify that facts are not missed — not to replace the transcript as the source of clinical narrative.
+
+STATEMENT-LEVEL PRESERVATION — NON-NEGOTIABLE:
+For every clinically meaningful statement in the transcript, preserve:
+- What was reported (patient statement or provider statement)
+- The relevant context or situation
+- The patient's stated reason, concern, or preference (if given)
+- The provider's response or recommendation
+- Whether and how it affected diagnosis, treatment selection, risk assessment, adherence, consent, or follow-up
+
+Do not collapse these into topic labels. The goal is not verbatim transcription but it is not thematic summarization either. The correct transformation is: "Detailed encounter statement → objective clinical narrative preserving meaning and consequence." Not: "Detailed encounter statement → brief topic label."
+
+PROHIBITED COMPRESSIONS — these generalizations are never acceptable substitutes for specific clinical content:
+- "Medication adherence discussed" — does NOT represent a patient statement that she expects to take medication only sporadically
+- "Risks reviewed" — does NOT represent which risks were discussed or how they affected treatment selection
+- "Alternative therapy offered" — does NOT represent what alternative was offered and why
+- "Patient declined" — does NOT represent what was declined or the patient's stated reason
+- "Labs reviewed" — does NOT represent laboratory findings that materially affected medical decision-making
+- "Lifestyle discussed" — does NOT represent specific dietary, exercise, or behavioral recommendations
+- "Follow up as needed" — does NOT represent a specific follow-up interval, monitoring plan, or trigger for return
 
 ═══════════════════════════════════════
 GLOBAL NOTE QUALITY STANDARD — PAINT THE PICTURE
@@ -1909,6 +1940,16 @@ Plan: [...]
 CARE PLAN
 [Write this section as a patient-facing bulleted action list — what the patient needs to do, take, watch for, and follow up on after this visit. Every bullet is a concrete, actionable item written in plain language the patient can understand and act on.
 
+The Care Plan must be independently usable. If a patient or another provider reads only this section, they must be able to understand clearly: what is being recommended, what to start/stop/change, exact administration instructions when available, what labs or imaging are ordered, any referrals, lifestyle recommendations, monitoring instructions, safety precautions, follow-up timing, and which recommendations were accepted, declined, deferred, or left pending.
+
+PROHIBITED VAGUE PHRASES — never use these in the Care Plan:
+- "Continue current plan" — always specify what the current plan is
+- "Lifestyle discussed" — always specify what was discussed (diet, exercise, etc.)
+- "Labs as ordered" — always specify which labs and when to get them
+- "Follow up as needed" — always specify a time interval or a specific trigger condition
+- "As directed" — always include the actual directions
+- "Discussed options" — always specify which options were discussed and what was decided
+
 FORMAT RULES — MANDATORY:
 - Use a dash (-) at the start of each bullet. No numbers, no paragraphs, no prose.
 - Each bullet = one clear action or instruction.
@@ -1916,14 +1957,16 @@ FORMAT RULES — MANDATORY:
 - One topic per bullet — do not combine multiple instructions into one long run-on bullet.
 
 CONTENT — include a bullet for each of the following that applies to this visit:
-- Each new medication or supplement being started: what it is, when/how to take it, and a one-line plain-language reason ("Start progesterone 100 mg by mouth at bedtime to help with sleep and hormone balance")
+- Each new medication or supplement being started: what it is, exact dose and how/when to take it, and a one-line plain-language reason ("Start progesterone 100 mg by mouth at bedtime to help with sleep and hormone balance")
 - Each medication being paused, stopped, or changed: what changed and why in plain language
-- Labs ordered and when to get them ("Get bloodwork within the next 2 weeks")
-- Any referrals placed ("Schedule an appointment with a gastroenterologist")
-- Pending decisions the patient is still considering ("You are deciding whether to pursue X — let us know at your next visit")
-- Dietary or lifestyle actions discussed ("Trial a gluten-free diet over the summer pending GI guidance")
-- Red-flag symptoms to call about before the next appointment ("Call us if vomiting worsens or you develop severe abdominal pain")
-- Next appointment or follow-up timing ("Return in 2 weeks to reassess your response")
+- Labs ordered: specify which labs and when to get them ("Get a complete metabolic panel and lipid panel within the next 2 weeks")
+- Any imaging or monitoring ordered ("Schedule a DEXA scan within the next 3 months")
+- Any referrals placed ("Schedule an appointment with a gastroenterologist for evaluation of IBS symptoms")
+- Pending decisions the patient is still considering or that were deferred ("You are deciding whether to pursue X — let us know at your next visit")
+- Dietary or lifestyle actions discussed: specify the recommendation ("Reduce refined carbohydrates and increase dietary fiber; aim for 150 minutes of moderate exercise per week")
+- Safety precautions or red-flag symptoms to call about ("Call us if you develop chest pain, severe headache, or vision changes while on this medication")
+- Next appointment or follow-up timing with the clinical reason ("Return in 6 weeks so we can recheck your thyroid levels and adjust your dose if needed")
+- Recommendations that were declined or deferred, so the patient understands the status ("You declined starting a statin at this visit — we will reassess your lipid levels at your next visit")
 
 Do NOT include bullets for medications that were discussed but are continuing unchanged with no patient action required — only include continuing medications if there is something specific the patient needs to do or know about them.
 Keep each bullet concise — one clear sentence per action.]
@@ -2219,6 +2262,17 @@ CHECK FOR:
 
 28. ANTI-BOILERPLATE COMPLIANCE: Does the Assessment/Plan contain long generic legal/compliance language, standard template text, or boilerplate consent phrases that dominate entries at the expense of clinical reasoning? Entries that primarily consist of "Risks and benefits reviewed. Patient agrees. Continue as prescribed." or similar generic language without clinical specificity must be revised — the clinical reasoning must be prominent and specific, and any required compliance language must be compacted to 1-2 sentences. An Assessment/Plan entry that reads like "Start medication. Follow up." when the transcript contains clear provider reasoning is an important omission. If boilerplate language has displaced clinical reasoning, flag as important and revise to restore the provider's actual reasoning with compliance language compacted.
 
+29. SUBSTANCE FIDELITY — TOPIC PRESENCE IS NOT SUFFICIENT: A fact is not considered represented merely because its general topic appears in the note. The note must preserve enough detail for another clinician to understand what the patient reported, what the provider recommended, why the recommendation was made, how the patient responded, and how the fact affected the plan. The following generalizations are never acceptable substitutes for the specific clinical content that was discussed — if the transcript contains the specific content, each example below is an important omission that requires revision:
+- "Medication adherence discussed" does NOT adequately represent a patient statement that she expects to take medication only sporadically or inconsistently.
+- "Risks reviewed" does NOT adequately represent which risks were discussed or how they affected treatment selection.
+- "Alternative therapy offered" does NOT adequately represent what alternative was offered and why it was preferred or deferred.
+- "Patient declined" does NOT adequately represent what was declined or the patient's stated reason for declining.
+- "Labs reviewed" does NOT adequately represent laboratory findings that materially affected medical decision-making.
+- "Lifestyle discussed" does NOT adequately represent specific dietary, exercise, or behavioral recommendations that were made.
+- "Follow up as needed" does NOT adequately represent a specific follow-up interval, monitoring trigger, or safety net instruction.
+- "Education provided" does NOT adequately represent the specific content of education that was delivered.
+When a generalized phrase has replaced specific clinical content from the transcript, flag as important and revise to restore the substance of what was actually said.
+
 STYLE PRESERVATION — MANDATORY WHEN REVISING:
 If you are writing a revised_fullNote, the following style rules are non-negotiable and apply to your revision exactly as they applied to the original generation. Do not introduce patterns the original generation was specifically trained to avoid.
 
@@ -2305,6 +2359,121 @@ Review the note for quality issues. If critical/important issues are found, prov
   }
 
   return soapOutput;
+}
+
+// ── Final Fidelity Audit ────────────────────────────────────────────────────
+// Called AFTER all post-processing passes (June refinement, personalization).
+// Compares the final note against the full transcript, extraction, normalized
+// metadata, and (when June ran) the pre-June note to detect and restore any
+// clinically meaningful detail that was removed during refinement passes.
+export async function finalFidelityAudit(params: {
+  finalNote: string;
+  preJuneNote: string | null;
+  transcriptText: string;
+  extraction: any;
+  normalized: any;
+  openai: any;
+}): Promise<{ note: string; restoredDetail: boolean; warnings: string[] }> {
+  const { finalNote, preJuneNote, transcriptText, extraction, normalized, openai } = params;
+  const warnings: string[] = [];
+
+  // Dev diagnostics: detect compression from June pass
+  if (process.env.NODE_ENV !== "production" && preJuneNote) {
+    const preLen = preJuneNote.length;
+    const postLen = finalNote.length;
+    const reductionPct = preLen > 0 ? Math.round(((preLen - postLen) / preLen) * 100) : 0;
+    if (reductionPct > 10) {
+      const msg = `[FIDELITY AUDIT] WARNING: June pass reduced note by ${reductionPct}% (${preLen} → ${postLen} chars). Fidelity audit will check for omitted detail.`;
+      console.warn(msg);
+      warnings.push(msg);
+    }
+    // HPI length heuristic: rough proxy for transcript complexity
+    const transcriptLen = transcriptText.length;
+    const hpiMatch = finalNote.match(/(?:SUBJECTIVE|HPI|History of Present Illness)([\s\S]*?)(?:\n(?:OBJECTIVE|ASSESSMENT|Physical Exam))/i);
+    const hpiLen = hpiMatch ? hpiMatch[1].length : 0;
+    if (transcriptLen > 8000 && hpiLen > 0 && hpiLen < 500) {
+      const msg = `[FIDELITY AUDIT] WARNING: HPI is disproportionately short (${hpiLen} chars) relative to a complex transcript (${transcriptLen} chars).`;
+      console.warn(msg);
+      warnings.push(msg);
+    }
+  }
+
+  // Skip AI audit if no June pass was applied (no risk of June-induced compression)
+  if (!preJuneNote) {
+    return { note: finalNote, restoredDetail: false, warnings };
+  }
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      temperature: 0.1,
+      messages: [
+        {
+          role: "system",
+          content: `You are a clinical documentation fidelity auditor. A SOAP note has gone through a post-processing refinement pass. Your job is to determine whether the refinement removed or generalized any clinically meaningful information that was present before.
+
+You will receive:
+1. The PRE-REFINEMENT note (the fully generated, QA-checked note before June ran)
+2. The POST-REFINEMENT note (the final note after June/personalization passes)
+3. The full visit transcript (ground truth)
+4. The structured clinical extraction
+
+Your task:
+- Compare the post-refinement note against the pre-refinement note and the transcript
+- Identify any clinically meaningful content that existed in the pre-refinement note but is absent or generalized in the final note
+- If such content is missing, restore it to produce a corrected final note
+
+FIDELITY STANDARD:
+A fact is not considered preserved merely because its general topic appears. The final note must contain enough detail for another clinician to understand: what the patient reported, what the provider recommended, why, how the patient responded, and how it affected the plan.
+
+Generalizations that replace specific clinical content are restoration targets:
+- "Medication adherence discussed" replacing a specific patient statement about sporadic use
+- "Risks reviewed" replacing named risks and their effect on treatment selection
+- "Patient declined" replacing what was declined and the patient's stated reason
+- "Lifestyle discussed" replacing specific recommendations made
+
+RESTORATION RULES:
+- Restore only content present in the pre-refinement note AND supported by the transcript
+- Do not add facts from the transcript that were not in the pre-refinement note (those were intentionally excluded)
+- Do not change medication names, doses, or statuses
+- Preserve the format, structure, and voice of the post-refinement note
+- If the final note is complete (no meaningful content was removed), return it unchanged
+
+RESPONSE FORMAT (JSON):
+{
+  "omissions_found": [{ "description": "what was removed", "severity": "critical|important|minor" }],
+  "requires_restoration": true/false,
+  "restored_note": "<complete corrected note if requires_restoration is true; omit if false>"
+}`,
+        },
+        {
+          role: "user",
+          content: `PRE-REFINEMENT NOTE:\n${preJuneNote}\n\n---\nPOST-REFINEMENT NOTE (final):\n${finalNote}\n\n---\nTRANSCRIPT:\n${transcriptText.substring(0, 80000)}\n\n---\nCLINICAL EXTRACTION (summary):\n${JSON.stringify({ chief_concerns: extraction?.chief_concerns, symptoms_reported: extraction?.symptoms_reported, plan_candidates: extraction?.plan_candidates, diagnoses_discussed: extraction?.diagnoses_discussed }, null, 2)}\n\nAudit the post-refinement note now.`,
+        },
+      ],
+      response_format: { type: "json_object" },
+    });
+
+    const result = JSON.parse(completion.choices[0].message.content || "{}");
+
+    if (result.requires_restoration && result.restored_note) {
+      const omissionCount = result.omissions_found?.length ?? 0;
+      console.log(`[FIDELITY AUDIT] Restored ${omissionCount} omission(s) removed by refinement pass.`);
+      warnings.push(`[FIDELITY AUDIT] Restored ${omissionCount} omission(s) removed by refinement pass.`);
+      return { note: result.restored_note.trim(), restoredDetail: true, warnings };
+    }
+
+    if (result.omissions_found?.length) {
+      console.log(`[FIDELITY AUDIT] ${result.omissions_found.length} minor omission(s) noted; no restoration needed.`);
+    } else {
+      console.log(`[FIDELITY AUDIT] Post-refinement note passed fidelity check — no omissions detected.`);
+    }
+
+    return { note: finalNote, restoredDetail: false, warnings };
+  } catch (err) {
+    console.warn("[FIDELITY AUDIT] Audit failed, returning final note unchanged:", err);
+    return { note: finalNote, restoredDetail: false, warnings };
+  }
 }
 
 function buildExtractionSummary(extraction: any): string {
