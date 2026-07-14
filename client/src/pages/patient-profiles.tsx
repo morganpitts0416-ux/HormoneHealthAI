@@ -646,17 +646,32 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
   // ── Draggable / minimizable panel state ───────────────────────────────────
   const { panelPos, minimized, setMinimized, panelRef, startDrag, floating } = useFloatingPanel();
 
+  // Escape key closes the panel
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
   return (
-    <div
-      ref={panelRef}
-      className={cn(
-        "fixed z-50 flex flex-col bg-card shadow-2xl overflow-hidden",
-        floating ? "rounded-lg border w-full max-w-3xl" : "inset-y-0 right-0 border-l w-full max-w-3xl h-full",
-        minimized && "h-auto w-80 max-w-80"
-      )}
-      style={panelPos ? { left: panelPos.x, top: panelPos.y, height: minimized ? undefined : '80vh', maxHeight: '85vh' } : undefined}
-      data-testid="lab-detail-modal"
-    >
+    <>
+      {/* Backdrop — clicking outside closes the panel */}
+      <div
+        className="fixed inset-0 z-40 bg-black/30"
+        onClick={onClose}
+        data-testid="backdrop-lab-detail"
+        aria-hidden="true"
+      />
+      <div
+        ref={panelRef}
+        className={cn(
+          "fixed z-50 flex flex-col bg-card shadow-2xl overflow-hidden",
+          floating ? "rounded-lg border w-full max-w-3xl" : "inset-y-0 right-0 border-l w-full max-w-3xl h-full",
+          minimized && "h-auto w-80 max-w-80"
+        )}
+        style={panelPos ? { left: panelPos.x, top: panelPos.y, height: minimized ? undefined : '80vh', maxHeight: '85vh' } : undefined}
+        data-testid="lab-detail-modal"
+      >
       {/* Draggable header */}
       <div
         onMouseDown={startDrag}
@@ -705,7 +720,9 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
           <Button variant="outline" size="icon" onClick={() => setMinimized(m => !m)} title={minimized ? "Restore" : "Minimize"} data-testid="button-minimize-lab-detail">
             {minimized ? <Maximize2 className="w-3.5 h-3.5" /> : <Minus className="w-3.5 h-3.5" />}
           </Button>
-          <Button variant="outline" size="sm" onClick={onClose} data-testid="button-close-lab-detail">Close</Button>
+          <Button variant="ghost" size="icon" onClick={onClose} title="Close" data-testid="button-close-lab-detail">
+            <X className="w-4 h-4" />
+          </Button>
         </div>
       </div>
 
@@ -1031,6 +1048,7 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
         );
       })()}
     </div>
+    </>
   );
 }
 
