@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
-import { pgTable, serial, varchar, text, timestamp, jsonb, integer, boolean, numeric, date, time, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { pgTable, serial, varchar, text, timestamp, jsonb, integer, boolean, real, numeric, date, time, uniqueIndex, index } from "drizzle-orm/pg-core";
 
 // Patient Demographics & ASCVD Risk Factors Schema
 export const patientDemographicsSchema = z.object({
