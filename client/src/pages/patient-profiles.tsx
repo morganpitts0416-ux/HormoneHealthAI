@@ -41,7 +41,7 @@ import { labsApi, femaleLabsApi, type WellnessPlan } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
-import type { Patient, LabResult, InterpretationResult, LabValues, FemaleLabValues, ClinicalEncounter, PatientChart, PatientChartDraft, Appointment, SimpleLabUpload, ProviderOverrides, SupplementRecommendation, ClinicianSupplement, PatientVital } from "@shared/schema";
+import type { Patient, LabResult, InterpretationResult, LabValues, FemaleLabValues, ClinicalEncounter, PatientChart, PatientChartDraft, ExtractedMedication, Appointment, SimpleLabUpload, ProviderOverrides, SupplementRecommendation, ClinicianSupplement, PatientVital } from "@shared/schema";
 import { ResultsDisplay } from "@/components/results-display";
 import { LabComparisonDialog } from "@/components/lab-comparison-dialog";
 import {
@@ -1254,12 +1254,18 @@ function PatientChartPanel({
     }
   };
 
-  const handleApproveDraft = () => {
+  const handleApproveDraft = async () => {
     if (!draft) return;
     const merged: Record<ChartSectionKey, string[]> = { ...local };
+    const approvedMedIndices: number[] = [];
+
     for (const sec of CHART_SECTIONS_META) {
       const draftItems = (draft[sec.key] ?? []) as string[];
-      const approvedItems = draftItems.filter((_: string, i: number) => draftChecked[sec.key][i] !== false);
+      const approvedItems = draftItems.filter((_: string, i: number) => {
+        const approved = draftChecked[sec.key][i] !== false;
+        if (sec.key === "currentMedications" && approved) approvedMedIndices.push(i);
+        return approved;
+      });
       const combined = [...local[sec.key]];
       for (const item of approvedItems) {
         if (!combined.map((x: string) => x.toLowerCase()).includes(item.toLowerCase())) {
@@ -1268,7 +1274,37 @@ function PatientChartPanel({
       }
       merged[sec.key] = combined;
     }
+
+    // Write to legacy chart first (always)
     saveMutation.mutate({ ...merged, draftExtraction: null, lastReviewedAt: new Date().toISOString() });
+
+    // Also write each approved medication to the structured patient_medications table
+    const structuredMeds: ExtractedMedication[] = (draft.structuredMedications ?? []) as ExtractedMedication[];
+    if (approvedMedIndices.length > 0 && structuredMeds.length > 0) {
+      for (const idx of approvedMedIndices) {
+        const s = structuredMeds[idx];
+        if (!s?.drugName) continue;
+        try {
+          await apiRequest("POST", `/api/patients/${patientId}/medications`, {
+            drugName: s.drugName,
+            strength: s.strength ?? null,
+            strengthUnit: s.strengthUnit ?? null,
+            form: s.form ?? null,
+            route: s.route ?? null,
+            sig: s.sig ?? null,
+            indication: s.indication ?? null,
+            status: "active",
+            source: "staff",
+            sourceRawText: (draft.currentMedications ?? [])[idx] ?? null,
+            reviewedByProvider: true,
+          });
+        } catch {
+          // Non-fatal — legacy list already saved; structured insert failures are logged server-side
+        }
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/patients", patientId, "medications"] });
+    }
+
     setReviewOpen(false);
   };
 

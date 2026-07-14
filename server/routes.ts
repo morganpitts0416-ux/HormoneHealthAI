@@ -4166,17 +4166,26 @@ Rules:
       const systemPrompt = `You are an EHR clinical data extraction specialist. Your job is to extract persistent patient history data from a clinical encounter transcript and SOAP note.
 
 WHAT TO EXTRACT:
-1. currentMedications — All medications the patient is currently taking (prescription, OTC, supplements, injections). Include dose and frequency if mentioned. Examples: "Testosterone Cypionate 200mg IM weekly", "Metformin 500mg twice daily", "Fish oil 1g daily"
-2. medicalHistory — Diagnosed medical conditions, chronic diseases, and significant past medical events. Examples: "Type 2 diabetes", "Hypertension", "Hypothyroidism", "GERD", "Anxiety"
-3. familyHistory — Any family members' health conditions mentioned. Group ALL conditions for the same family member into a SINGLE entry. Format: "Mother — hypertension; hypothyroid; breast cancer" (not separate lines per condition). Format: "Father — heart disease; type 2 diabetes", "Maternal grandmother — ovarian cancer"
-4. socialHistory — Lifestyle facts: smoking status, alcohol use, exercise habits, occupation, relationship status, diet. Examples: "Former smoker — quit 2015", "Drinks 1-2 glasses wine/week", "Sedentary job, walks 3x/week"
-5. allergies — Drug, food, or environmental allergies. Include reaction type if mentioned. Examples: "Penicillin — anaphylaxis", "Sulfa drugs — rash", "Shellfish — hives"
-6. surgicalHistory — Past surgeries, procedures, or hospitalizations. Examples: "Appendectomy 2010", "C-section 2018", "Knee arthroscopy 2022"
+1. currentMedications — All medications the patient is currently taking (prescription, OTC, supplements, injections). Include dose and frequency if mentioned. Each entry is a human-readable display string. Examples: "Testosterone Cypionate 200mg IM weekly", "Metformin 500mg twice daily", "Fish oil 1g daily"
+2. structuredMedications — A PARALLEL array to currentMedications (same order, same length). For each medication in currentMedications, provide a structured breakdown:
+   - drugName (required): the medication name only, no dose (e.g. "Testosterone Cypionate", "Metformin", "Fish oil")
+   - strength: numeric value only, no unit (e.g. "200", "500", "1")
+   - strengthUnit: unit only (e.g. "mg", "mcg", "g", "IU", "units")
+   - form: dosage form if stated (e.g. "tablet", "capsule", "cream", "injection", "patch", "gel")
+   - route: route of administration if stated (e.g. "oral", "IM", "SQ", "topical", "transdermal", "sublingual")
+   - sig: frequency/directions if stated (e.g. "weekly", "twice daily", "once daily", "every morning", "every 3.5 days")
+   - indication: condition being treated, only if stated (e.g. "testosterone deficiency", "type 2 diabetes")
+3. medicalHistory — Diagnosed medical conditions, chronic diseases, and significant past medical events. Examples: "Type 2 diabetes", "Hypertension", "Hypothyroidism", "GERD", "Anxiety"
+4. familyHistory — Any family members' health conditions mentioned. Group ALL conditions for the same family member into a SINGLE entry. Format: "Mother — hypertension; hypothyroid; breast cancer" (not separate lines per condition). Format: "Father — heart disease; type 2 diabetes", "Maternal grandmother — ovarian cancer"
+5. socialHistory — Lifestyle facts: smoking status, alcohol use, exercise habits, occupation, relationship status, diet. Examples: "Former smoker — quit 2015", "Drinks 1-2 glasses wine/week", "Sedentary job, walks 3x/week"
+6. allergies — Drug, food, or environmental allergies. Include reaction type if mentioned. Examples: "Penicillin — anaphylaxis", "Sulfa drugs — rash", "Shellfish — hives"
+7. surgicalHistory — Past surgeries, procedures, or hospitalizations. Examples: "Appendectomy 2010", "C-section 2018", "Knee arthroscopy 2022"
 
 CRITICAL SAFETY RULES:
 - ONLY extract information EXPLICITLY stated — do not infer or guess
 - NEVER create entries based on what "usually" happens or general knowledge
 - NEVER duplicate across sections (a medication goes in medications, not medical history)
+- structuredMedications MUST have the exact same number of entries as currentMedications, in the same order
 - Keep each entry concise — one condition/medication/fact per array item
 - If a section has nothing explicitly stated, return an empty array
 - Do NOT include lab values or test results — those belong in lab interpretation
@@ -4184,6 +4193,7 @@ CRITICAL SAFETY RULES:
 Return ONLY this JSON structure:
 {
   "currentMedications": [],
+  "structuredMedications": [],
   "medicalHistory": [],
   "familyHistory": [],
   "socialHistory": [],
@@ -4233,8 +4243,19 @@ Return ONLY this JSON structure:
         return [`${label} — ${unique.join("; ")}`];
       });
 
+      const rawCurrentMeds: string[] = extracted.currentMedications ?? [];
+      const rawStructuredMeds: import("@shared/schema").ExtractedMedication[] = extracted.structuredMedications ?? [];
+      // Guarantee parallel arrays — fall back to drugName-only entry if AI returned fewer structured items
+      const structuredMedications = rawCurrentMeds.map((display: string, i: number) => {
+        const s = rawStructuredMeds[i];
+        if (s && s.drugName) return s;
+        // Fallback: use the full display string as drugName
+        return { drugName: display } as import("@shared/schema").ExtractedMedication;
+      });
+
       const draft: import("@shared/schema").PatientChartDraft = {
-        currentMedications: extracted.currentMedications ?? [],
+        currentMedications: rawCurrentMeds,
+        structuredMedications,
         medicalHistory: extracted.medicalHistory ?? [],
         familyHistory: groupedFamilyHistory,
         socialHistory: extracted.socialHistory ?? [],

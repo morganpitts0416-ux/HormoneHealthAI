@@ -1397,8 +1397,19 @@ export const insertAppointmentSchema = createInsertSchema(appointments).omit({
 // Stores medication list, medical/family/social/surgical history and allergies.
 // AI extracts a draft from encounter transcripts/SOAP; clinician approves before save.
 
+export type ExtractedMedication = {
+  drugName: string;
+  strength?: string;
+  strengthUnit?: string;
+  form?: string;
+  route?: string;
+  sig?: string;
+  indication?: string;
+};
+
 export type PatientChartDraft = {
   currentMedications: string[];
+  structuredMedications?: ExtractedMedication[];  // parallel array — index matches currentMedications
   medicalHistory: string[];
   familyHistory: string[];
   socialHistory: string[];
