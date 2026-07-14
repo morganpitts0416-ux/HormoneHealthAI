@@ -1,0 +1,99 @@
+Before committing or deploying, please provide a verification report for the SOAP pipeline changes.
+
+## 1. Show the exact files changed
+
+List every modified file and briefly state what changed in each file.
+
+## 2. Show the relevant diffs
+
+Provide the exact code diff for:
+
+* Step 4 SOAP-generation prompt changes
+* Strengthened Step 5 QA rule
+* Care Plan instructions
+* June refinement anti-condensation instructions
+* The new `finalFidelityAudit` function
+* The route-handler wiring that runs the audit after June
+* The template-note route changes
+* Development diagnostics and warning logic
+
+Do not provide only a summary. Show the actual changed code.
+
+## 3. Confirm the final execution order
+
+Confirm that the standard encounter route now runs in this exact order:
+
+1. Normalize and diarize
+2. Clinical extraction
+3. Lab-context assembly
+4. Medical normalization and inference
+5. SOAP section generation
+6. QA and omission revision
+7. June refinement, when applicable
+8. Final transcript-fidelity audit
+9. Return and save the final audited note
+
+Also confirm the order used by the template-note route.
+
+## 4. Verify the fidelity audit receives all required inputs
+
+Confirm that `finalFidelityAudit` receives:
+
+* The complete normalized transcript
+* The structured clinical extraction
+* The normalized clinical metadata
+* The SOAP note produced before June refinement
+* The SOAP note produced after June refinement
+* The applicable Care Plan and follow-up content
+
+Confirm that it can restore detail removed either during SOAP generation, QA revision, or June refinement—not only details removed by June.
+
+## 5. Confirm the final audited note is the note actually returned and saved
+
+Trace the final variable through the route handler and confirm that:
+
+* The audited note is returned to the frontend
+* The audited note is saved to the encounter
+* No later formatter, personalization pass, or postprocessing step modifies the note after the final fidelity audit
+* The pre-audit or post-June version cannot accidentally be saved instead
+
+## 6. Verify failure handling
+
+Explain what happens if the final fidelity audit:
+
+* Times out
+* Returns invalid JSON
+* Throws an API error
+* Produces an empty note
+* Produces malformed SOAP sections
+
+The existing valid note should be preserved as a fallback. A failed fidelity audit must not erase or corrupt the note.
+
+## 7. Verify development diagnostics
+
+Confirm that diagnostic logging:
+
+* Runs only in development or an explicitly enabled debug mode
+* Does not log the transcript, patient identifiers, note text, or other PHI
+* Records counts and stage metadata only
+* Does not change production behavior
+
+Show an example of the diagnostic output using fabricated values only.
+
+## 8. Run automated safety checks
+
+Please run:
+
+* TypeScript type checking
+* The production build
+* Existing automated tests
+* Linting, if configured
+* A search for all calls to `applyJuneRefinement`
+* A search for all calls to `applyProviderPersonalizationPass`
+* A search for all SOAP-generation route handlers
+
+Confirm that no note-generation path still applies a content-changing pass after the final fidelity audit.
+
+## 9. Do not deploy yet
+
+After providing the verification report and diffs, stop before deployment so I can review the implementation.
