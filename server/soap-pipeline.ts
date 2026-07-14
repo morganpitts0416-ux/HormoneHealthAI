@@ -2366,6 +2366,26 @@ Review the note for quality issues. If critical/important issues are found, prov
 // Compares the final note against the full transcript, extraction, normalized
 // metadata, and (when June ran) the pre-June note to detect and restore any
 // clinically meaningful detail that was removed during refinement passes.
+//
+// CURRENT SCOPE: This audit is primarily a post-June safety net. It runs an
+// AI comparison pass only when June/personalization actually changed the note
+// (preJuneNote !== null). When June did not run, it performs dev-mode
+// heuristic checks only (character-count reduction, HPI length) and returns
+// the note unchanged.
+//
+// TODO (future release): Enhance this audit to support a second operating
+// mode — a full transcript-fidelity check — that can run regardless of
+// whether June was applied. In this mode the audit would compare the final
+// note directly against:
+//   • The complete normalized transcript (full diarized text)
+//   • The structured clinical extraction (freshExtraction)
+//   • The normalized clinical metadata (NormalizedExtraction from Step 3c)
+// and detect whether the note-generation or QA stages (Steps 5–6) omitted
+// clinically meaningful facts present in the transcript, not only detail
+// removed by June/personalization. This represents the next logical
+// evolution of the pipeline: a comprehensive end-to-end fidelity gate rather
+// than a post-June diff. Implementation note: the `normalized` param is
+// already accepted in the function signature for this purpose.
 export async function finalFidelityAudit(params: {
   finalNote: string;
   preJuneNote: string | null;
