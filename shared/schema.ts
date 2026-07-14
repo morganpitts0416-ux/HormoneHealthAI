@@ -1484,6 +1484,9 @@ export const patientVitals = pgTable("patient_vitals", {
   symptoms: text("symptoms").array().default(sql`ARRAY[]::text[]`),
   // Links a patient-logged reading to its driving monitoring episode (null for clinic vitals).
   monitoringEpisodeId: integer("monitoring_episode_id"),
+  // Links an auto-extracted vital to the clinical encounter (note) it came from.
+  // When set, re-saving the note will UPDATE this row instead of inserting a duplicate.
+  sourceEncounterId: integer("source_encounter_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export type PatientVital = typeof patientVitals.$inferSelect;
@@ -1495,6 +1498,7 @@ export const insertPatientVitalSchema = createInsertSchema(patientVitals).omit({
   timeOfDay: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional().nullable(),
   symptoms: z.array(z.string()).optional(),
   monitoringEpisodeId: z.number().int().positive().optional().nullable(),
+  sourceEncounterId: z.number().int().positive().optional().nullable(),
 });
 export type InsertPatientVital = z.infer<typeof insertPatientVitalSchema>;
 

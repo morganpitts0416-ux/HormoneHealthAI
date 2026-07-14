@@ -463,24 +463,29 @@ function persistVitalsFromNoteText(
   const bmi = (weightLbs && heightInches && heightInches > 0)
     ? Math.round(((weightLbs / (heightInches * heightInches)) * 703) * 10) / 10
     : null;
-  // Tag note-extracted vitals with the encounter ID so dedup can skip re-runs
-  // when a note is signed multiple times (initial sign + amendments).
   const noteTag = encounterId
     ? `Auto-recorded from note (enc:${encounterId})`
     : 'Auto-recorded from AI-generated note';
   Promise.resolve()
     .then(async () => {
-      // Dedup: skip if we already auto-recorded vitals for this specific encounter
       if (encounterId) {
+        // Upsert by sourceEncounterId: if the note was amended with updated vitals,
+        // UPDATE the existing row so there is never more than one vital entry per note.
         const existing = await storageDb
           .select({ id: schema.patientVitals.id })
           .from(schema.patientVitals)
           .where(and(
             eq(schema.patientVitals.patientId, patientId),
-            eq(schema.patientVitals.notes, noteTag),
+            eq(schema.patientVitals.sourceEncounterId, encounterId),
           ))
           .limit(1);
-        if (existing.length > 0) return;
+        if (existing.length > 0) {
+          await storageDb
+            .update(schema.patientVitals)
+            .set({ ...(v as any), bmi, notes: noteTag })
+            .where(eq(schema.patientVitals.id, existing[0].id));
+          return;
+        }
       }
       await storage.createPatientVital({
         patientId,
@@ -489,6 +494,7 @@ function persistVitalsFromNoteText(
         bmi,
         notes: noteTag,
         source: 'clinic',
+        sourceEncounterId: encounterId ?? null,
       } as any);
     })
     .catch((err) => {
@@ -12007,7 +12013,7 @@ Return a JSON object:
 
       // Fire-and-forget: persist any vital signs found in the generated note
       if (encounter.patientId && soapNote.fullNote) {
-        persistVitalsFromNoteText(encounter.patientId, clinicianId, soapNote.fullNote);
+        persistVitalsFromNoteText(encounter.patientId, clinicianId, soapNote.fullNote, id);
       }
 
       res.json({
@@ -12485,7 +12491,7 @@ This note is authored by the treating provider. Write in provider voice througho
 
       // Fire-and-forget: persist any vital signs found in the generated note
       if (encounter.patientId && finalNote) {
-        persistVitalsFromNoteText(encounter.patientId, clinicianId, finalNote);
+        persistVitalsFromNoteText(encounter.patientId, clinicianId, finalNote, id);
       }
 
       const updated = await storage.getEncounter(id, clinicianId, clinicId);
@@ -14530,12 +14536,57 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
     }
   });
 
+  // PATCH /api/vitals/:id — edit a vitals entry (manual or auto-extracted)
+  app.patch("/api/vitals/:id", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const id = parseInt(req.params.id);
+      // Fetch row to get patientId, then verify clinic access
+      const [row] = await storageDb
+        .select({ patientId: schema.patientVitals.patientId })
+        .from(schema.patientVitals)
+        .where(eq(schema.patientVitals.id, id))
+        .limit(1);
+      if (!row) return res.status(404).json({ message: "Vital not found" });
+      const patient = await storage.getPatient(row.patientId, clinicianId, clinicId);
+      if (!patient) return res.status(403).json({ message: "Access denied" });
+
+      const { weightLbs, heightInches, ...rest } = req.body ?? {};
+      const bmi = (weightLbs && heightInches && heightInches > 0)
+        ? Math.round(((weightLbs / (heightInches * heightInches)) * 703) * 10) / 10
+        : (weightLbs || heightInches) ? null : undefined;
+      const updated = await storage.updatePatientVital(id, row.patientId, {
+        ...rest,
+        ...(weightLbs !== undefined ? { weightLbs } : {}),
+        ...(heightInches !== undefined ? { heightInches } : {}),
+        ...(bmi !== undefined ? { bmi } : {}),
+      });
+      if (!updated) return res.status(400).json({ message: "No changes" });
+      res.json(updated);
+    } catch (err: any) {
+      console.error("[Vitals] patch error:", err);
+      res.status(500).json({ message: err.message || "Failed to update vitals" });
+    }
+  });
+
   // DELETE /api/vitals/:id — delete a vitals entry
+  // Auth: any clinician with access to the patient (not just the one who recorded it).
   app.delete("/api/vitals/:id", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
-      const ok = await storage.deletePatientVital(id, clinicianId);
+      // Fetch the row first to get patientId, then verify this clinician's clinic has access
+      const [row] = await storageDb
+        .select({ patientId: schema.patientVitals.patientId })
+        .from(schema.patientVitals)
+        .where(eq(schema.patientVitals.id, id))
+        .limit(1);
+      if (!row) return res.status(404).json({ message: "Vital not found" });
+      const patient = await storage.getPatient(row.patientId, clinicianId, clinicId);
+      if (!patient) return res.status(403).json({ message: "Access denied" });
+      const ok = await storage.deletePatientVital(id, row.patientId);
       if (!ok) return res.status(404).json({ message: "Vital not found" });
       res.json({ success: true });
     } catch (err: any) {
@@ -18936,6 +18987,39 @@ IMPORTANT:
     } catch (err) {
       console.error("[vitals-monitoring] portal log error:", err);
       res.status(500).json({ message: "Failed to log reading" });
+    }
+  });
+
+  // PATCH /api/portal/vitals/:id — patient edits their own logged vital (typo correction)
+  app.patch("/api/portal/vitals/:id", requirePortalAuth, async (req, res) => {
+    try {
+      const sess = req.session as any;
+      const patientId: number = sess.portalPatientId;
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
+      // Verify the vital belongs to this patient and is patient-logged
+      const [row] = await storageDb
+        .select({ patientId: schema.patientVitals.patientId, source: schema.patientVitals.source })
+        .from(schema.patientVitals)
+        .where(eq(schema.patientVitals.id, id))
+        .limit(1);
+      if (!row || row.patientId !== patientId) return res.status(404).json({ message: "Not found" });
+      if (row.source !== "patient_logged") return res.status(403).json({ message: "Only patient-logged readings can be edited here" });
+      const { weightLbs, heightInches, ...rest } = req.body ?? {};
+      const bmi = (weightLbs && heightInches && heightInches > 0)
+        ? Math.round(((weightLbs / (heightInches * heightInches)) * 703) * 10) / 10
+        : undefined;
+      const updated = await storage.updatePatientVital(id, patientId, {
+        ...rest,
+        ...(weightLbs !== undefined ? { weightLbs } : {}),
+        ...(heightInches !== undefined ? { heightInches } : {}),
+        ...(bmi !== undefined ? { bmi } : {}),
+      });
+      if (!updated) return res.status(400).json({ message: "No changes" });
+      res.json(updated);
+    } catch (err: any) {
+      console.error("[vitals-monitoring] portal patch error:", err);
+      res.status(500).json({ message: "Failed to update reading" });
     }
   });
 

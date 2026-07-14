@@ -3,7 +3,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, TrendingUp, Building2, Home, Trash2, AlertTriangle } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Loader2, TrendingUp, Building2, Home, Trash2, AlertTriangle, Pencil, FileText, Check, X } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -16,6 +17,35 @@ interface Props {
   patientName: string;
 }
 
+interface EditForm {
+  systolicBp: string;
+  diastolicBp: string;
+  heartRate: string;
+  weightLbs: string;
+  heightInches: string;
+  temperature: string;
+  respiratoryRate: string;
+  oxygenSaturation: string;
+}
+
+function toEditForm(v: PatientVital): EditForm {
+  return {
+    systolicBp: v.systolicBp != null ? String(v.systolicBp) : "",
+    diastolicBp: v.diastolicBp != null ? String(v.diastolicBp) : "",
+    heartRate: v.heartRate != null ? String(v.heartRate) : "",
+    weightLbs: v.weightLbs != null ? String(Number(v.weightLbs)) : "",
+    heightInches: v.heightInches != null ? String(Number(v.heightInches)) : "",
+    temperature: v.temperature != null ? String(Number(v.temperature)) : "",
+    respiratoryRate: v.respiratoryRate != null ? String(v.respiratoryRate) : "",
+    oxygenSaturation: v.oxygenSaturation != null ? String(Number(v.oxygenSaturation)) : "",
+  };
+}
+
+function numOrNull(s: string): number | null {
+  const n = parseFloat(s);
+  return s.trim() !== "" && Number.isFinite(n) ? n : null;
+}
+
 function fmtDate(d: string | Date) {
   const dt = new Date(d);
   return dt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit", timeZone: "UTC" });
@@ -26,11 +56,13 @@ function fmtDateFull(d: string | Date) {
   return dt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 }
 
-function srcOf(v: { source?: string | null }): "clinic" | "patient_logged" {
-  return v.source === "patient_logged" ? "patient_logged" : "clinic";
+function srcOf(v: { source?: string | null; sourceEncounterId?: number | null }): "note" | "clinic" | "patient_logged" {
+  if (v.source === "patient_logged") return "patient_logged";
+  if ((v as any).sourceEncounterId != null) return "note";
+  return "clinic";
 }
 
-// Custom dot renderer: filled circle = clinic, hollow ring = patient-reported.
+// Custom dot renderer: filled circle = clinic/note, hollow ring = patient-reported.
 function makeSourceDot(stroke: string) {
   // eslint-disable-next-line react/display-name
   return (props: any) => {
@@ -67,6 +99,8 @@ export function VitalTrendsDialog({ open, onOpenChange, patientId, patientName }
   const { toast } = useToast();
   const qc = useQueryClient();
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState<EditForm | null>(null);
 
   const { data: vitalsRaw, isLoading } = useQuery<PatientVital[]>({
     queryKey: ["/api/patients", patientId, "vitals"],
@@ -90,14 +124,57 @@ export function VitalTrendsDialog({ open, onOpenChange, patientId, patientName }
     },
   });
 
-  // Defensive normalisation: accept both a raw PatientVital[] and the legacy
-  // wrapped shape { vitals: PatientVital[] } so a stale cache entry from the
-  // monitoring panel never renders the dialog blank.
+  const editMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Record<string, number | null> }) =>
+      apiRequest("PATCH", `/api/vitals/${id}`, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/patients", patientId, "vitals"] });
+      setEditingId(null);
+      setEditForm(null);
+      toast({ title: "Reading updated" });
+    },
+    onError: () => {
+      toast({ title: "Update failed", description: "Could not save changes.", variant: "destructive" });
+    },
+  });
+
+  function startEdit(v: PatientVital) {
+    setConfirmDeleteId(null);
+    setEditingId(v.id);
+    setEditForm(toEditForm(v));
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditForm(null);
+  }
+
+  function saveEdit(id: number) {
+    if (!editForm) return;
+    editMutation.mutate({
+      id,
+      data: {
+        systolicBp: numOrNull(editForm.systolicBp),
+        diastolicBp: numOrNull(editForm.diastolicBp),
+        heartRate: numOrNull(editForm.heartRate),
+        weightLbs: numOrNull(editForm.weightLbs),
+        heightInches: numOrNull(editForm.heightInches),
+        temperature: numOrNull(editForm.temperature),
+        respiratoryRate: numOrNull(editForm.respiratoryRate),
+        oxygenSaturation: numOrNull(editForm.oxygenSaturation),
+      },
+    });
+  }
+
+  function setField(field: keyof EditForm, value: string) {
+    setEditForm(prev => prev ? { ...prev, [field]: value } : prev);
+  }
+
+  // Defensive normalisation
   const vitals: PatientVital[] = Array.isArray(vitalsRaw)
     ? vitalsRaw
     : ((vitalsRaw as any)?.vitals ?? []);
 
-  // One row per reading, sorted oldest → newest for charts.
   const sorted = useMemo(() =>
     [...vitals].sort((a, b) => new Date(a.recordedAt as any).getTime() - new Date(b.recordedAt as any).getTime()),
     [vitals]
@@ -114,7 +191,6 @@ export function VitalTrendsDialog({ open, onOpenChange, patientId, patientName }
     bmi: (v as any).bmi != null ? Number((v as any).bmi) : null,
   })), [sorted]);
 
-  // Table rows newest-first
   const tableRows = useMemo(() =>
     [...vitals].sort((a, b) => new Date(b.recordedAt as any).getTime() - new Date(a.recordedAt as any).getTime()),
     [vitals]
@@ -135,11 +211,15 @@ export function VitalTrendsDialog({ open, onOpenChange, patientId, patientName }
         {/* Source legend */}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground -mt-2 mb-1">
           <span className="inline-flex items-center gap-1.5">
-            <Building2 className="w-3.5 h-3.5" style={{ color: "#2e3a20" }} />
-            <span>In-clinic <span className="text-muted-foreground/70">(filled dot)</span></span>
+            <Building2 className="w-3.5 h-3.5" />
+            <span>Manual entry</span>
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <Home className="w-3.5 h-3.5" style={{ color: "#8b5a10" }} />
+            <FileText className="w-3.5 h-3.5" />
+            <span>From note <span className="text-muted-foreground/70">(auto-synced)</span></span>
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <Home className="w-3.5 h-3.5" />
             <span>Patient-reported <span className="text-muted-foreground/70">(hollow dot)</span></span>
           </span>
           {!hasPatientLogged && (
@@ -229,13 +309,90 @@ export function VitalTrendsDialog({ open, onOpenChange, patientId, patientName }
                     </thead>
                     <tbody>
                       {tableRows.map((v) => {
+                        const isEditing = editingId === v.id;
                         const isConfirming = confirmDeleteId === v.id;
                         const isDeleting = deleteMutation.isPending && confirmDeleteId === v.id;
+                        const isSaving = editMutation.isPending && editingId === v.id;
+                        const src = srcOf(v);
+
+                        if (isEditing && editForm) {
+                          return (
+                            <tr key={v.id} className="border-t bg-muted/30">
+                              <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">
+                                {fmtDateFull(v.recordedAt as any)}
+                              </td>
+                              <td className="px-2 py-1.5">
+                                <div className="flex items-center gap-1">
+                                  <Input
+                                    data-testid={`input-edit-systolic-${v.id}`}
+                                    className="h-7 w-14 text-xs font-mono px-1.5"
+                                    placeholder="Sys"
+                                    value={editForm.systolicBp}
+                                    onChange={e => setField("systolicBp", e.target.value)}
+                                  />
+                                  <span className="text-muted-foreground">/</span>
+                                  <Input
+                                    data-testid={`input-edit-diastolic-${v.id}`}
+                                    className="h-7 w-14 text-xs font-mono px-1.5"
+                                    placeholder="Dia"
+                                    value={editForm.diastolicBp}
+                                    onChange={e => setField("diastolicBp", e.target.value)}
+                                  />
+                                </div>
+                              </td>
+                              <td className="px-2 py-1.5">
+                                <Input
+                                  data-testid={`input-edit-hr-${v.id}`}
+                                  className="h-7 w-14 text-xs font-mono px-1.5"
+                                  placeholder="HR"
+                                  value={editForm.heartRate}
+                                  onChange={e => setField("heartRate", e.target.value)}
+                                />
+                              </td>
+                              <td className="px-2 py-1.5">
+                                <Input
+                                  data-testid={`input-edit-weight-${v.id}`}
+                                  className="h-7 w-16 text-xs font-mono px-1.5"
+                                  placeholder="lbs"
+                                  value={editForm.weightLbs}
+                                  onChange={e => setField("weightLbs", e.target.value)}
+                                />
+                              </td>
+                              <td className="px-3 py-2 text-muted-foreground text-xs">auto</td>
+                              <td className="px-3 py-2">
+                                <SourceBadge src={src} />
+                              </td>
+                              <td className="px-2 py-1.5 text-right">
+                                <span className="inline-flex items-center gap-1">
+                                  <Button
+                                    data-testid={`button-save-vital-${v.id}`}
+                                    size="icon"
+                                    variant="default"
+                                    onClick={() => saveEdit(v.id)}
+                                    disabled={isSaving}
+                                  >
+                                    {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                                  </Button>
+                                  <Button
+                                    data-testid={`button-cancel-edit-vital-${v.id}`}
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={cancelEdit}
+                                    disabled={isSaving}
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </Button>
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        }
+
                         const bpStr = v.systolicBp && v.diastolicBp ? `${v.systolicBp}/${v.diastolicBp}` : v.systolicBp ? `${v.systolicBp}` : "—";
                         const hrStr = v.heartRate ? `${v.heartRate}` : "—";
                         const wtStr = v.weightLbs ? `${Number(v.weightLbs)} lbs` : "—";
                         const bmiStr = (v as any).bmi ? `${Number((v as any).bmi).toFixed(1)}` : "—";
-                        const src = srcOf(v);
+
                         return (
                           <tr key={v.id} className="border-t last:border-b-0 hover-elevate">
                             <td className="px-3 py-2 text-foreground">{fmtDateFull(v.recordedAt as any)}</td>
@@ -244,15 +401,7 @@ export function VitalTrendsDialog({ open, onOpenChange, patientId, patientName }
                             <td className="px-3 py-2 font-mono text-foreground">{wtStr}</td>
                             <td className="px-3 py-2 font-mono text-foreground">{bmiStr}</td>
                             <td className="px-3 py-2">
-                              {src === "patient_logged" ? (
-                                <span className="inline-flex items-center gap-1 text-muted-foreground">
-                                  <Home className="w-3 h-3" /> Patient
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 text-muted-foreground">
-                                  <Building2 className="w-3 h-3" /> Clinic
-                                </span>
-                              )}
+                              <SourceBadge src={src} />
                             </td>
                             <td className="px-2 py-1.5 text-right">
                               {isConfirming ? (
@@ -278,15 +427,28 @@ export function VitalTrendsDialog({ open, onOpenChange, patientId, patientName }
                                   </Button>
                                 </span>
                               ) : (
-                                <Button
-                                  data-testid={`button-delete-vital-${v.id}`}
-                                  size="icon"
-                                  variant="ghost"
-                                  className="text-muted-foreground"
-                                  onClick={() => setConfirmDeleteId(v.id)}
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </Button>
+                                <span className="inline-flex items-center gap-1" style={{ visibility: "visible" }}>
+                                  <Button
+                                    data-testid={`button-edit-vital-${v.id}`}
+                                    size="icon"
+                                    variant="ghost"
+                                    className="text-muted-foreground"
+                                    onClick={() => startEdit(v)}
+                                    disabled={!!editingId}
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </Button>
+                                  <Button
+                                    data-testid={`button-delete-vital-${v.id}`}
+                                    size="icon"
+                                    variant="ghost"
+                                    className="text-muted-foreground"
+                                    onClick={() => { cancelEdit(); setConfirmDeleteId(v.id); }}
+                                    disabled={!!editingId}
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </Button>
+                                </span>
                               )}
                             </td>
                           </tr>
@@ -301,6 +463,28 @@ export function VitalTrendsDialog({ open, onOpenChange, patientId, patientName }
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function SourceBadge({ src }: { src: "note" | "clinic" | "patient_logged" }) {
+  if (src === "patient_logged") {
+    return (
+      <span className="inline-flex items-center gap-1 text-muted-foreground">
+        <Home className="w-3 h-3" /> Patient
+      </span>
+    );
+  }
+  if (src === "note") {
+    return (
+      <span className="inline-flex items-center gap-1 text-muted-foreground">
+        <FileText className="w-3 h-3" /> From note
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-muted-foreground">
+      <Building2 className="w-3 h-3" /> Manual
+    </span>
   );
 }
 

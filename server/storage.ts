@@ -299,7 +299,8 @@ export interface IStorage {
   // Patient Vitals
   getPatientVitals(patientId: number, clinicianId?: number | null): Promise<schema.PatientVital[]>;
   createPatientVital(data: { patientId: number; clinicianId: number } & schema.InsertPatientVital & { bmi?: number | null }): Promise<schema.PatientVital>;
-  deletePatientVital(id: number, clinicianId: number): Promise<boolean>;
+  updatePatientVital(id: number, patientId: number, data: Partial<schema.InsertPatientVital> & { bmi?: number | null }): Promise<schema.PatientVital | null>;
+  deletePatientVital(id: number, patientId: number): Promise<boolean>;
 
   // Note Templates
   getNoteTemplates(clinicId: number, providerId: number, noteType?: string): Promise<schema.NoteTemplate[]>;
@@ -2515,17 +2516,48 @@ export class DbStorage implements IStorage {
         timeOfDay: data.timeOfDay ?? null,
         symptoms: data.symptoms ?? [],
         monitoringEpisodeId: data.monitoringEpisodeId ?? null,
+        sourceEncounterId: data.sourceEncounterId ?? null,
       })
       .returning();
     return row;
   }
 
-  async deletePatientVital(id: number, clinicianId: number): Promise<boolean> {
+  async updatePatientVital(
+    id: number,
+    patientId: number,
+    data: Partial<schema.InsertPatientVital> & { bmi?: number | null },
+  ): Promise<schema.PatientVital | null> {
+    const updates: Partial<schema.PatientVital> = {};
+    if (data.systolicBp !== undefined) updates.systolicBp = data.systolicBp ?? null;
+    if (data.diastolicBp !== undefined) updates.diastolicBp = data.diastolicBp ?? null;
+    if (data.heartRate !== undefined) updates.heartRate = data.heartRate ?? null;
+    if (data.weightLbs !== undefined) updates.weightLbs = data.weightLbs ?? null;
+    if (data.heightInches !== undefined) updates.heightInches = data.heightInches ?? null;
+    if (data.bmi !== undefined) updates.bmi = data.bmi ?? null;
+    if (data.temperature !== undefined) updates.temperature = data.temperature ?? null;
+    if (data.respiratoryRate !== undefined) updates.respiratoryRate = data.respiratoryRate ?? null;
+    if (data.oxygenSaturation !== undefined) updates.oxygenSaturation = data.oxygenSaturation ?? null;
+    if (data.painScore !== undefined) updates.painScore = data.painScore ?? null;
+    if (data.notes !== undefined) updates.notes = data.notes ?? null;
+    if (data.recordedAt !== undefined) updates.recordedAt = new Date(data.recordedAt as any);
+    if (Object.keys(updates).length === 0) return null;
+    const [row] = await db
+      .update(schema.patientVitals)
+      .set(updates)
+      .where(and(
+        eq(schema.patientVitals.id, id),
+        eq(schema.patientVitals.patientId, patientId),
+      ))
+      .returning();
+    return row ?? null;
+  }
+
+  async deletePatientVital(id: number, patientId: number): Promise<boolean> {
     const result = await db
       .delete(schema.patientVitals)
       .where(and(
         eq(schema.patientVitals.id, id),
-        eq(schema.patientVitals.clinicianId, clinicianId),
+        eq(schema.patientVitals.patientId, patientId),
       ))
       .returning();
     return result.length > 0;
