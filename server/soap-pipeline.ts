@@ -2456,8 +2456,9 @@ RESTORATION RULES:
 - Restore only content present in the pre-refinement note AND supported by the transcript
 - Do not add facts from the transcript that were not in the pre-refinement note (those were intentionally excluded)
 - Do not change medication names, doses, or statuses
-- Preserve the format, structure, and voice of the post-refinement note
-- If the final note is complete (no meaningful content was removed), return it unchanged
+- Preserve the format and structure of the post-refinement note
+- DOCUMENTATION VOICE — CORRECT ON SIGHT: If the note (either version) contains third-person observer phrases, correct them in your restored output. Specifically: "The provider recommended/discussed/advised/noted/suggested/educated/counseled" → drop "The provider" and write the action directly ("Recommended...", "Discussed...", "Advised..."). "Patient was educated on/advised to/counseled on/instructed to/informed of/made aware of" → drop "Patient was" and write the action directly ("Reviewed...", "Advised to...", "Counseled on..."). These are voice errors — correct them regardless of whether they are restoration targets.
+- If the final note is complete (no meaningful content was removed and no voice errors are present), return it unchanged
 
 RESPONSE FORMAT (JSON):
 {

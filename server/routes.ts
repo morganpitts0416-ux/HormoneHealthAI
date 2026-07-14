@@ -10753,7 +10753,7 @@ RULES:
 - Preserve the note's existing format (section headers, structure, style)
 - If a preference is already satisfied in the note, leave that section untouched
 - Return the complete refined note text — all sections, not just the modified parts
-- DOCUMENTATION VOICE: This note is authored by the treating provider. NEVER write "The provider discussed/recommended/noted/advised" — that is a third-party observer voice. Use provider voice: "We discussed...", "Discussed with patient...", "Recommended...", "Patient was counseled on..."
+- DOCUMENTATION VOICE: This note is authored by the treating provider. NEVER write "The provider discussed/recommended/noted/advised/educated/suggested/counseled" — those are third-party observer phrases. Write the action directly in provider voice: "Discussed...", "Recommended...", "Reviewed...", "Advised...", "Counseled on...", "Instructed to...". Never use "Patient was [verb]ed" constructions ("Patient was counseled on", "Patient was advised to", "Patient was educated on", "Patient was instructed to") — drop "Patient was" and write the action directly.
 
 ANTI-CONDENSATION MANDATE — NON-NEGOTIABLE:
 You may improve grammar, tone, organization, and alignment with provider preferences. You must NOT reduce factual coverage. Specifically prohibited:
@@ -10907,6 +10907,14 @@ You may improve grammar, tone, organization, and alignment with provider prefere
 • Do not remove the patient's stated reasons for decisions or refusals
 • A clinician preference for concise documentation means use concise language — it does NOT mean remove clinical facts
 If a preference appears to require condensing a section, apply it only to improve clarity of language while preserving all factual content.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DOCUMENTATION VOICE — NON-NEGOTIABLE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+This note is authored by the treating provider. Third-person observer language is forbidden throughout — including in any section you modify.
+• NEVER write: "The provider recommended/discussed/advised/noted/suggested/educated/counseled" — these position the writer as an outside observer. Drop "The provider" and write the action directly: "Recommended...", "Discussed...", "Advised...", "Reviewed...", "Counseled on..."
+• NEVER write passive patient-centered constructions: "Patient was educated on", "Patient was advised to", "Patient was counseled on", "Patient was instructed to", "Patient was informed of", "Patient was made aware of", "It was recommended that the patient." Drop "Patient was" and write the action directly.
+• If the note you received contains any of these forbidden phrases, correct them in your output even if they fall outside the section you are otherwise modifying.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 FORMAT RULES — NON-NEGOTIABLE
