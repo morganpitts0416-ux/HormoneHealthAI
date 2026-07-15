@@ -10829,6 +10829,7 @@ If any preference appears to require shortening or condensing a section, apply i
     diagnosisBundles: Array<{ title: string; codes: { code: string; name: string }[]; aliases: string[] }>,
     openai: OpenAI,
     patientAgeContext?: string,
+    rawTranscript?: string,
   ): Promise<{ note: string; bundlesApplied: string[]; juneTriggersApplied: string[]; changed: boolean }> {
     const noop = { note: noteText, bundlesApplied: [], juneTriggersApplied: [], changed: false };
 
@@ -10842,7 +10843,9 @@ If any preference appears to require shortening or condensing a section, apply i
       instructions = active.filter((p: schema.JunePreference) => p.category === "instruction");
       const triggers = active.filter((p: schema.JunePreference) => p.category === "trigger");
       snippets = active.filter((p: schema.JunePreference) => p.category === "snippet");
-      const haystack = transcriptText.toLowerCase();
+      // Search BOTH the normalized transcript and the original raw transcript so that
+      // trigger phrases are never missed due to normalization truncation.
+      const haystack = (transcriptText + "\n" + (rawTranscript ?? "")).toLowerCase();
       firedTriggers = triggers.filter((t: schema.JunePreference) => {
         if (!t.triggerPhrases) return false;
         const phrases = t.triggerPhrases.split(",").map((s: string) => s.trim().toLowerCase()).filter(Boolean);
@@ -10961,7 +10964,7 @@ FORMAT RULES — NON-NEGOTIABLE
           },
           {
             role: "user",
-            content: `${bundleBlock}${prefBlock}\n\n---\nORIGINAL NOTE:\n${noteText}\n\n---\nVISIT TRANSCRIPT (context for trigger rules only — do not introduce facts not supported by the note):\n${transcriptText.slice(0, 20000)}\n\n---\nPerform the Provider Personalization Pass now. Return the complete updated note.`,
+            content: `${bundleBlock}${prefBlock}\n\n---\nORIGINAL NOTE:\n${noteText}\n\n---\nVISIT TRANSCRIPT (context for trigger rules only — do not introduce facts not supported by the note):\n${transcriptText.slice(0, 60000)}\n\n---\nPerform the Provider Personalization Pass now. Return the complete updated note.`,
           },
         ],
       });
@@ -11266,6 +11269,7 @@ Return a JSON array of utterance objects. Each object must have:
 Return ONLY the JSON array, no explanation.`;
         const normCompletion = await openai.chat.completions.create({
           model: "gpt-4o",
+          max_tokens: 16384,
           messages: [
             { role: "system", content: normSystemPrompt },
             { role: "user", content: `Transcript segments to process:\n${rawInputText}` },
@@ -11284,17 +11288,29 @@ Return ONLY the JSON array, no explanation.`;
           normalizedText: u.normalizedText ?? u.text ?? "",
           corrections: u.corrections ?? [],
         }));
-        await storage.updateEncounter(id, clinicianId, { diarizedTranscript: diarized }, clinicId);
+
+        // Coverage check: if the normalized output covers < 60% of the raw transcript
+        // word count, the model likely truncated the response — fall back to raw.
+        const rawWordCount = rawInputText.split(/\s+/).filter(Boolean).length;
+        const normWordCount = diarized.reduce((s: number, u: any) => s + (u.text || "").split(/\s+/).filter(Boolean).length, 0);
+        if (rawWordCount > 0 && normWordCount < rawWordCount * 0.6) {
+          console.warn(`[SOAP Pipeline] Normalization coverage ${Math.round(normWordCount / rawWordCount * 100)}% — using raw transcript to prevent content loss`);
+          diarized = [];
+        } else {
+          await storage.updateEncounter(id, clinicianId, { diarizedTranscript: diarized }, clinicId);
+        }
       } catch (normErr) {
         console.warn("[SOAP Pipeline] Normalization failed, falling back:", normErr);
         diarized = (encounter.diarizedTranscript as any[]) ?? [];
       }
 
-      // Build transcript text — normalized preferred, raw fallback
+      // Build transcript text — normalized preferred, raw fallback.
+      // Always keep the raw transcript available for trigger matching and context.
+      const rawTranscript = encounter.transcription ?? "";
       const wasNormalized = diarized.length > 0;
       const transcriptText = wasNormalized
         ? diarized.map((u: any) => `${u.speaker.toUpperCase()}: ${u.normalizedText ?? u.text}`).join('\n')
-        : (encounter.transcription ?? "");
+        : rawTranscript;
       const transcriptLabel = wasNormalized ? "TRANSCRIPT (normalized)" : "TRANSCRIPT (raw — not normalized)";
 
       // ── PIPELINE STEP 2: Extract clinical facts (always fresh) ────────────
@@ -11946,6 +11962,7 @@ Return a JSON object:
         diagnosisBundles,
         openai,
         patientAgeContext,
+        rawTranscript,
       );
       if (personalization.changed) {
         soapNote = { ...soapNote, fullNote: personalization.note };

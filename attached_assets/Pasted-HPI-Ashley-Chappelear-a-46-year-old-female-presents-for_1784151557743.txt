@@ -1,0 +1,87 @@
+HPI: Ashley Chappelear, a 46-year-old female, presents for a new patient consultation focused on hormone evaluation and management. She reports experiencing hip pain when sleeping, hot flashes occurring twice, sleep disturbances characterized by waking up at 3 AM, pelvic vaginal discharge, low energy, low libido, and low motivation. Ashley has a history of a total hysterectomy in 2017, bladder sling surgery, and rectocele repair in 2023. She previously trialed an estrogen patch for 2-4 weeks but discontinued it due to side effects, including pelvic discharge and feeling overcooled. Her family history includes her father having heart failure and her mother having mitral valve prolapse.
+
+Recent lab results show elevated LDL and lipoprotein A, with apolipoprotein B at 88. Vitamin D levels are very low, and B12 is borderline at 341. Iron stores are at 60.5, which is technically not deficient. FSH is above 90, indicating menopause, with low estrogen and progesterone levels. Thyroid, kidney, liver functions, and blood count are normal, and A1c is 5.2, indicating no pre-diabetes.
+
+Ashley feels that her low energy, libido, and motivation are related to low testosterone. Explained the role of estrogen in cardiac and bone protection and its impact on insulin sensitivity. Discussed the importance of vitamin D for brain fog and energy, as well as omega-3 fatty acids and CoQ10 for cardiovascular health. Ashley agreed to try estrogen and progesterone first before considering testosterone therapy.
+
+Current Medications: 
+
+None reported.
+
+Medical History: 
+
+Allergies: Not reported at this visit
+
+Past Medical Hx: Urinary Tract Infection (persistent), Peripheral Vascular Disease, GERD, Attention Deficit Hyperactivity Disorder
+
+Past Surgical Hx: Hysterectomy 2017, Rectocele repair and bladder sling 2023
+
+Social Hx: Never smoked or vaped, consumes alcohol once a month or less
+
+Family Hx: Mother: mitral valve prolapse; Father: Congestive Heart Failure, Stroke, Heart Attack; Maternal Grandmother: just crazy; Paternal Grandmother: Stroke; Paternal Grandfather: Heart disease, diabetes; Siblings: High blood pressure; Children: GERD
+
+ROS
+
+Constitutional
+Low energy reported; denies fever or weight changes.
+Cardiovascular
+Family history of heart disease; no chest pain reported.
+Gastrointestinal
+GERD noted; no current symptoms reported.
+Genitourinary
+Pelvic vaginal discharge noted; history of urinary tract infections.
+Musculoskeletal
+Hip pain when sleeping reported.
+Psychiatric
+Low motivation and libido reported; history of ADHD.
+Endocrine
+Hot flashes and sleep disturbances reported; menopause confirmed.
+OBJECTIVE
+Vitals: BP 103/60, HR 69, BMI 22.5
+
+ASSESSMENT/PLAN
+1. Post-Menopausal Disorder with Symptom Complex (F52.0, R53.83, E34.9)
+
+Ashley's symptoms of hot flashes, sleep disturbances, and low libido are consistent with menopause and hypoactive sexual desire disorder. Her fatigue is likely related to hormonal changes. Estrogen and progesterone therapy are recommended to address these symptoms and provide cardiac and bone protection.
+
+Plan: Initiate estrogen therapy for menopause symptoms and cardiac protection. Start progesterone 100 mg capsule at night to aid sleep and balance estrogen therapy. Reassess in 6 weeks to evaluate response and adjust therapy as needed.
+
+2. Vitamin D Deficiency (E55.9)
+
+Vitamin D levels are very low, contributing to fatigue and cognitive symptoms.
+
+Plan: Start vitamin D supplementation at 5,000 to 10,000 IU daily. Recheck levels in 3 months to assess response.
+
+3. Cardiovascular Risk Management (Z13.6)
+
+Elevated LDL and lipoprotein A suggest increased cardiovascular risk. Family history of heart disease noted.
+
+Plan: Recommend omega-3 fatty acids 1,000-2,000 mg daily and CoQ10 300 mg for cardiovascular health. Consider calcium score screening for further assessment.
+
+4. B12 Deficiency (E53.8)
+
+B12 level is borderline, potentially impacting energy and neurological function.
+
+Plan: Start B12 supplementation to target a level around 800. Reassess levels in 3 months.
+
+Future Considerations: Consider compounded testosterone and estrogen topical cream if symptoms persist after evaluating response to current hormone therapy. Reassess testosterone therapy after evaluating response to estrogen and progesterone.
+
+CARE PLAN
+Start estrogen therapy as prescribed for menopause symptoms and cardiac protection.
+
+Take progesterone 100 mg capsule at night to help with sleep and hormone balance.
+
+Begin vitamin D supplementation, 5,000 to 10,000 IU daily, to improve energy and cognitive function.
+
+Take omega-3 fatty acids 1,000-2,000 mg daily and CoQ10 300 mg for cardiovascular health.
+
+Start B12 supplementation to target a level around 800 for improved energy and neurological function.
+
+Consider a calcium score screening for further cardiovascular assessment.
+
+Follow up in 6 weeks to reassess hormone therapy response and adjust treatment as needed.
+
+FOLLOW-UP
+Return in 6 weeks for reassessment of hormone therapy response and adjustment of treatment if necessary.
+
+Use Copy Note to paste the clean note into your EHR. Evidence pills on each diagnosis open guideline citations inline.
