@@ -292,3 +292,7 @@ CREATE TABLE IF NOT EXISTS clinic_memberships (
   is_active BOOLEAN NOT NULL DEFAULT true,
   joined_at TIMESTAMP DEFAULT NOW() NOT NULL
 );
+
+-- Link auto-extracted vitals to their source encounter
+ALTER TABLE patient_vitals
+ADD COLUMN IF NOT EXISTS source_encounter_id INTEGER;
