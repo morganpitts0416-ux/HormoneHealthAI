@@ -10964,7 +10964,7 @@ FORMAT RULES — NON-NEGOTIABLE
           },
           {
             role: "user",
-            content: `${bundleBlock}${prefBlock}\n\n---\nORIGINAL NOTE:\n${noteText}\n\n---\nVISIT TRANSCRIPT (context for trigger rules only — do not introduce facts not supported by the note):\n${transcriptText.slice(0, 60000)}\n\n---\nPerform the Provider Personalization Pass now. Return the complete updated note.`,
+            content: `${bundleBlock}${prefBlock}\n\n---\nORIGINAL NOTE:\n${noteText}\n\n---\nVISIT TRANSCRIPT (context for trigger rules only — do not introduce facts not supported by the note):\n${transcriptText.slice(0, 120000)}\n\n---\nPerform the Provider Personalization Pass now. Return the complete updated note.`,
           },
         ],
       });
@@ -11223,9 +11223,22 @@ DRIFT — flag only concrete, verifiable problems (not stylistic issues):
       });
 
       // ── PIPELINE STEP 1: Normalize + diarize (always fresh) ───────────────
+      // For transcripts longer than ~48k chars (≈30 min of speech), normalization
+      // requires more output tokens than gpt-4o can produce in one call (~45k+ tokens
+      // for 300+ utterances). Skip it proactively to save an API round-trip and go
+      // directly to the full raw transcript, which the extraction and generation
+      // stages handle just as well.
+      const NORMALIZATION_CHAR_LIMIT = 48000;
       let diarized: any[] = [];
       try {
         const rawInputText = encounter.transcription ?? "";
+        if (rawInputText.length > NORMALIZATION_CHAR_LIMIT) {
+          // Transcript too long for single-call normalization (60-90 min sessions are
+          // ~60-90k chars; the model's 16k output cap can't return all utterances as
+          // JSON). Skip and leave diarized = [] so the pipeline uses the full raw
+          // transcript. No throw — we don't want the catch to load stale stored data.
+          console.log(`[SOAP Pipeline] Transcript ${rawInputText.length} chars > ${NORMALIZATION_CHAR_LIMIT} limit — skipping normalization, using full raw transcript`);
+        } else {
         const visitType = encounter.visitType ?? "follow-up";
         const lexiconRules = buildNormalizationRules(visitType);
         const normSystemPrompt = `You are a clinical medical transcription specialist. Your task has TWO parts:
@@ -11299,6 +11312,7 @@ Return ONLY the JSON array, no explanation.`;
         } else {
           await storage.updateEncounter(id, clinicianId, { diarizedTranscript: diarized }, clinicId);
         }
+        } // end else (transcript within normalization limit)
       } catch (normErr) {
         console.warn("[SOAP Pipeline] Normalization failed, falling back:", normErr);
         diarized = (encounter.diarizedTranscript as any[]) ?? [];
