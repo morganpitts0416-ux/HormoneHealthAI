@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { localDateTimeStr, toLocalDateTimeStr } from "@/lib/date-utils";
+import { localDateTimeStr, visitDateToInputStr } from "@/lib/date-utils";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -141,7 +141,7 @@ export function NurseNoteBuilder({ patientId, onClose, initialEncounterId }: Nur
           setBlocks(sn.blocks);
         }
         if (enc.chiefComplaint) setChiefComplaint(enc.chiefComplaint);
-        if (enc.visitDate) setVisitDate(toLocalDateTimeStr(new Date(enc.visitDate)));
+        if (enc.visitDate) setVisitDate(visitDateToInputStr(enc.visitDate));
       } finally {
         setLoadingExisting(false);
       }

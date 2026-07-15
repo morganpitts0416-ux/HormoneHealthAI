@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { localDateStr, toLocalDateStr } from "@/lib/date-utils";
+import { localDateStr, visitDateToDateStr } from "@/lib/date-utils";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { NoteTemplate, PatientChart } from "@shared/schema";
@@ -1480,7 +1480,7 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
         const cc = sn?.chiefComplaint ?? enc.chiefComplaint ?? "";
         if (cc) setChiefComplaint(cc);
         const vd = sn?.visitDate ?? enc.visitDate;
-        if (vd) setVisitDate(typeof vd === "string" ? vd.slice(0, 10) : toLocalDateStr(new Date(vd)));
+        if (vd) setVisitDate(visitDateToDateStr(vd));
         const vt = sn?.visitType ?? enc.visitType;
         if (vt) setVisitType(vt);
       } finally {

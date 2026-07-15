@@ -98,6 +98,39 @@ export function formatLabDate(
 }
 
 /**
+ * Extracts YYYY-MM-DDTHH:mm from an API-returned `timestamp without time zone` value
+ * for use in a datetime-local input field.
+ *
+ * node-postgres serializes `timestamp without time zone` columns as UTC ISO strings
+ * (e.g. "2026-07-15T08:20:00.000Z") even though the stored value has no timezone —
+ * the Z suffix is misleading. Passing this through `new Date()` applies the browser's
+ * UTC offset and produces the wrong wall-clock time (e.g. 03:20 in America/Chicago
+ * instead of 08:20).
+ *
+ * This helper strips the Z / offset suffix and slices to 16 chars, recovering the
+ * original wall-clock value exactly as stored, with no timezone math applied.
+ *
+ * Use this ONLY for `timestamp without time zone` encounter visit dates. Do NOT use
+ * it for UTC-intent fields (lab dates, dateOfBirth, signedAt) which use separate helpers.
+ */
+export function visitDateToInputStr(raw: string | Date): string {
+  const s = typeof raw === "string" ? raw : raw.toISOString();
+  // Remove Z or ±HH:MM suffix, then take first 16 chars: YYYY-MM-DDTHH:mm
+  return s.replace(/Z$/, "").replace(/[+-]\d{2}:\d{2}$/, "").slice(0, 16);
+}
+
+/**
+ * Extracts YYYY-MM-DD from an API-returned `timestamp without time zone` value
+ * for use in a date-only input field.
+ *
+ * Same rationale as visitDateToInputStr — strips the misleading Z suffix before
+ * slicing so no UTC-offset shift is applied.
+ */
+export function visitDateToDateStr(raw: string | Date): string {
+  return visitDateToInputStr(raw).slice(0, 10);
+}
+
+/**
  * Parses a date string in either YYYY-MM-DD or MM/DD/YYYY format and
  * returns a stable YYYY-MM-DD string without going through Date local
  * getters, which would shift the date for users west of UTC.
