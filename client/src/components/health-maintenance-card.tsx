@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ClipboardCheck, ChevronDown, AlertTriangle, Plus, Check, Send, X, Cigarette } from "lucide-react";
+import { ClipboardCheck, ChevronDown, AlertTriangle, Plus, Check, Send, X, Cigarette, CheckCircle2 } from "lucide-react";
 
 interface PatientChartSmoking {
   smokingStatus: string | null;
@@ -50,12 +50,29 @@ const ALL_SCREENING_KEYS: { key: string; label: string }[] = [
   { key: "lung_ct", label: "Low-Dose Lung CT" },
 ];
 
+// A "due" screening whose next due date is still in the future is satisfied —
+// it doesn't need action yet. Treat it the same as "completed" for display.
+function isUpToDate(row: ScreeningRow): boolean {
+  if (row.status === "completed") return true;
+  if (row.status === "due" && row.nextDueDate) {
+    return new Date(row.nextDueDate) > new Date();
+  }
+  return false;
+}
+
 function statusBadge(row: ScreeningRow) {
   if (row.status === "overdue" && row.flagVisible) {
     return <Badge variant="destructive" data-testid={`badge-status-${row.screeningKey}`}>Overdue</Badge>;
   }
   if (row.status === "ordered") return <Badge variant="secondary" data-testid={`badge-status-${row.screeningKey}`}>Ordered</Badge>;
-  if (row.status === "completed") return <Badge variant="outline" data-testid={`badge-status-${row.screeningKey}`}>Up to date</Badge>;
+  if (isUpToDate(row)) {
+    return (
+      <Badge variant="outline" className="border-transparent text-[10px] gap-0.5" style={{ backgroundColor: "#dff0d8", color: "#3a6b25" }} data-testid={`badge-status-${row.screeningKey}`}>
+        <CheckCircle2 className="w-2.5 h-2.5" />
+        Up to date
+      </Badge>
+    );
+  }
   if (row.status === "overdue") return <Badge variant="outline" data-testid={`badge-status-${row.screeningKey}`}>Overdue (dismissed)</Badge>;
   return <Badge variant="outline" data-testid={`badge-status-${row.screeningKey}`}>Due</Badge>;
 }
@@ -180,7 +197,7 @@ export function HealthMaintenanceCard({ patientId }: { patientId: number }) {
       </button>
 
       {open && (
-        <div className="px-3 pb-3 space-y-1.5">
+        <div className="px-3 pb-6 space-y-1.5">
           {chart?.smokingStatus && (
             <div className="text-[10px] text-muted-foreground" data-testid="text-smoking-summary">
               Smoking: {chart.smokingStatus}
@@ -192,32 +209,36 @@ export function HealthMaintenanceCard({ patientId }: { patientId: number }) {
           {!isLoading && activeRows.length === 0 && (
             <span className="text-xs text-muted-foreground italic">No screenings applicable</span>
           )}
-          {activeRows.map(row => (
-            <button
-              key={row.screeningKey}
-              type="button"
-              className="w-full text-left rounded-md px-2 py-1.5 hover-elevate"
-              style={{
-                backgroundColor: row.status === "overdue" && row.flagVisible ? "#fde8e8" : "#edf2e6",
-                border: `1px solid ${row.status === "overdue" && row.flagVisible ? "#f5c6c6" : "#c4d4a8"}`,
-              }}
-              onClick={() => setDetailKey(row.screeningKey)}
-              data-testid={`row-screening-${row.screeningKey}`}
-            >
-              <div className="flex items-center justify-between gap-1.5">
-                <span className="text-xs font-medium truncate" style={{ color: "#2e3a20" }}>
-                  {row.status === "overdue" && row.flagVisible && <AlertTriangle className="w-3 h-3 inline mr-1 text-destructive" />}
-                  {row.label}
-                </span>
-                {statusBadge(row)}
-              </div>
-              {row.nextDueDate && (
-                <div className="text-[10px] text-muted-foreground mt-0.5">
-                  {row.status === "completed" ? "Next due" : "Due"}: {row.nextDueDate}
+          {activeRows.map(row => {
+            const upToDate = isUpToDate(row);
+            const overdue = row.status === "overdue" && row.flagVisible;
+            const bgColor = overdue ? "#fde8e8" : upToDate ? "#f4f8f1" : "#edf2e6";
+            const borderColor = overdue ? "#f5c6c6" : upToDate ? "#cddfc4" : "#c4d4a8";
+            const labelColor = upToDate ? "#5a7a4e" : "#2e3a20";
+            return (
+              <button
+                key={row.screeningKey}
+                type="button"
+                className="w-full text-left rounded-md px-2 py-1.5 hover-elevate"
+                style={{ backgroundColor: bgColor, border: `1px solid ${borderColor}` }}
+                onClick={() => setDetailKey(row.screeningKey)}
+                data-testid={`row-screening-${row.screeningKey}`}
+              >
+                <div className="flex items-center justify-between gap-1.5">
+                  <span className="text-xs font-medium truncate" style={{ color: labelColor, opacity: upToDate ? 0.8 : 1 }}>
+                    {overdue && <AlertTriangle className="w-3 h-3 inline mr-1 text-destructive" />}
+                    {row.label}
+                  </span>
+                  {statusBadge(row)}
                 </div>
-              )}
-            </button>
-          ))}
+                {row.nextDueDate && (
+                  <div className="text-[10px] mt-0.5" style={{ color: upToDate ? "#7a9a6e" : undefined }} >
+                    {upToDate ? "Next due" : "Due"}: {row.nextDueDate}
+                  </div>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
 
