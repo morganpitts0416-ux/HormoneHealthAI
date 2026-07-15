@@ -385,7 +385,7 @@ function ScreeningDetailDialog({
         <div className="grid grid-cols-2 gap-2">
           <div>
             <Label className="text-xs">Completion date</Label>
-            <Input type="date" value={completedDate} onChange={e => setCompletedDate(e.target.value)} data-testid={`input-completed-date-${row.screeningKey}`} />
+            <Input type="date" value={eventDate} onChange={e => setEventDate(e.target.value)} data-testid={`input-completed-date-${row.screeningKey}`} />
           </div>
           <div>
             <Label className="text-xs">Ordered by</Label>
