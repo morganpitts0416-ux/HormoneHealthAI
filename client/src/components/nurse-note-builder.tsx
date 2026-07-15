@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { localDateTimeStr } from "@/lib/date-utils";
+import { localDateTimeStr, toLocalDateTimeStr } from "@/lib/date-utils";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -141,7 +141,7 @@ export function NurseNoteBuilder({ patientId, onClose, initialEncounterId }: Nur
           setBlocks(sn.blocks);
         }
         if (enc.chiefComplaint) setChiefComplaint(enc.chiefComplaint);
-        if (enc.visitDate) setVisitDate(new Date(enc.visitDate).toISOString().slice(0, 16));
+        if (enc.visitDate) setVisitDate(toLocalDateTimeStr(new Date(enc.visitDate)));
       } finally {
         setLoadingExisting(false);
       }
@@ -221,14 +221,13 @@ export function NurseNoteBuilder({ patientId, onClose, initialEncounterId }: Nur
     mutationFn: async () => {
       const fullNote = nurseBlocksToText(blocks);
       const cc = chiefComplaint || blocks.find(b => b.type === "chief_complaint")?.content || "Nurse visit";
-      const isoDate = new Date(visitDate).toISOString();
       const existingId = savedEncounterId;
       let encounterId: number;
 
       if (existingId) {
         // Update existing encounter
         await apiRequest("PUT", `/api/encounters/${existingId}`, {
-          visitDate: isoDate,
+          visitDate: visitDate,
           visitType: "nurse-visit",
           chiefComplaint: cc,
         });
@@ -239,7 +238,7 @@ export function NurseNoteBuilder({ patientId, onClose, initialEncounterId }: Nur
       } else {
         const body = {
           patientId,
-          visitDate: isoDate,
+          visitDate: visitDate,
           visitType: "nurse-visit",
           noteType: "nurse",
           chiefComplaint: cc,

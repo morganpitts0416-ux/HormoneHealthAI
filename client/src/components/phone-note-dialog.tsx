@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { localDateTimeStr } from "@/lib/date-utils";
+import { localDateTimeStr, toLocalDateTimeStr } from "@/lib/date-utils";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -37,7 +37,7 @@ export function PhoneNoteDialog({ patientId, onClose, initialEncounterId }: Phon
         const res = await fetch(`/api/encounters/${initialEncounterId}`);
         if (!res.ok) return;
         const enc = await res.json();
-        if (enc.visitDate) setVisitDate(new Date(enc.visitDate).toISOString().slice(0, 16));
+        if (enc.visitDate) setVisitDate(toLocalDateTimeStr(new Date(enc.visitDate)));
         const pc = enc.phoneContact ?? {};
         if (pc.contactedWith) setContactedWith(pc.contactedWith);
         if (pc.direction) setDirection(pc.direction);
@@ -66,7 +66,7 @@ export function PhoneNoteDialog({ patientId, onClose, initialEncounterId }: Phon
       ].join("\n");
       const body = {
         patientId,
-        visitDate: new Date(visitDate).toISOString(),
+        visitDate: visitDate,
         visitType: "phone-call",
         noteType: "phone",
         chiefComplaint: cc,

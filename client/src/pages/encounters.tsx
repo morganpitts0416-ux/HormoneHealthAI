@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect, Component, type ReactNode, type ReactElement } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
-import { format } from "date-fns";
+import { localDateStr, toLocalDateStr } from "@/lib/date-utils";
 import {
   Mic, Upload, FileText, FlaskConical, ChevronLeft, Plus,
   Sparkles, Send, CheckCircle2, Circle, AlertCircle, Trash2,
@@ -690,7 +690,7 @@ export function EncounterEditor({
   const [npDob, setNpDob] = useState("");
   const [npEmail, setNpEmail] = useState("");
   const [visitDate, setVisitDate] = useState<string>(
-    encounter ? format(new Date(encounter.visitDate), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd")
+    encounter ? toLocalDateStr(new Date(encounter.visitDate)) : localDateStr()
   );
   const [visitType, setVisitType] = useState<string>(encounter?.visitType ?? "follow-up");
   const [chiefComplaint, setChiefComplaint] = useState<string>(encounter?.chiefComplaint ?? "");
