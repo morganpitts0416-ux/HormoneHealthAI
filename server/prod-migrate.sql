@@ -392,6 +392,8 @@ ALTER TABLE patient_vitals ADD COLUMN IF NOT EXISTS symptoms TEXT[] DEFAULT ARRA
 ALTER TABLE patient_vitals ADD COLUMN IF NOT EXISTS respiratory_rate INTEGER;
 ALTER TABLE patient_vitals ADD COLUMN IF NOT EXISTS oxygen_saturation REAL;
 ALTER TABLE patient_vitals ADD COLUMN IF NOT EXISTS pain_score INTEGER;
+ALTER TABLE patient_vitals
+ADD COLUMN IF NOT EXISTS source_encounter_id INTEGER;
 
 -- ── Note typing on clinical_encounters ──────────────────────────────
 ALTER TABLE clinical_encounters ADD COLUMN IF NOT EXISTS note_type VARCHAR(30) NOT NULL DEFAULT 'soap_provider';
