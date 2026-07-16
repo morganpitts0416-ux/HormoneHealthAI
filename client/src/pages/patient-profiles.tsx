@@ -286,7 +286,7 @@ type CombinedLabItem =
   | { kind: 'full'; lab: LabResult; sortMs: number }
   | { kind: 'quick'; upload: SimpleLabUpload; sortMs: number };
 
-function LabHistoryList({ labs, simpleUploads = [], onViewLab, onDeleteLab, deletingId, onDeleteSimpleUpload, deletingSimpleUploadId, onPublishLab, hasPortalAccount, publishingId, publishedLabResultIds, patientName = "" }: {
+function LabHistoryList({ labs, simpleUploads = [], onViewLab, onDeleteLab, deletingId, onDeleteSimpleUpload, deletingSimpleUploadId, onPublishLab, hasPortalAccount, publishingId, publishedLabResultIds, patientName = "", onViewSimpleLab }: {
   labs: LabResult[];
   simpleUploads?: SimpleLabUpload[];
   onViewLab: (lab: LabResult) => void;
@@ -299,6 +299,7 @@ function LabHistoryList({ labs, simpleUploads = [], onViewLab, onDeleteLab, dele
   publishingId?: number | null;
   publishedLabResultIds?: number[];
   patientName?: string;
+  onViewSimpleLab?: (upload: SimpleLabUpload) => void;
 }) {
   const [showComparison, setShowComparison] = useState(false);
   const combined: CombinedLabItem[] = [
@@ -427,7 +428,7 @@ function LabHistoryList({ labs, simpleUploads = [], onViewLab, onDeleteLab, dele
               // Quick upload row
               const upload = item.upload;
               const entries = upload.entries as Array<{ name: string; value: string; unit: string; referenceRange?: string }>;
-              const valueSummary = entries.map(e => `${e.name}: ${e.value}${e.unit ? ' ' + e.unit : ''}`).join(' · ');
+              const valueSummary = entries.slice(0, 6).map(e => `${e.name}: ${e.value}${e.unit ? ' ' + e.unit : ''}`).join(' · ') + (entries.length > 6 ? ` · +${entries.length - 6} more` : '');
               return (
                 <div
                   key={`quick-${upload.id}`}
@@ -439,17 +440,27 @@ function LabHistoryList({ labs, simpleUploads = [], onViewLab, onDeleteLab, dele
                       <Calendar className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                       <span className="text-sm font-medium">{safeDate(upload.labDate)}</span>
                       {idx === 0 && <Badge variant="default" className="text-xs">Latest</Badge>}
-                      <Badge variant="outline" className="text-xs">Quick Upload</Badge>
+                      <Badge variant="outline" className="text-xs">Quick Entry</Badge>
+                      <Badge variant="secondary" className="text-xs">{entries.length} values</Badge>
                     </div>
-                    <Button
-                      variant="outline" size="icon"
-                      onClick={() => onDeleteSimpleUpload?.(upload.id)}
-                      disabled={deletingSimpleUploadId === upload.id}
-                      data-testid={`button-delete-simple-lab-${upload.id}`}
-                      className="text-muted-foreground"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        variant="outline" size="sm"
+                        onClick={() => onViewSimpleLab?.(upload)}
+                        data-testid={`button-view-simple-lab-${upload.id}`}
+                      >
+                        <FileText className="h-3.5 w-3.5 mr-1" />View Chart
+                      </Button>
+                      <Button
+                        variant="outline" size="icon"
+                        onClick={() => onDeleteSimpleUpload?.(upload.id)}
+                        disabled={deletingSimpleUploadId === upload.id}
+                        data-testid={`button-delete-simple-lab-${upload.id}`}
+                        className="text-muted-foreground"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </div>
                   <p className="text-xs text-muted-foreground font-mono leading-relaxed">{valueSummary}</p>
                   {upload.aiInsight && (
@@ -476,6 +487,149 @@ function LabHistoryList({ labs, simpleUploads = [], onViewLab, onDeleteLab, dele
         patientName={patientName}
       />
     </Card>
+  );
+}
+
+// ─── QuickLabDetailModal helpers ────────────────────────────────────────────
+const QUICK_LAB_PANELS: { label: string; keywords: string[] }[] = [
+  { label: "CBC", keywords: ["wbc", "rbc", "hemoglobin", "hematocrit", "platelet", "mcv", "mch", "mchc", "rdw", "neutrophil", "lymphocyte", "monocyte", "eosinophil", "basophil"] },
+  { label: "Metabolic / CMP", keywords: ["glucose", "bun", "creatinine", "egfr", "sodium", "potassium", "calcium", "co2", "chloride", "albumin", "total protein", "alp", "alt", "ast", "bilirubin", "ggt", "uric acid"] },
+  { label: "Lipid Panel", keywords: ["cholesterol", "ldl", "hdl", "triglyceride", "apob", "lp(a)", "non-hdl"] },
+  { label: "Thyroid", keywords: ["tsh", "free t4", "free t3", "reverse t3", "anti-tpo", "anti-tg", "thyroglobulin"] },
+  { label: "Hormones", keywords: ["testosterone", "shbg", "estradiol", "progesterone", " lh", " fsh", "dhea", "cortisol", "prolactin", "igf-1", "amh", "psa"] },
+  { label: "Iron & Vitamins", keywords: ["ferritin", " iron", "tibc", "vitamin d", "vitamin b12", "folate", "vitamin a", "zinc", "copper", "magnesium", "phosphorus"] },
+  { label: "Inflammatory Markers", keywords: ["crp", "hs-crp", "esr", "homocysteine", "fibrinogen"] },
+  { label: "Metabolic Markers", keywords: ["hba1c", "a1c", "fasting insulin", "insulin resistance"] },
+];
+
+function getQuickLabPanel(name: string): string {
+  const lower = " " + name.toLowerCase();
+  for (const panel of QUICK_LAB_PANELS) {
+    if (panel.keywords.some(k => lower.includes(k))) return panel.label;
+  }
+  return "Other";
+}
+
+function parseQuickRefRange(ref: string): { lo: number | null; hi: number | null } {
+  if (!ref) return { lo: null, hi: null };
+  const ltMatch = ref.match(/^[<≤]\s*([0-9.]+)/);
+  if (ltMatch) return { lo: null, hi: parseFloat(ltMatch[1]) };
+  const gtMatch = ref.match(/^[>≥]\s*([0-9.]+)/);
+  if (gtMatch) return { lo: parseFloat(gtMatch[1]), hi: null };
+  const rangeMatch = ref.match(/([0-9.]+)\s*[-–]\s*([0-9.]+)/);
+  if (rangeMatch) return { lo: parseFloat(rangeMatch[1]), hi: parseFloat(rangeMatch[2]) };
+  return { lo: null, hi: null };
+}
+
+function getQuickValueStatus(value: string, refRange?: string): "high" | "low" | "normal" | "none" {
+  if (!refRange) return "none";
+  const num = parseFloat(value);
+  if (isNaN(num)) return "none";
+  const { lo, hi } = parseQuickRefRange(refRange);
+  if (hi !== null && num > hi) return "high";
+  if (lo !== null && num < lo) return "low";
+  if (lo !== null || hi !== null) return "normal";
+  return "none";
+}
+
+function QuickLabDetailModal({ upload, onClose, patientName }: { upload: SimpleLabUpload; onClose: () => void; patientName: string }) {
+  const entries = (upload.entries as Array<{ name: string; value: string; unit: string; referenceRange?: string }>) ?? [];
+
+  const panelMap: Record<string, typeof entries> = {};
+  for (const entry of entries) {
+    const panel = getQuickLabPanel(entry.name);
+    if (!panelMap[panel]) panelMap[panel] = [];
+    panelMap[panel].push(entry);
+  }
+  const orderedPanels = [...QUICK_LAB_PANELS.map(p => p.label), "Other"].filter(p => panelMap[p]);
+
+  const labDate = (() => {
+    try {
+      const d = new Date(upload.labDate + (upload.labDate.length === 10 ? "T12:00:00" : ""));
+      return d.toLocaleDateString("en-US", { weekday: "short", year: "numeric", month: "long", day: "numeric" });
+    } catch { return upload.labDate; }
+  })();
+
+  const highCount = entries.filter(e => getQuickValueStatus(e.value, e.referenceRange) === "high").length;
+  const lowCount  = entries.filter(e => getQuickValueStatus(e.value, e.referenceRange) === "low").length;
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[88vh] flex flex-col p-0 gap-0" data-testid="dialog-quick-lab-detail">
+        <DialogHeader className="px-5 pt-5 pb-3 border-b flex-shrink-0">
+          <div className="flex items-start gap-3 flex-wrap">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap mb-1">
+                <Badge variant="outline" className="text-xs gap-1">
+                  <FlaskConical className="w-3 h-3" />Quick Lab Entry
+                </Badge>
+                <Badge variant="secondary" className="text-xs">{entries.length} value{entries.length !== 1 ? 's' : ''}</Badge>
+                {highCount > 0 && <Badge className="text-xs bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border border-red-200">{highCount} H</Badge>}
+                {lowCount > 0  && <Badge className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-200">{lowCount} L</Badge>}
+              </div>
+              <DialogTitle className="text-base">{patientName}</DialogTitle>
+              <p className="text-sm text-muted-foreground mt-0.5">{labDate}</p>
+            </div>
+          </div>
+          {upload.aiInsight && (
+            <div className="flex gap-2 mt-3 p-3 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
+              <Sparkles className="w-3.5 h-3.5 text-blue-500 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-blue-800 dark:text-blue-200 leading-relaxed">{upload.aiInsight}</p>
+            </div>
+          )}
+        </DialogHeader>
+
+        <ScrollArea className="flex-1 px-5 py-4">
+          {upload.notes && (
+            <div className="mb-4 p-3 rounded-md bg-muted/50 border">
+              <p className="text-xs text-muted-foreground italic">{upload.notes}</p>
+            </div>
+          )}
+          {orderedPanels.map(panel => (
+            <div key={panel} className="mb-5 last:mb-0">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 px-1">{panel}</h3>
+              <div className="rounded-md border overflow-hidden">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-muted/40 border-b">
+                      <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Test</th>
+                      <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground">Value</th>
+                      <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground hidden sm:table-cell">Unit</th>
+                      <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground hidden sm:table-cell">Reference Range</th>
+                      <th className="text-center px-3 py-2 text-xs font-medium text-muted-foreground w-14">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {panelMap[panel].map((entry, i) => {
+                      const status = getQuickValueStatus(entry.value, entry.referenceRange);
+                      return (
+                        <tr key={i} className={cn("border-b last:border-b-0", i % 2 !== 0 && "bg-muted/20")}>
+                          <td className="px-3 py-2 text-xs font-medium text-foreground">{entry.name}</td>
+                          <td className={cn(
+                            "px-3 py-2 text-right font-mono font-semibold text-sm tabular-nums",
+                            status === "high"   ? "text-red-600 dark:text-red-400" :
+                            status === "low"    ? "text-blue-600 dark:text-blue-400" :
+                            status === "normal" ? "text-green-700 dark:text-green-400" :
+                            "text-foreground"
+                          )}>{entry.value}</td>
+                          <td className="px-3 py-2 text-xs text-muted-foreground font-mono hidden sm:table-cell">{entry.unit || "—"}</td>
+                          <td className="px-3 py-2 text-xs text-muted-foreground font-mono hidden sm:table-cell">{entry.referenceRange || "—"}</td>
+                          <td className="px-3 py-2 text-center">
+                            {status === "high"   && <Badge className="text-[10px] px-1.5 py-0 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-red-200 no-default-hover-elevate">H</Badge>}
+                            {status === "low"    && <Badge className="text-[10px] px-1.5 py-0 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200 no-default-hover-elevate">L</Badge>}
+                            {status === "normal" && <Badge className="text-[10px] px-1.5 py-0 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-200 no-default-hover-elevate">N</Badge>}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -2433,6 +2587,7 @@ export default function PatientProfiles() {
     };
   }, [setCurrentPatient]);
   const [viewingLab, setViewingLab] = useState<LabResult | null>(null);
+  const [viewingSimpleLab, setViewingSimpleLab] = useState<SimpleLabUpload | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<LabResult | null>(null);
   const [confirmDeletePatient, setConfirmDeletePatient] = useState(false);
   const [showEditPatient, setShowEditPatient] = useState(false);
@@ -5650,6 +5805,7 @@ export default function PatientProfiles() {
                     publishingId={publishingLabId}
                     publishedLabResultIds={portalStatus?.publishedLabResultIds}
                     patientName={`${selectedPatient.firstName} ${selectedPatient.lastName}`.trim()}
+                    onViewSimpleLab={setViewingSimpleLab}
                   />
                   {allLabsForTrending.length >= 2 && (
                     <PatientTrendCharts
@@ -6397,6 +6553,14 @@ export default function PatientProfiles() {
           patient={selectedPatient}
           allLabs={labs}
           onDelete={() => handleDeleteLab(viewingLab)}
+        />
+      )}
+
+      {viewingSimpleLab && selectedPatient && (
+        <QuickLabDetailModal
+          upload={viewingSimpleLab}
+          onClose={() => setViewingSimpleLab(null)}
+          patientName={`${selectedPatient.firstName} ${selectedPatient.lastName}`.trim()}
         />
       )}
 
