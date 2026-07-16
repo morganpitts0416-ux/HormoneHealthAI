@@ -13,7 +13,7 @@ export interface FloatingPanelState {
 
 // Module-level counter so every panel gets a unique z-index and clicking
 // any panel correctly brings it above all siblings.
-let _topZ = 50;
+let _topZ = 400;
 function nextZ() { return ++_topZ; }
 
 /**
