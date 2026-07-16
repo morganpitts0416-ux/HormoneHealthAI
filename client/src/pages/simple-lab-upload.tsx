@@ -284,6 +284,7 @@ export default function SimpleLabUpload() {
       ? `${selectedPatient.firstName} ${selectedPatient.lastName}`
       : "Patient";
     return (
+      <div className="h-full overflow-y-auto">
       <div className="max-w-2xl mx-auto p-6 space-y-4">
         <div className="flex items-center gap-3">
           <CheckCircle2 className="h-8 w-8 text-green-500" />
@@ -340,11 +341,13 @@ export default function SimpleLabUpload() {
           </Button>
         </div>
       </div>
+      </div>
     );
   }
 
   // ── Main form ───────────────────────────────────────────────────────────────
   return (
+    <div className="h-full overflow-y-auto">
     <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-5">
       {/* Header */}
       <div className="flex items-center gap-3">
@@ -654,6 +657,7 @@ export default function SimpleLabUpload() {
           A brief AI comparison to previous values will be generated automatically.
         </p>
       </div>
+    </div>
     </div>
   );
 }
