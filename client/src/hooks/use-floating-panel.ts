@@ -20,16 +20,30 @@ function nextZ() { return ++_topZ; }
  * Shared drag + minimize + z-index behavior for floating chart panels.
  * Mount this in a component and spread the returned handlers onto your
  * outer panel div and header drag-handle.
+ *
+ * NOTE: bringToFront intentionally uses an imperative DOM write (not setState)
+ * so that it does NOT trigger a React re-render mid-click-sequence.  If it
+ * caused a re-render, nested-function components like HideableSection would
+ * be treated as new component types, React would unmount+remount them, the
+ * original button DOM node would be removed before the browser fires "click",
+ * and onClick handlers would silently never run.
  */
 export function useFloatingPanel(): FloatingPanelState {
   const [panelPos, setPanelPos] = useState<{ x: number; y: number } | null>(null);
   const [minimized, setMinimized] = useState(false);
-  const [zIndex, setZIndex] = useState(() => nextZ());
   const panelRef = useRef<HTMLDivElement | null>(null);
   const dragState = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
 
+  // z-index lives in a ref — updates are applied imperatively to the DOM so
+  // bringToFront never causes a React re-render (see NOTE above).
+  const zRef = useRef(nextZ());
+
   const bringToFront = useCallback(() => {
-    setZIndex(nextZ());
+    const newZ = nextZ();
+    zRef.current = newZ;
+    if (panelRef.current) {
+      panelRef.current.style.zIndex = String(newZ);
+    }
   }, []);
 
   const startDrag = useCallback((e: React.MouseEvent) => {
@@ -67,7 +81,9 @@ export function useFloatingPanel(): FloatingPanelState {
     panelRef: panelRef as React.RefObject<HTMLDivElement>,
     startDrag,
     floating: panelPos !== null,
-    zIndex,
+    // Return current ref value for the initial style prop on first render;
+    // subsequent bringToFront calls update the DOM directly without re-render.
+    zIndex: zRef.current,
     bringToFront,
   };
 }
