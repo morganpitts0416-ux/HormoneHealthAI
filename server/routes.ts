@@ -607,6 +607,51 @@ async function resolveClinicOwnerSubscription(clinicId: number): Promise<{
   return { stripeSubscriptionId: null, freeAccount: false, stripeCustomerId: null };
 }
 
+// ── Photo-ID auto-save from form uploads ──────────────────────────────────
+// Scans all file_upload fields whose label matches ID-related keywords and
+// persists each file as a patient_document (category "id") so the driver's
+// license / passport appears in the chart immediately after form submission.
+const PHOTO_ID_LABEL_RE = /driver|licen|photo.?id|identification|id.?card|govt.?id|government.?id|passport|state.?id/i;
+async function autoSavePhotoId(
+  storage: any,
+  formId: number,
+  patientId: number,
+  clinicId: number | null,
+  responses: Record<string, any>,
+) {
+  try {
+    const fields = await storage.getFormFields(formId);
+    for (const field of fields) {
+      if (field.fieldType !== "file_upload") continue;
+      if (!PHOTO_ID_LABEL_RE.test(field.label ?? "")) continue;
+      const uploads = responses?.[field.fieldKey];
+      if (!Array.isArray(uploads) || uploads.length === 0) continue;
+      for (const upload of uploads) {
+        const { name, type, size, dataUrl } = upload as any;
+        if (!dataUrl || typeof dataUrl !== "string") continue;
+        const m = dataUrl.match(/^data:[^;]+;base64,(.+)$/);
+        if (!m) continue;
+        await storage.createPatientDocument({
+          clinicId: clinicId ?? 0,
+          patientId,
+          uploadedByUserId: null,
+          uploadedByName: "Patient (Form Submission)",
+          fileName: name ?? "photo-id",
+          mimeType: type ?? "image/jpeg",
+          sizeBytes: size ?? 0,
+          category: "id",
+          notes: `Auto-saved from form field: "${field.label ?? "Photo ID"}"`,
+          source: "upload",
+          fileData: m[1],
+        });
+        console.log(`[photo-id-autosave] saved "${name}" for patient ${patientId} clinic ${clinicId}`);
+      }
+    }
+  } catch (e) {
+    console.warn("[photo-id-autosave] error:", e);
+  }
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Auth routes ────────────────────────────────────────────────────────────
@@ -6694,6 +6739,9 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
         }
       });
 
+      // Fire-and-forget: auto-save Photo ID documents from file_upload fields
+      setImmediate(() => autoSavePhotoId(storage, assignment.formId, patientId, (form as any).clinicId ?? null, responses ?? {}));
+
       res.json({ success: true, submissionId: submission.id });
     } catch (err) {
       console.error("[Portal Form Submit]", err);
@@ -6974,6 +7022,34 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
   function isAllowedDocCategory(value: unknown): value is PatientDocumentCategory {
     return typeof value === 'string' && (PATIENT_DOCUMENT_CATEGORIES as readonly string[]).includes(value);
   }
+
+  // GET /api/patients/:id/photo-id — most recent Photo ID document with file data for thumbnail
+  app.get("/api/patients/:id/photo-id", requireAuth, async (req: any, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const patientId = parseInt(req.params.id);
+      if (Number.isNaN(patientId)) return res.status(400).json({ message: "Invalid patient id" });
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+      if (clinicId == null) return res.status(403).json({ message: "Clinic context required" });
+      const rows = await storageDb
+        .select()
+        .from(schema.patientDocuments)
+        .where(
+          and(
+            eq(schema.patientDocuments.patientId, patientId),
+            eq(schema.patientDocuments.clinicId, clinicId),
+            eq(schema.patientDocuments.category, "id"),
+          )
+        )
+        .orderBy(desc(schema.patientDocuments.createdAt))
+        .limit(1);
+      res.json(rows[0] ?? null);
+    } catch (e: any) {
+      res.status(500).json({ message: e?.message ?? "Failed to fetch photo ID" });
+    }
+  });
 
   // GET /api/patients/:id/documents — list patient docs (no payloads)
   app.get("/api/patients/:id/documents", requireAuth, async (req, res) => {
@@ -15804,6 +15880,11 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
             console.error("[FormSubmit] smart-field sync error:", syncErr);
           }
         });
+      }
+
+      // Fire-and-forget: auto-save Photo ID documents from file_upload fields
+      if (resolvedPatientId) {
+        setImmediate(() => autoSavePhotoId(storage, pub.formId, resolvedPatientId!, form.clinicId ?? null, responses ?? {}));
       }
 
       // Server-side packet progress update — marks this form complete in the

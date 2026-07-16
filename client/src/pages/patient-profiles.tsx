@@ -21,7 +21,7 @@ import {
   Loader2, Sparkles, ShoppingBag, CheckCircle, XCircle, Stethoscope, ChevronRight, Plus,
   ChevronLeft, Pill, Shield, Scissors, X, Pencil, Lock, ChevronDown, FileDown, Check, BookOpen, PenLine, ArrowRightLeft,
   Link2, Clock, Building2, Eye, EyeOff, CalendarDays, Phone, Paperclip,
-  LayoutDashboard, FolderOpen, FlaskConical, Home, Archive, Save, Zap, ListChecks, MapPin, Maximize2,
+  LayoutDashboard, FolderOpen, FlaskConical, Home, Archive, Save, Zap, ListChecks, MapPin, Maximize2, IdCard,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AppointmentDialog } from "@/components/appointment-dialog";
@@ -2918,6 +2918,19 @@ export default function PatientProfiles() {
     enabled: !!selectedPatient,
   });
 
+  // Photo ID — most recent document with category "id", includes fileData for thumbnail
+  const { data: photoIdDoc } = useQuery<any>({
+    queryKey: ['/api/patients', selectedPatient?.id, 'photo-id'],
+    queryFn: async () => {
+      if (!selectedPatient) return null;
+      const res = await fetch(`/api/patients/${selectedPatient.id}/photo-id`, { credentials: 'include' });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!selectedPatient,
+    staleTime: 60_000,
+  });
+
   const { data: patientPackets = [] } = useQuery<any[]>({
     queryKey: ['/api/patients', selectedPatient?.id, 'packets'],
     queryFn: async () => {
@@ -3964,6 +3977,40 @@ export default function PatientProfiles() {
                             <Mail className="w-2.5 h-2.5" />
                             Invite Pending
                           </Badge>
+                        )}
+                        {/* Photo ID thumbnail — auto-saved from intake form uploads */}
+                        {photoIdDoc && (
+                          <div className="w-full mt-1 flex items-center gap-3 p-2 rounded-md border bg-muted/30">
+                            <IdCard className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                            <span className="text-xs text-muted-foreground flex-shrink-0">Photo ID on file:</span>
+                            {photoIdDoc.mimeType?.startsWith("image/") ? (
+                              <a
+                                href={`data:${photoIdDoc.mimeType};base64,${photoIdDoc.fileData}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="View full size"
+                                data-testid="photo-id-thumbnail"
+                              >
+                                <img
+                                  src={`data:${photoIdDoc.mimeType};base64,${photoIdDoc.fileData}`}
+                                  alt="Photo ID"
+                                  className="h-12 w-20 object-cover rounded border cursor-pointer hover:opacity-80 transition-opacity"
+                                />
+                              </a>
+                            ) : (
+                              <a
+                                href={`data:${photoIdDoc.mimeType};base64,${photoIdDoc.fileData}`}
+                                download={photoIdDoc.fileName}
+                                className="text-xs underline text-foreground"
+                                data-testid="photo-id-download"
+                              >
+                                {photoIdDoc.fileName}
+                              </a>
+                            )}
+                            <span className="text-[10px] text-muted-foreground ml-auto flex-shrink-0">
+                              {new Date(photoIdDoc.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                            </span>
+                          </div>
                         )}
                       </div>
                     )}
