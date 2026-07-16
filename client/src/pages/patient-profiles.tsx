@@ -644,7 +644,7 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
     : (interp?.patientSummary || '');
 
   // ── Draggable / minimizable panel state ───────────────────────────────────
-  const { panelPos, minimized, setMinimized, panelRef, startDrag, floating } = useFloatingPanel();
+  const { panelPos, minimized, setMinimized, panelRef, startDrag, floating, zIndex, bringToFront } = useFloatingPanel();
 
   // Escape key closes the panel
   useEffect(() => {
@@ -654,24 +654,17 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
   }, [onClose]);
 
   return (
-    <>
-      {/* Backdrop — clicking outside closes the panel */}
-      <div
-        className="fixed inset-0 z-40 bg-black/30"
-        onClick={onClose}
-        data-testid="backdrop-lab-detail"
-        aria-hidden="true"
-      />
-      <div
-        ref={panelRef}
-        className={cn(
-          "fixed z-50 flex flex-col bg-card shadow-2xl overflow-hidden",
-          floating ? "rounded-lg border w-full max-w-3xl" : "inset-y-0 right-0 border-l w-full max-w-3xl h-full",
-          minimized && "h-auto w-80 max-w-80"
-        )}
-        style={panelPos ? { left: panelPos.x, top: panelPos.y, height: minimized ? undefined : '80vh', maxHeight: '85vh' } : undefined}
-        data-testid="lab-detail-modal"
-      >
+    <div
+      ref={panelRef}
+      onMouseDown={bringToFront}
+      className={cn(
+        "fixed flex flex-col bg-card shadow-2xl overflow-hidden",
+        floating ? "rounded-lg border w-full max-w-3xl" : "inset-y-0 right-0 border-l w-full max-w-3xl h-full",
+        minimized && "h-auto w-80 max-w-80"
+      )}
+      style={{ zIndex, ...(panelPos ? { left: panelPos.x, top: panelPos.y, height: minimized ? undefined : '80vh', maxHeight: '85vh' } : {}) }}
+      data-testid="lab-detail-modal"
+    >
       {/* Draggable header */}
       <div
         onMouseDown={startDrag}
@@ -1048,7 +1041,6 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
         );
       })()}
     </div>
-    </>
   );
 }
 

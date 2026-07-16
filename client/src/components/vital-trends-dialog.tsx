@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, TrendingUp, Building2, Home, Trash2, AlertTriangle, Pencil, FileText, Check, X } from "lucide-react";
+import { Loader2, TrendingUp, Building2, Home, Trash2, AlertTriangle, Pencil, FileText, Check, X, GripVertical, Maximize2, Minus } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useFloatingPanel } from "@/hooks/use-floating-panel";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -170,6 +171,8 @@ export function VitalTrendsDialog({ open, onOpenChange, patientId, patientName }
     setEditForm(prev => prev ? { ...prev, [field]: value } : prev);
   }
 
+  const { panelPos, minimized, setMinimized, panelRef, startDrag, floating, zIndex, bringToFront } = useFloatingPanel();
+
   // Defensive normalisation
   const vitals: PatientVital[] = Array.isArray(vitalsRaw)
     ? vitalsRaw
@@ -198,15 +201,41 @@ export function VitalTrendsDialog({ open, onOpenChange, patientId, patientName }
 
   const hasPatientLogged = vitals.some((v) => srcOf(v) === "patient_logged");
 
+  if (!open) return null;
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <TrendingUp className="w-5 h-5" />
-            Vital Trends — {patientName}
-          </DialogTitle>
-        </DialogHeader>
+    <div
+      ref={panelRef}
+      onMouseDown={bringToFront}
+      className={cn(
+        "fixed flex flex-col bg-card shadow-2xl overflow-hidden",
+        floating ? "rounded-lg border w-full max-w-3xl" : "inset-y-0 right-0 border-l w-full max-w-3xl h-full"
+      )}
+      style={{ zIndex, ...(panelPos ? { left: panelPos.x, top: panelPos.y, height: minimized ? "auto" : "85vh", maxHeight: "90vh" } : {}) }}
+      data-testid="vital-trends-dialog"
+    >
+      {/* Drag-handle title bar */}
+      <div
+        onMouseDown={startDrag}
+        className="flex-shrink-0 px-5 py-3 border-b bg-card flex items-center justify-between gap-3 cursor-move select-none"
+      >
+        <div className="flex items-center gap-2">
+          <GripVertical className="w-4 h-4 text-muted-foreground" />
+          <TrendingUp className="w-5 h-5" />
+          <span className="font-semibold text-base truncate">Vital Trends — {patientName}</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <Button size="icon" variant="ghost" onClick={() => setMinimized(m => !m)} title={minimized ? "Restore" : "Minimize"}>
+            {minimized ? <Maximize2 className="w-4 h-4" /> : <Minus className="w-4 h-4" />}
+          </Button>
+          <Button size="icon" variant="ghost" onClick={() => onOpenChange(false)}>
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
+      </div>
+
+      {!minimized && (
+      <div className="flex-1 overflow-y-auto p-5 space-y-3">
 
         {/* Source legend */}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground -mt-2 mb-1">
@@ -461,8 +490,9 @@ export function VitalTrendsDialog({ open, onOpenChange, patientId, patientName }
             )}
           </>
         )}
-      </DialogContent>
-    </Dialog>
+      </div>
+      )}
+    </div>
   );
 }
 

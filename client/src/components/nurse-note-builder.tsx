@@ -3,7 +3,8 @@ import { localDateTimeStr, visitDateToInputStr } from "@/lib/date-utils";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
+import { useFloatingPanel } from "@/hooks/use-floating-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +17,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Plus, X, Save, Stethoscope, Activity, GraduationCap,
   CalendarCheck, FileText, ChevronDown, ChevronUp, Heart, ListChecks, Loader2,
+  GripVertical, Maximize2, Minus,
 } from "lucide-react";
 import { usePhraseSearch } from "@/components/phrase-search";
 import type { NoteTemplate } from "@shared/schema";
@@ -119,6 +121,11 @@ export function NurseNoteBuilder({ patientId, onClose, initialEncounterId }: Nur
   const [savedEncounterId, setSavedEncounterId] = useState<number | null>(initialEncounterId ?? null);
   const [loadingExisting, setLoadingExisting] = useState(!!initialEncounterId);
 
+  const { panelPos, minimized, setMinimized, panelRef, startDrag, floating, zIndex, bringToFront } = useFloatingPanel();
+  const [autoSaveStatus, setAutoSaveStatus] = useState<"saved" | "saving" | "unsaved">("saved");
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savedEncounterIdRef = useRef<number | null>(initialEncounterId ?? null);
+
   const { data: templates = [] } = useQuery<NoteTemplate[]>({
     queryKey: ["/api/note-templates", { noteType: "nurse" }],
     queryFn: async () => {
@@ -148,6 +155,49 @@ export function NurseNoteBuilder({ patientId, onClose, initialEncounterId }: Nur
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialEncounterId]);
+
+  // Keep ref in sync so performAutoSave always sees the latest encounter id.
+  useEffect(() => { savedEncounterIdRef.current = savedEncounterId; }, [savedEncounterId]);
+
+  const performAutoSave = useCallback(async () => {
+    setAutoSaveStatus("saving");
+    try {
+      const fullNote = nurseBlocksToText(blocks);
+      const cc = chiefComplaint || blocks.find(b => b.type === "chief_complaint")?.content || "Nurse visit";
+      const existingId = savedEncounterIdRef.current;
+      if (existingId) {
+        await apiRequest("PUT", `/api/encounters/${existingId}`, { visitDate, visitType: "nurse-visit", chiefComplaint: cc });
+        await apiRequest("PUT", `/api/encounters/${existingId}/soap`, { soapNote: { fullNote, blocks } as any });
+      } else {
+        const res = await apiRequest("POST", "/api/encounters", {
+          patientId, visitDate, visitType: "nurse-visit", noteType: "nurse", chiefComplaint: cc,
+          soapNote: { fullNote, blocks } as any,
+        });
+        const enc = await res.json();
+        savedEncounterIdRef.current = enc.id;
+        setSavedEncounterId(enc.id);
+      }
+      queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/encounters`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/encounters"] });
+      setAutoSaveStatus("saved");
+    } catch {
+      setAutoSaveStatus("unsaved");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blocks, chiefComplaint, visitDate, patientId]);
+
+  useEffect(() => {
+    const hasContent = chiefComplaint.trim() ||
+      blocks.some(b =>
+        (b.content && b.content.trim()) ||
+        (b.type === "vitals" && b.vitals && Object.values(b.vitals).some(v => v && String(v).trim()))
+      );
+    if (!hasContent) return;
+    setAutoSaveStatus("unsaved");
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(performAutoSave, 4000);
+    return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current); };
+  }, [blocks, chiefComplaint, visitDate, performAutoSave]);
 
   const applyTemplate = useCallback((id: string) => {
     setSelectedTemplateId(id);
@@ -297,96 +347,125 @@ export function NurseNoteBuilder({ patientId, onClose, initialEncounterId }: Nur
     onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
   });
 
+  const panelClass = cn(
+    "fixed flex flex-col bg-card shadow-2xl overflow-hidden",
+    floating ? "rounded-lg border w-[52rem] max-w-[95vw]" : "inset-y-0 right-0 border-l w-full max-w-3xl h-full"
+  );
+  const panelStyle: React.CSSProperties = {
+    zIndex,
+    ...(panelPos ? { left: panelPos.x, top: panelPos.y, height: minimized ? "auto" : "85vh", maxHeight: "90vh" } : {}),
+  };
+
+  const titleBar = (
+    <div
+      onMouseDown={startDrag}
+      className="flex-shrink-0 px-4 py-3 border-b bg-card flex items-center justify-between gap-3 cursor-move select-none"
+    >
+      <div className="flex items-center gap-2 min-w-0">
+        <GripVertical className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+        <Stethoscope className="w-4 h-4 flex-shrink-0" />
+        <span className="font-semibold text-sm truncate">
+          {initialEncounterId ? "Edit Nurse Note" : "Nurse Note"}
+        </span>
+        <Badge style={{ backgroundColor: "#7a8a64", color: "#fff" }} className="flex-shrink-0">Nursing visit</Badge>
+        {autoSaveStatus === "saving" && (
+          <span className="text-xs text-muted-foreground flex items-center gap-1 flex-shrink-0">
+            <Loader2 className="w-2.5 h-2.5 animate-spin" />Saving…
+          </span>
+        )}
+        {autoSaveStatus === "saved" && savedEncounterId && (
+          <span className="text-xs text-muted-foreground flex-shrink-0">Auto-saved</span>
+        )}
+      </div>
+      <div className="flex items-center gap-1 flex-shrink-0">
+        <Button size="icon" variant="ghost" onClick={() => setMinimized(m => !m)} title={minimized ? "Restore" : "Minimize"} data-testid="button-minimize-nurse-note">
+          {minimized ? <Maximize2 className="w-4 h-4" /> : <Minus className="w-4 h-4" />}
+        </Button>
+        <Button size="icon" variant="ghost" onClick={onClose} data-testid="button-close-nurse-note">
+          <X className="w-4 h-4" />
+        </Button>
+      </div>
+    </div>
+  );
+
   if (loadingExisting) {
     return (
-      <Dialog open onOpenChange={() => {}}>
-        <DialogContent
-          className="max-w-4xl max-h-[92vh] overflow-y-auto"
-          onInteractOutside={(e) => e.preventDefault()}
-          onEscapeKeyDown={(e) => e.preventDefault()}
-        >
-          <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground">
-            <Loader2 className="w-5 h-5 animate-spin" />
-            <span className="text-sm">Loading note…</span>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <div ref={panelRef} onMouseDown={bringToFront} className={panelClass} style={panelStyle} data-testid="nurse-note-builder">
+        {titleBar}
+        <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground">
+          <Loader2 className="w-5 h-5 animate-spin" />
+          <span className="text-sm">Loading note…</span>
+        </div>
+      </div>
     );
   }
 
   return (
-    <Dialog open onOpenChange={() => {}}>
-      <DialogContent
-        className="max-w-4xl max-h-[92vh] overflow-y-auto"
-        onInteractOutside={(e) => e.preventDefault()}
-        onEscapeKeyDown={(e) => e.preventDefault()}
-      >
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Stethoscope className="w-5 h-5" />{initialEncounterId ? "Edit Nurse Note" : "Nurse Note"}
-            <Badge style={{ backgroundColor: "#7a8a64", color: "#fff" }}>Nursing visit</Badge>
-          </DialogTitle>
-        </DialogHeader>
+    <div ref={panelRef} onMouseDown={bringToFront} className={panelClass} style={panelStyle} data-testid="nurse-note-builder">
+      {titleBar}
 
-        <div className="space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      {!minimized && (
+        <>
+          <div className="flex-1 overflow-y-auto p-5 space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label>Visit Date & Time</Label>
+                <Input type="datetime-local" value={visitDate} onChange={e => setVisitDate(e.target.value)} data-testid="input-nurse-date" />
+              </div>
+              <div className="space-y-1.5 md:col-span-2">
+                <Label>Apply Template (optional)</Label>
+                <Select value={selectedTemplateId} onValueChange={applyTemplate}>
+                  <SelectTrigger data-testid="select-nurse-template">
+                    <SelectValue placeholder={templates.length ? "Choose a template…" : "No nurse templates yet"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {templates.map(t => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
             <div className="space-y-1.5">
-              <Label>Visit Date & Time</Label>
-              <Input type="datetime-local" value={visitDate} onChange={e => setVisitDate(e.target.value)} data-testid="input-nurse-date" />
+              <Label>Chief Complaint / Reason</Label>
+              <Input value={chiefComplaint} onChange={e => setChiefComplaint(e.target.value)} placeholder="Why is the patient here today" data-testid="input-nurse-chief-complaint" />
             </div>
-            <div className="space-y-1.5 md:col-span-2">
-              <Label>Apply Template (optional)</Label>
-              <Select value={selectedTemplateId} onValueChange={applyTemplate}>
-                <SelectTrigger data-testid="select-nurse-template">
-                  <SelectValue placeholder={templates.length ? "Choose a template…" : "No nurse templates yet"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {templates.map(t => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+
+            <div className="border rounded-md p-3" style={{ borderColor: "#d4c9b5", backgroundColor: "#faf6ed" }}>
+              <p className="text-xs font-semibold mb-2" style={{ color: "#2e3a20" }}>Add Block</p>
+              <div className="flex flex-wrap gap-1.5">
+                {NURSE_BLOCK_TYPES.map(b => (
+                  <Button key={b.id} type="button" size="sm" variant="outline" onClick={() => addBlock(b.id)} data-testid={`button-add-nurse-block-${b.id}`}>
+                    <Plus className="w-3 h-3 mr-1" />{b.label}
+                  </Button>
+                ))}
+              </div>
             </div>
-          </div>
 
-          <div className="space-y-1.5">
-            <Label>Chief Complaint / Reason</Label>
-            <Input value={chiefComplaint} onChange={e => setChiefComplaint(e.target.value)} placeholder="Why is the patient here today" data-testid="input-nurse-chief-complaint" />
-          </div>
-
-          <div className="border rounded-md p-3" style={{ borderColor: "#d4c9b5", backgroundColor: "#faf6ed" }}>
-            <p className="text-xs font-semibold mb-2" style={{ color: "#2e3a20" }}>Add Block</p>
-            <div className="flex flex-wrap gap-1.5">
-              {NURSE_BLOCK_TYPES.map(b => (
-                <Button key={b.id} type="button" size="sm" variant="outline" onClick={() => addBlock(b.id)} data-testid={`button-add-nurse-block-${b.id}`}>
-                  <Plus className="w-3 h-3 mr-1" />{b.label}
-                </Button>
+            <div className="space-y-2">
+              {blocks.map((b, i) => (
+                <NurseBlockEditor
+                  key={b.uid}
+                  block={b}
+                  isFirst={i === 0}
+                  isLast={i === blocks.length - 1}
+                  patientId={patientId}
+                  onChange={(patch) => updateBlock(i, patch)}
+                  onRemove={() => removeBlock(i)}
+                  onMove={(dir) => moveBlock(i, dir)}
+                />
               ))}
             </div>
           </div>
 
-          <div className="space-y-2">
-            {blocks.map((b, i) => (
-              <NurseBlockEditor
-                key={b.uid}
-                block={b}
-                isFirst={i === 0}
-                isLast={i === blocks.length - 1}
-                patientId={patientId}
-                onChange={(patch) => updateBlock(i, patch)}
-                onRemove={() => removeBlock(i)}
-                onMove={(dir) => moveBlock(i, dir)}
-              />
-            ))}
+          <div className="flex-shrink-0 border-t px-4 py-3 flex justify-end gap-2 bg-card">
+            <Button variant="outline" onClick={onClose}>Close</Button>
+            <Button onClick={() => saveMut.mutate()} disabled={saveMut.isPending} data-testid="button-save-nurse-note">
+              <Save className="w-4 h-4 mr-1.5" />{saveMut.isPending ? "Saving…" : "Save & Close"}
+            </Button>
           </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={() => saveMut.mutate()} disabled={saveMut.isPending} data-testid="button-save-nurse-note">
-            <Save className="w-4 h-4 mr-1.5" />{saveMut.isPending ? "Saving…" : "Save Nurse Note"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </>
+      )}
+    </div>
   );
 }
 
