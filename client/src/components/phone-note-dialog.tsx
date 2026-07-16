@@ -100,8 +100,12 @@ export function PhoneNoteDialog({ patientId, onClose, initialEncounterId }: Phon
 
   if (loading) {
     return (
-      <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-        <DialogContent className="max-w-xl">
+      <Dialog open onOpenChange={() => {}}>
+        <DialogContent
+          className="max-w-xl"
+          onInteractOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+        >
           <div className="flex items-center justify-center gap-2 py-10 text-muted-foreground">
             <Loader2 className="w-4 h-4 animate-spin" />
             <span className="text-sm">Loading note…</span>
@@ -112,8 +116,12 @@ export function PhoneNoteDialog({ patientId, onClose, initialEncounterId }: Phon
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-xl">
+    <Dialog open onOpenChange={() => {}}>
+      <DialogContent
+        className="max-w-xl"
+        onInteractOutside={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => e.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Phone className="w-4 h-4" />{initialEncounterId ? "Edit Phone Note" : "Quick Phone Note"}</DialogTitle>
         </DialogHeader>

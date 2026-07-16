@@ -299,8 +299,12 @@ export function NurseNoteBuilder({ patientId, onClose, initialEncounterId }: Nur
 
   if (loadingExisting) {
     return (
-      <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-        <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
+      <Dialog open onOpenChange={() => {}}>
+        <DialogContent
+          className="max-w-4xl max-h-[92vh] overflow-y-auto"
+          onInteractOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+        >
           <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground">
             <Loader2 className="w-5 h-5 animate-spin" />
             <span className="text-sm">Loading note…</span>
@@ -311,8 +315,12 @@ export function NurseNoteBuilder({ patientId, onClose, initialEncounterId }: Nur
   }
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
+    <Dialog open onOpenChange={() => {}}>
+      <DialogContent
+        className="max-w-4xl max-h-[92vh] overflow-y-auto"
+        onInteractOutside={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => e.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Stethoscope className="w-5 h-5" />{initialEncounterId ? "Edit Nurse Note" : "Nurse Note"}
