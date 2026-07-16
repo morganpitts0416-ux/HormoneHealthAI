@@ -31,6 +31,7 @@ import {
   mergeChartItems,
   resolveDefaultFindings,
   resolveSystemList,
+  sanitizeFieldLabel,
   type ClinicalBlockOverrides,
   buildBulletSection, buildParagraphSection,
   type VitalsData,
@@ -1399,9 +1400,11 @@ function blocksToFullNote(
   for (const cb of blocks.filter(b => b.type === "custom_text")) {
     const c = resolveBlockContent(cb).trim();
     if (!c) continue;
-    const header = (cb.customLabel ?? "Notes").toUpperCase();
-    lines.push(header);
-    lines.push("");
+    const header = sanitizeFieldLabel(cb.customLabel ?? "").toUpperCase();
+    if (header) {
+      lines.push(header);
+      lines.push("");
+    }
     lines.push(c);
     lines.push("");
   }
@@ -1668,7 +1671,7 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
           type: "custom_text",
           content: value,
           mode: "freetext",
-          customLabel: tb.label || "Notes",
+          customLabel: sanitizeFieldLabel(tb.label) || "Notes",
           ...(hasTemplateBlanks(value) ? { fillValues: [] } : {}),
         });
         // Note: do NOT add "custom_text" to `claimed` — multiple are allowed

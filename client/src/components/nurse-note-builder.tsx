@@ -22,6 +22,7 @@ import {
 import { usePhraseSearch } from "@/components/phrase-search";
 import type { NoteTemplate } from "@shared/schema";
 import { nurseBlocksToText } from "@/lib/soap-pdf-export";
+import { sanitizeFieldLabel } from "@shared/note-builtin-blocks";
 
 interface NurseNoteBuilderProps {
   patientId: number;
@@ -220,7 +221,7 @@ export function NurseNoteBuilder({ patientId, onClose, initialEncounterId }: Nur
               : t === "short_text" ? "short_text"
               : t.startsWith("clinical_") ? "free_text"
               : "free_text",
-          label: b.label ?? (t === "vitals" ? "Vital Signs" : ""),
+          label: sanitizeFieldLabel(b.label ?? "") || (t === "vitals" ? "Vital Signs" : ""),
           content: b.defaultValue ?? "",
           fillValues: hasTemplateBlanks(b.defaultValue) ? [] : undefined,
         };

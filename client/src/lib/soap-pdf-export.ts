@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import { resolveBranding, PLATFORM_DEFAULT_BRANDING, type PartialBranding } from "@/lib/branding";
+import { sanitizeFieldLabel } from "@shared/note-builtin-blocks";
 
 interface SoapPdfOptions {
   soapText: string;
@@ -36,10 +37,12 @@ export function nurseBlocksToText(blocks: any[]): string {
     // Strip trailing colons/spaces so templates whose labels end with ":"
     // (e.g. "PATIENT'S LABS ARE:") don't produce double-colon artifacts like
     // "PATIENT'S LABS ARE:: Up to date" when the renderer appends ": value".
-    const rawLabel = (block.label ?? "").trim().replace(/:+\s*$/, "").trim();
+    const rawLabel = sanitizeFieldLabel(
+      (block.label ?? "").trim().replace(/:+\s*$/, "").trim()
+    );
     // Only use the user-supplied label — never fall back to the type name.
-    // This prevents the raw type key (e.g. "free_text") from appearing as
-    // "FREE_TEXT" in the rendered note when no custom label was set.
+    // sanitizeFieldLabel strips generic field-type names ("Free Text Block",
+    // "Long Text Field", etc.) so they never appear as headings in rendered notes.
     const label = rawLabel ? rawLabel.toUpperCase() : "";
 
     if (block.type === "vitals") {

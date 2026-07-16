@@ -359,6 +359,21 @@ export interface TemplateRenderChart {
   allergies?: string[];
 }
 
+/**
+ * Returns the label stripped of generic field-type names (e.g. "Free Text Block",
+ * "Long Text Field") that describe the INPUT control, not the clinical content.
+ * These should never appear as section headers in rendered notes.
+ */
+const GENERIC_FIELD_LABELS = new Set([
+  "free text", "free text block", "free text field",
+  "long text", "long text block", "long text field",
+  "short text", "short text block", "short text field",
+]);
+export function sanitizeFieldLabel(raw: string | null | undefined): string {
+  const s = (raw ?? "").trim();
+  return GENERIC_FIELD_LABELS.has(s.toLowerCase()) ? "" : s;
+}
+
 export function renderTemplateBlocks(
   blocks: TemplateBlockRender[],
   chart?: TemplateRenderChart | null,
@@ -420,7 +435,9 @@ export function renderTemplateBlocks(
     }
 
     // Plain label/value fallback (legacy non-clinical blocks).
-    if (label) out.push(`${label}:${value ? " " + value : ""}`);
+    // Strip generic field-type names so they never appear as section headers.
+    const cleanLabel = sanitizeFieldLabel(label);
+    if (cleanLabel) out.push(`${cleanLabel}:${value ? " " + value : ""}`);
     else if (value) out.push(value);
   }
   return out.join("\n").trim() + "\n";
