@@ -381,6 +381,7 @@ export function VitalsDialog({ open, onOpenChange, patientId, patientName, onSho
   // Time window in months; 0 = "all data".
   const [windowMonths, setWindowMonths] = useState<6 | 12 | 0>(6);
   const [expandedRow, setExpandedRow] = useState<FlowMetricKey | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
   // Filter to the chosen window then sort chronologically (oldest → newest)
   // so each visit reads left-to-right like a paper flowsheet.
@@ -842,18 +843,53 @@ export function VitalsDialog({ open, onOpenChange, patientId, patientName, onSho
                         </th>
                         {sortedVitals.map((v) => {
                           const d = new Date(v.recordedAt as any);
+                          const canDelete = srcOf(v) === "clinic";
+                          const confirming = confirmDeleteId === v.id;
                           return (
                             <th
                               key={v.id}
-                              className="p-2 text-[11px] font-semibold text-center whitespace-nowrap border-r border-b"
+                              className="p-2 text-[11px] font-semibold text-center whitespace-nowrap border-r border-b group/col relative min-w-[56px]"
                               data-testid={`flowsheet-col-${v.id}`}
                             >
-                              <div className="leading-tight">
-                                {d.toLocaleDateString("en-US", { year: "numeric", timeZone: "UTC" })}
-                              </div>
-                              <div className="leading-tight font-normal text-muted-foreground">
-                                {d.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", timeZone: "UTC" })}
-                              </div>
+                              {confirming ? (
+                                <div className="flex flex-col items-center gap-1 py-0.5">
+                                  <span className="text-[10px] text-destructive font-semibold leading-tight">Delete?</span>
+                                  <div className="flex gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); deleteMut.mutate(v.id); setConfirmDeleteId(null); }}
+                                      className="text-[10px] px-1.5 py-0.5 rounded bg-destructive text-destructive-foreground leading-tight"
+                                      data-testid={`button-confirm-delete-vital-col-${v.id}`}
+                                    >Yes</button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }}
+                                      className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground leading-tight"
+                                      data-testid={`button-cancel-delete-vital-col-${v.id}`}
+                                    >No</button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="leading-tight">
+                                    {d.toLocaleDateString("en-US", { year: "numeric", timeZone: "UTC" })}
+                                  </div>
+                                  <div className="leading-tight font-normal text-muted-foreground">
+                                    {d.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", timeZone: "UTC" })}
+                                  </div>
+                                  {canDelete && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(v.id); }}
+                                      className="invisible group-hover/col:visible absolute top-1 right-1 text-muted-foreground hover:text-destructive transition-colors"
+                                      title="Delete this reading"
+                                      data-testid={`button-delete-vital-${v.id}`}
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                </>
+                              )}
                             </th>
                           );
                         })}
@@ -1089,64 +1125,9 @@ export function VitalsDialog({ open, onOpenChange, patientId, patientName, onSho
             )}
 
             {sortedVitals.length > 0 && (
-              <div className="mt-3 border rounded-md" data-testid="flowsheet-manage-details">
-                <div className="flex items-center gap-2 px-3 py-2 bg-muted/40 border-b rounded-t-md">
-                  <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
-                  <span className="text-xs font-medium text-muted-foreground">Manage entries</span>
-                  <span className="text-[10px] text-muted-foreground ml-auto">Delete incorrect or duplicate readings</span>
-                </div>
-                <div className="divide-y">
-                  {sortedVitals
-                    .slice()
-                    .reverse()
-                    .map((v) => {
-                      const src = srcOf(v);
-                      return (
-                        <div
-                          key={v.id}
-                          className="flex items-center justify-between gap-2 px-3 py-2"
-                          data-testid={`manage-row-${v.id}`}
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <SourceBadge source={src} size="xs" />
-                            <span className="text-xs text-muted-foreground">
-                              {new Date(v.recordedAt).toLocaleDateString("en-US", {
-                                month: "short",
-                                day: "numeric",
-                                year: "numeric",
-                                timeZone: "UTC",
-                              })}
-                              {v.timeOfDay ? ` ${v.timeOfDay}` : ""}
-                            </span>
-                            {v.systolicBp && v.diastolicBp && (
-                              <span className="text-xs font-mono">{v.systolicBp}/{v.diastolicBp} mmHg</span>
-                            )}
-                            {v.heartRate && (
-                              <span className="text-xs font-mono">{v.heartRate} bpm</span>
-                            )}
-                            {v.weightLbs && (
-                              <span className="text-xs font-mono">{v.weightLbs} lbs</span>
-                            )}
-                          </div>
-                          {src === "clinic" ? (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => deleteMut.mutate(v.id)}
-                              data-testid={`button-delete-vital-${v.id}`}
-                              className="text-xs gap-1 text-destructive hover:text-destructive"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                              Delete
-                            </Button>
-                          ) : (
-                            <span className="text-[10px] text-muted-foreground italic">patient-reported</span>
-                          )}
-                        </div>
-                      );
-                    })}
-                </div>
-              </div>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Hover over any date column to delete that reading.
+              </p>
             )}
           </div>
         </div>
