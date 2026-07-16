@@ -1089,55 +1089,64 @@ export function VitalsDialog({ open, onOpenChange, patientId, patientName, onSho
             )}
 
             {sortedVitals.length > 0 && (
-              <details className="mt-2 text-xs" data-testid="flowsheet-manage-details">
-                  <summary className="cursor-pointer text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
-                    Manage entries
-                  </summary>
-                  <div className="mt-2 border rounded-md divide-y">
-                    {sortedVitals
-                      .slice()
-                      .reverse()
-                      .map((v) => {
-                        const src = srcOf(v);
-                        return (
-                          <div
-                            key={v.id}
-                            className="flex items-center justify-between gap-2 p-2"
-                            data-testid={`manage-row-${v.id}`}
-                          >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <SourceBadge source={src} size="xs" />
-                              <span className="text-xs">
-                                {new Date(v.recordedAt).toLocaleDateString("en-US", {
-                                  month: "short",
-                                  day: "numeric",
-                                  year: "numeric",
-                                  timeZone: "UTC",
-                                })}
-                                {v.timeOfDay ? (
-                                  <span className="text-muted-foreground"> {v.timeOfDay}</span>
-                                ) : null}
-                              </span>
-                            </div>
-                            {src === "clinic" ? (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => deleteMut.mutate(v.id)}
-                                data-testid={`button-delete-vital-${v.id}`}
-                                className="text-xs gap-1 h-7"
-                              >
-                                <Trash2 className="w-3 h-3 text-destructive" />
-                                Delete
-                              </Button>
-                            ) : (
-                              <span className="text-[10px] text-muted-foreground">audit-locked</span>
+              <div className="mt-3 border rounded-md" data-testid="flowsheet-manage-details">
+                <div className="flex items-center gap-2 px-3 py-2 bg-muted/40 border-b rounded-t-md">
+                  <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="text-xs font-medium text-muted-foreground">Manage entries</span>
+                  <span className="text-[10px] text-muted-foreground ml-auto">Delete incorrect or duplicate readings</span>
+                </div>
+                <div className="divide-y">
+                  {sortedVitals
+                    .slice()
+                    .reverse()
+                    .map((v) => {
+                      const src = srcOf(v);
+                      return (
+                        <div
+                          key={v.id}
+                          className="flex items-center justify-between gap-2 px-3 py-2"
+                          data-testid={`manage-row-${v.id}`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <SourceBadge source={src} size="xs" />
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(v.recordedAt).toLocaleDateString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                                timeZone: "UTC",
+                              })}
+                              {v.timeOfDay ? ` ${v.timeOfDay}` : ""}
+                            </span>
+                            {v.systolicBp && v.diastolicBp && (
+                              <span className="text-xs font-mono">{v.systolicBp}/{v.diastolicBp} mmHg</span>
+                            )}
+                            {v.heartRate && (
+                              <span className="text-xs font-mono">{v.heartRate} bpm</span>
+                            )}
+                            {v.weightLbs && (
+                              <span className="text-xs font-mono">{v.weightLbs} lbs</span>
                             )}
                           </div>
-                        );
-                      })}
+                          {src === "clinic" ? (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => deleteMut.mutate(v.id)}
+                              data-testid={`button-delete-vital-${v.id}`}
+                              className="text-xs gap-1 text-destructive hover:text-destructive"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              Delete
+                            </Button>
+                          ) : (
+                            <span className="text-[10px] text-muted-foreground italic">patient-reported</span>
+                          )}
+                        </div>
+                      );
+                    })}
                 </div>
-              </details>
+              </div>
             )}
           </div>
         </div>

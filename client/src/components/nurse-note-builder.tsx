@@ -311,7 +311,13 @@ export function NurseNoteBuilder({ patientId, onClose, initialEncounterId }: Nur
         ].some(x => x != null && x !== "");
         if (hasAny) {
           try {
-            const payload: Record<string, any> = { source: "clinic" };
+            const payload: Record<string, any> = {
+              source: "clinic",
+              // Pass the encounter ID so the server can upsert (update the
+              // existing row instead of inserting a duplicate) on every
+              // subsequent save of the same note.
+              sourceEncounterId: encounterId,
+            };
             if (v.systolicBp) payload.systolicBp = parseInt(v.systolicBp);
             if (v.diastolicBp) payload.diastolicBp = parseInt(v.diastolicBp);
             if (v.heartRate) payload.heartRate = parseInt(v.heartRate);

@@ -14602,7 +14602,10 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
     }
   });
 
-  // POST /api/patients/:id/vitals — record a new vital signs entry
+  // POST /api/patients/:id/vitals — record a new vital signs entry.
+  // If sourceEncounterId is provided and a row already exists for that
+  // encounter, the existing row is UPDATED (upsert) so that re-saving an
+  // unsigned nurse/SOAP note never creates duplicate vital entries.
   app.post("/api/patients/:id/vitals", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
@@ -14617,6 +14620,28 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       }
       const data = parsed.data;
       const bmi = computeBmi(data.weightLbs ?? null, data.heightInches ?? null);
+
+      // Upsert: if a sourceEncounterId is present, update the existing row
+      // for that encounter instead of creating a duplicate.
+      if (data.sourceEncounterId) {
+        const existing = await storageDb
+          .select({ id: schema.patientVitals.id })
+          .from(schema.patientVitals)
+          .where(and(
+            eq(schema.patientVitals.patientId, patientId),
+            eq(schema.patientVitals.sourceEncounterId, data.sourceEncounterId),
+          ))
+          .limit(1);
+        if (existing.length > 0) {
+          const updated = await storageDb
+            .update(schema.patientVitals)
+            .set({ ...data, bmi })
+            .where(eq(schema.patientVitals.id, existing[0].id))
+            .returning();
+          return res.json(updated[0]);
+        }
+      }
+
       const vital = await storage.createPatientVital({
         patientId,
         clinicianId,
