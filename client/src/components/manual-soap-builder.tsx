@@ -1543,10 +1543,13 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
   }, [draftKey]);
 
   const applyTemplate = useCallback((templateId: string) => {
-    setSelectedTemplateId(templateId);
-    if (!templateId) return;
+    if (!templateId) { setSelectedTemplateId(""); return; }
     const tpl = templates.find(t => String(t.id) === templateId);
-    if (!tpl) return;
+    if (!tpl) {
+      toast({ title: "Template not found", description: "Could not load the selected template. Please try again.", variant: "destructive" });
+      setSelectedTemplateId("");
+      return;
+    }
 
     // Map template block labels → SOAP block ids by fuzzy match against BLOCK_TYPES.label
     const mapLabelToType = (label: string): BlockTypeId | null => {
@@ -1691,8 +1694,9 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
     }
 
     setBlocks(newSoapBlocks);
+    setSelectedTemplateId(templateId);
     toast({ title: `Template "${tpl.name}" applied`, description: `${newSoapBlocks.length} block${newSoapBlocks.length === 1 ? "" : "s"} loaded.` });
-  }, [templates, toast]);
+  }, [templates, toast, blockDefaults]);
 
   useEffect(() => {
     if (!showAddMenu) return;
