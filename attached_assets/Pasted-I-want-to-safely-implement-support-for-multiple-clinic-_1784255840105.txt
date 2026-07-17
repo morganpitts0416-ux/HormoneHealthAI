@@ -1,0 +1,468 @@
+I want to safely implement support for multiple clinic owners in ClinIQ.
+
+This must be rolled out without changing, migrating, demoting, disabling, or locking out any existing users, clinic staff, patients, or patient portal accounts.
+
+Do not immediately start coding. Follow the phases below in order.
+
+## Phase 1: Audit Only — No Changes
+
+First, inspect the entire codebase and report your findings before making any changes.
+
+Identify every place where clinic ownership is determined or used, including:
+
+* `clinics.ownerUserId`
+* `clinic_memberships.adminRole`
+* checks for `owner`
+* checks for `owner || admin`
+* billing access
+* subscription management
+* clinic settings
+* user management
+* role promotion or demotion
+* user termination
+* membership deactivation
+* membership deletion
+* global user deactivation
+* clinic deletion or cancellation
+* owner-based provider assignment
+* any `.find()` or query that assumes there is only one owner
+
+Specifically determine:
+
+1. Whether `clinics.ownerUserId` currently grants permissions independently of an active clinic membership.
+2. Whether a former owner could retain access because their user ID remains in `clinics.ownerUserId`.
+3. Whether terminating a clinic member can also deactivate their global user account.
+4. Whether a user belonging to multiple clinics could accidentally lose access to all clinics.
+5. Whether billing or subscription records are attached to a user or to the clinic.
+6. Whether patient creation or assignment selects the “first owner” as the provider.
+7. Whether any database constraint currently limits a clinic to one owner.
+8. Whether invited, inactive, suspended, or deleted users could be counted as owners.
+9. Whether there is currently any protection against removing the last active owner.
+10. Whether two simultaneous requests could remove or demote all owners.
+
+Return the audit report before coding. Do not make schema, backend, frontend, permission, role, billing, or deployment changes during Phase 1.
+
+## Phase 2: Implementation Plan — Still No Changes
+
+After the audit, produce a file-by-file implementation plan.
+
+The desired final model is:
+
+* A clinic may have more than one active owner.
+* Ownership authority comes from an active clinic membership with `adminRole = 'owner'`.
+* The clinic subscription, billing account, patient data, settings, and integrations belong to the clinic—not to an individual owner user.
+* Removing one owner must not affect the clinic subscription, other users, patients, or patient portal accounts.
+* Normal self-service actions must never leave a clinic with zero active owners.
+* Subscription cancellation must be a separate workflow from owner termination.
+
+Do not implement until the plan has been reviewed.
+
+## Phase 3: Safe Backend Implementation
+
+Once approved, make the smallest additive changes possible.
+
+### A. Do not migrate existing users
+
+Do not:
+
+* rewrite existing roles,
+* convert admins to owners,
+* modify current owner memberships,
+* change patient users,
+* recreate memberships,
+* deactivate anyone,
+* alter clinic IDs,
+* alter patient clinic associations, or
+* perform a destructive data migration.
+
+Existing clinics with one owner must continue working exactly as they do now.
+
+### B. Make active membership the authoritative owner check
+
+For normal clinic authorization, an owner must be determined using an active membership in that specific clinic.
+
+The effective rule should be equivalent to:
+
+```ts
+membership.clinicId === clinicId &&
+membership.adminRole === "owner" &&
+membership.status === "active" &&
+user.status === "active"
+```
+
+Adjust this to the actual schema names used in ClinIQ.
+
+Do not allow `clinics.ownerUserId` by itself to grant owner permissions after this change.
+
+Before removing any legacy fallback, confirm that existing clinic owners all have valid active owner memberships. If any do not, create a safe backfill plan that adds only the missing owner membership without changing any other roles or access.
+
+Do not silently assume the backfill is safe. Report the number of affected clinics first.
+
+### C. Keep `clinics.ownerUserId` temporarily if needed
+
+Do not immediately drop or rename `clinics.ownerUserId`.
+
+It may temporarily remain for backward compatibility, historical account creation information, or migration safety.
+
+However:
+
+* it must not independently authorize clinic access,
+* it must not make a terminated member an owner,
+* it must not override an inactive membership, and
+* it must not be required for a clinic to have multiple owners.
+
+Document every remaining use of this field.
+
+### D. Add a reusable active-owner count
+
+Create one centralized backend function or service for determining active owners.
+
+It should count only users who are:
+
+* members of the specific clinic,
+* assigned `adminRole = 'owner'`,
+* active members,
+* active users,
+* not deleted,
+* not merely invited, and
+* able to log in.
+
+Do not duplicate slightly different owner-count logic across routes.
+
+### E. Add a transactional last-owner guard
+
+Before any action that could remove effective owner access, verify that another active owner will remain.
+
+This includes:
+
+* terminating an owner,
+* deactivating an owner membership,
+* deleting an owner membership,
+* demoting an owner to admin,
+* demoting an owner to another role,
+* disabling an owner’s user account,
+* revoking clinic access,
+* bulk staff updates,
+* invitation replacement logic,
+* clinic-transfer logic, and
+* any administrative support action.
+
+If the action would leave zero active owners, block it with a clear error such as:
+
+> This user is the clinic’s only active owner. Assign another active owner before changing or removing this user’s access.
+
+The count and update must occur in the same database transaction with appropriate locking or another concurrency-safe approach.
+
+Do not rely only on:
+
+* a frontend check,
+* a count performed before the transaction,
+* cached membership data, or
+* the user interface hiding a button.
+
+Two owners must not be able to simultaneously remove each other and leave the clinic ownerless.
+
+### F. Separate clinic membership termination from global user deactivation
+
+Terminating someone from one clinic must normally affect only that clinic membership.
+
+It must not automatically:
+
+* deactivate the global user account,
+* remove the user from other clinics,
+* change their role in another clinic,
+* remove access to another clinic,
+* delete their identity,
+* alter patient portal access, or
+* change records they previously created.
+
+If global account deactivation exists, it must be a separate, explicit action with checks across all clinic memberships.
+
+### G. Allow owner promotion safely
+
+Allow an existing eligible active clinic member to be promoted to owner.
+
+For the initial implementation:
+
+* only an active owner may promote another member to owner,
+* admins may not create owners,
+* the target must already be an active member of that clinic,
+* patient-only accounts cannot be promoted,
+* inactive or invited users cannot count as active owners,
+* the promotion must be audit logged, and
+* the promoted user should receive a notification if notification infrastructure already exists.
+
+Do not build a completely new permission framework unless necessary.
+
+### H. Audit logging
+
+Record audit events for:
+
+* owner promoted,
+* owner demoted,
+* owner membership deactivated,
+* owner membership restored,
+* owner removed,
+* attempted last-owner removal blocked,
+* billing contact changed,
+* subscription cancelled,
+* clinic archived, and
+* emergency ownership recovery.
+
+Each audit event should include, where available:
+
+* clinic ID,
+* affected user ID,
+* acting user ID,
+* previous role,
+* new role,
+* timestamp,
+* action,
+* outcome, and
+* reason or source.
+
+Do not put PHI in the audit event.
+
+### I. Fix single-owner assumptions
+
+Locate code that chooses an owner using logic such as:
+
+```ts
+members.find(member => member.adminRole === "owner")
+```
+
+Do not use owner status as a substitute for clinical provider assignment.
+
+For patient provider defaults, use the safest existing ClinIQ behavior, preferably:
+
+1. the currently logged-in eligible clinician,
+2. the configured default clinic provider,
+3. an explicitly selected provider, or
+4. no provider until one is selected.
+
+Do not arbitrarily select whichever owner appears first.
+
+If changing provider-default behavior could affect current workflows, isolate that as a separate change and report it before implementing.
+
+## Phase 4: Frontend Safeguards
+
+Update the interface without changing existing roles.
+
+The UI should:
+
+* display all clinic owners,
+* allow an authorized owner to promote an eligible active member,
+* allow demotion or termination only when another active owner remains,
+* clearly identify the last active owner,
+* disable or hide unsafe actions when appropriate,
+* still rely on the server for enforcement,
+* show a clear explanation when an action is blocked, and
+* avoid presenting subscription cancellation as part of owner termination.
+
+Do not change unrelated user-management screens.
+
+Do not rename existing user types globally unless required.
+
+## Phase 5: Billing and Subscription Separation
+
+Confirm that billing is clinic-scoped.
+
+The subscription should be associated with the clinic or clinic billing customer—not an individual owner membership.
+
+Removing or deactivating an owner must not automatically:
+
+* cancel the subscription,
+* delete the Stripe customer,
+* remove the payment method,
+* change invoice history,
+* alter the billing email,
+* disable the clinic,
+* lock out patients, or
+* stop scheduled clinical functions.
+
+If billing currently depends on a specific user ID, stop and report that before changing it. Propose a migration plan that preserves all existing subscriptions and billing records.
+
+Do not alter live Stripe subscriptions during this implementation unless separately approved.
+
+## Phase 6: Clinic Cancellation Lifecycle — Design First
+
+Do not combine clinic cancellation with owner termination.
+
+Create a separate design proposal for clinic subscription cancellation with statuses such as:
+
+* active,
+* past due,
+* cancelled,
+* read-only transition,
+* archived, and
+* deletion eligible.
+
+For now, do not implement permanent data deletion.
+
+The cancellation design should explain:
+
+* when new clinical documentation stops,
+* how long authorized users retain read-only access,
+* how records are exported,
+* what happens to patient portal access,
+* what happens to messages and refill requests,
+* how billing records remain available,
+* how archived access is restored,
+* how legal holds are handled,
+* when data could become eligible for deletion, and
+* how this aligns with ClinIQ’s BAA, service agreement, and retention policy.
+
+Do not invent legal retention periods in code.
+
+## Phase 7: Automated Tests
+
+Add tests before deployment.
+
+At minimum, test:
+
+1. Existing single-owner clinic still works.
+2. Existing owner remains an owner.
+3. Admin remains an admin.
+4. Existing staff roles are unchanged.
+5. A second owner can be added.
+6. Both owners can access owner-only functions.
+7. One owner can be demoted when another active owner remains.
+8. One owner can be terminated when another active owner remains.
+9. The last active owner cannot be demoted.
+10. The last active owner cannot be terminated.
+11. The last active owner cannot be deactivated.
+12. The last active owner cannot be deleted.
+13. An invited owner does not count as the remaining active owner.
+14. An inactive owner does not count.
+15. A suspended user does not count.
+16. A deleted user does not count.
+17. A former owner referenced in `clinics.ownerUserId` does not retain access.
+18. Removing an owner does not cancel billing.
+19. Removing an owner does not affect patients.
+20. Removing an owner does not affect patient portal access.
+21. Removing an owner does not change clinic settings.
+22. Removing an owner from Clinic A does not affect their membership in Clinic B.
+23. Global account deactivation cannot accidentally leave another clinic ownerless.
+24. Two simultaneous last-owner changes cannot leave zero owners.
+25. Existing patient creation still works.
+26. Existing provider assignment remains correct.
+27. Existing billing pages still work.
+28. Existing clinic settings pages still work.
+29. Existing admin permissions still work.
+30. Audit logs are created correctly.
+
+Run the full existing test suite, not only the new tests.
+
+## Phase 8: Database Safety Checks
+
+Before deployment, run read-only queries and report:
+
+* number of clinics,
+* number of clinics with zero active owners,
+* number with exactly one active owner,
+* number with more than one active owner,
+* number where `ownerUserId` does not match an active owner membership,
+* number where the owner user is inactive,
+* number of duplicate memberships,
+* number of users who belong to multiple clinics, and
+* number of clinics whose billing records appear user-scoped rather than clinic-scoped.
+
+Do not automatically “fix” unexpected records.
+
+Create a written remediation plan for any anomalies.
+
+Any migration must be:
+
+* additive,
+* idempotent,
+* backward compatible,
+* safe to run more than once,
+* non-destructive, and
+* reviewed before production.
+
+## Phase 9: Staged Deployment
+
+Do not deploy directly to production without the following:
+
+1. Confirm the production database backup or point-in-time recovery status.
+2. Confirm the exact project and environment.
+3. Confirm no destructive migration is included.
+4. Deploy to a non-production or preview environment first.
+5. Test with:
+
+   * one single-owner clinic,
+   * one test clinic with two owners,
+   * a user belonging to two clinics,
+   * an inactive owner,
+   * an invited owner,
+   * an attempted last-owner termination, and
+   * patient portal access.
+6. Review application logs and database errors.
+7. Confirm no current users were modified.
+8. Confirm no patient access changed.
+9. Confirm no subscriptions changed.
+10. Only then prepare the production deployment.
+
+Use a feature flag if ClinIQ already has feature-flag infrastructure.
+
+If possible, initially enable multi-owner management only for an internal test clinic before enabling it for all clinics.
+
+## Phase 10: Production Verification
+
+Immediately after production deployment, verify:
+
+* current users can log in,
+* current owners still have access,
+* admins still have access,
+* staff still have access,
+* patients can still access the portal,
+* clinic selection still works,
+* billing screens load,
+* subscriptions remain active,
+* patient charts load,
+* new patient creation works,
+* owner promotion works in a test clinic,
+* last-owner protection works,
+* audit events are recorded, and
+* no unexpected permission-denied errors appear in logs.
+
+Do not perform owner-role tests using a live customer clinic without explicit approval.
+
+## Rollback Requirements
+
+Before deployment, provide a rollback plan covering:
+
+* application rollback,
+* migration rollback or forward-fix strategy,
+* feature-flag disablement,
+* permission fallback,
+* and verification that rollback will not remove legitimate new owner memberships.
+
+Do not use a rollback that deletes owner memberships created after release.
+
+## Final Required Deliverables
+
+Before any production deployment, give me:
+
+1. The ownership audit findings.
+2. The list of files that will change.
+3. Any database changes.
+4. Any migration SQL.
+5. The test plan and test results.
+6. The anomaly query results.
+7. The deployment steps.
+8. The rollback plan.
+9. Confirmation that existing user records and roles will not be mass-modified.
+10. Confirmation that patient access and patient data are not affected.
+11. Confirmation that billing remains attached to the clinic.
+12. Confirmation that subscription cancellation remains separate.
+
+Stop and ask for review if you discover:
+
+* any clinic with zero valid owners,
+* owners missing active memberships,
+* user-scoped billing,
+* owner permissions granted solely by `ownerUserId`,
+* destructive foreign-key behavior,
+* global user deactivation tied to clinic termination,
+* or any change that could affect current patient or staff access.
