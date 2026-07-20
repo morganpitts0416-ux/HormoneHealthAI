@@ -438,12 +438,14 @@ function extractVitalsFromNoteText(text: string | any): {
   if (spo2) r.oxygenSaturation = parseFloat(spo2[1]);
   const pain = text.match(/Pain\s*(?:Score|Level)?[:\s]+(\d{1,2})(?:\s*\/\s*10)?/i);
   if (pain) r.painScore = Math.min(10, parseInt(pain[1]));
-  const ht = text.match(/(?:Height|Ht)[:\s]+([\d.]+)\s*(?:in|inches?)?/i);
-  if (ht) {
-    r.heightInches = parseFloat(ht[1]);
+  // Check feet'inches format FIRST — the plain-number regex greedily matches
+  // just the feet digit (e.g. "5" from "5'7\"") and the fallback never runs.
+  const ftIn = text.match(/(?:Height|Ht)[:\s]+(\d)\s*['']\s*(\d{1,2})/i);
+  if (ftIn) {
+    r.heightInches = parseInt(ftIn[1]) * 12 + parseInt(ftIn[2]);
   } else {
-    const ftIn = text.match(/(?:Height|Ht)[:\s]+(\d)\s*['']\s*(\d{1,2})/i);
-    if (ftIn) r.heightInches = parseInt(ftIn[1]) * 12 + parseInt(ftIn[2]);
+    const ht = text.match(/(?:Height|Ht)[:\s]+([\d.]+)\s*(?:in(?:ches?)?)?/i);
+    if (ht) r.heightInches = parseFloat(ht[1]);
   }
   const wt = text.match(/(?:Weight|Wt)[:\s]+([\d.]+)\s*(?:lbs?|pounds?)?/i);
   if (wt) r.weightLbs = parseFloat(wt[1]);
@@ -460,9 +462,13 @@ function persistVitalsFromNoteText(
   const hasAny = Object.values(v).some(val => val != null && Number.isFinite(val as number));
   if (!hasAny) return;
   const { weightLbs, heightInches } = v as any;
-  const bmi = (weightLbs && heightInches && heightInches > 0)
+  const rawBmi = (weightLbs && heightInches && heightInches > 0)
     ? Math.round(((weightLbs / (heightInches * heightInches)) * 703) * 10) / 10
     : null;
+  // Plausibility guard — a computed BMI outside 10–80 means the regex extracted
+  // bad height/weight values (e.g. feet parsed as inches). Discard rather than
+  // persist garbage that would override a correctly-recorded vitals entry.
+  const bmi = (rawBmi !== null && rawBmi >= 10 && rawBmi <= 80) ? rawBmi : null;
   const noteTag = encounterId
     ? `Auto-recorded from note (enc:${encounterId})`
     : 'Auto-recorded from AI-generated note';
