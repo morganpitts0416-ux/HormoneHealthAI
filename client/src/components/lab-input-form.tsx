@@ -102,21 +102,21 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {}, 
   const handlePatientSuggestionSelect = (patient: any) => {
     const fullName = `${patient.firstName} ${patient.lastName}`;
     form.setValue("patientName", fullName);
-    // Auto-fill age from DOB
+    // Auto-fill age from DOB — parse as local time to avoid UTC off-by-one
     if (patient.dateOfBirth) {
-      const dob = new Date(patient.dateOfBirth);
+      const [y, mo, d] = String(patient.dateOfBirth).split('T')[0].split('-').map(Number);
+      const dob = new Date(y, mo - 1, d);
       const age = Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
       form.setValue("demographics.age" as any, age);
     }
-    // Auto-fill systolic BP and BMI from most recent vitals within last 90 days
+    // Auto-fill systolic BP and BMI from most recent vitals (no date cutoff —
+    // vitals come back newest-first so find() always picks the most recent entry)
     if (patient.id) {
       fetch(`/api/patients/${patient.id}/vitals`, { credentials: "include" })
         .then(r => r.ok ? r.json() : [])
         .then((vitals: any[]) => {
-          const cutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
-          const recent = vitals.filter((v: any) => new Date(v.recordedAt).getTime() >= cutoff);
-          const bpEntry = recent.find((v: any) => v.systolicBp != null);
-          const bmiEntry = recent.find((v: any) => v.bmi != null);
+          const bpEntry = vitals.find((v: any) => v.systolicBp != null);
+          const bmiEntry = vitals.find((v: any) => v.bmi != null);
           if (bpEntry && !form.getValues("demographics.systolicBP" as any)) {
             form.setValue("demographics.systolicBP" as any, bpEntry.systolicBp);
           }
@@ -171,7 +171,7 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {}, 
                           <Card className="absolute z-50 left-0 right-0 top-full mt-1 shadow-md max-h-48 overflow-y-auto">
                             <CardContent className="p-1">
                               {patientSuggestions.slice(0, 8).map((p: any) => {
-                                const age = p.dateOfBirth ? Math.floor((Date.now() - new Date(p.dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : null;
+                                const age = p.dateOfBirth ? (() => { const [y,mo,d] = String(p.dateOfBirth).split('T')[0].split('-').map(Number); return Math.floor((Date.now() - new Date(y, mo-1, d).getTime()) / (365.25*24*60*60*1000)); })() : null;
                                 return (
                                   <button
                                     key={p.id}

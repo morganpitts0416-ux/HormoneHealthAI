@@ -37,7 +37,15 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { LabValues, InterpretationResult, FemaleLabValues, Patient, LabResult } from "@shared/schema";
 
 function calculateAge(dateOfBirth: Date | string): number {
-  const dob = new Date(dateOfBirth);
+  // Parse string dates as local time — new Date("YYYY-MM-DD") is UTC midnight,
+  // which rolls back a day in US timezones and can produce an age off by 1 year.
+  let dob: Date;
+  if (typeof dateOfBirth === 'string') {
+    const [year, month, day] = dateOfBirth.split('T')[0].split('-').map(Number);
+    dob = new Date(year, month - 1, day);
+  } else {
+    dob = new Date(dateOfBirth);
+  }
   const today = new Date();
   let age = today.getFullYear() - dob.getFullYear();
   const m = today.getMonth() - dob.getMonth();
@@ -548,10 +556,11 @@ export default function LabInterpretation() {
                   fetch(`/api/patients/${patient.id}/vitals`, { credentials: 'include' })
                     .then(r => r.ok ? r.json() : [])
                     .then((vitals: any[]) => {
-                      const cutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
-                      const recent = vitals.filter((v: any) => new Date(v.recordedAt).getTime() >= cutoff);
-                      const bpEntry = recent.find((v: any) => v.systolicBp != null);
-                      const bmiEntry = recent.find((v: any) => v.bmi != null);
+                      // Vitals come back newest-first from the server — pick the most
+                      // recent entry that has each field, with no date cutoff so a patient
+                      // whose last vitals are older than 90 days still gets pre-filled.
+                      const bpEntry = vitals.find((v: any) => v.systolicBp != null);
+                      const bmiEntry = vitals.find((v: any) => v.bmi != null);
                       if (bmiEntry) hasPrefilledBmiRef.current = true;
                       setLabValues({
                         patientName: `${patient.firstName} ${patient.lastName}`,
