@@ -1,0 +1,75 @@
+HPI: Julie Hardy, a 50-year-old female, presents for a new patient visit primarily to discuss hormone management and evaluate her current health status. She reports no current symptoms bothering her but has a history of Graves' disease and high cholesterol. Julie has been on Synthroid for a long time and recently self-adjusted her dosage, leading to symptoms of anxiety and jitteriness, likely due to overmedication. Her recent labs show a low TSH and slightly elevated T4, supporting the need to revert to her prescribed Synthroid dosage of 125 mcg five times a week.
+
+Julie is postmenopausal, having undergone a hysterectomy, and is interested in hormone therapy to address sleep disturbances and potential bone health concerns. She expressed curiosity about testosterone pellets but is also open to considering low-dose estrogen and progesterone for postmenopausal symptoms. Explained the roles of estrogen and progesterone in bone and cardiovascular health, emphasizing their importance in managing postmenopausal symptoms and supporting overall health.
+
+Julie has been health-conscious, maintaining a diet that helped her lose 15 pounds, and she is vigilant about her calcium intake due to concerns about osteoporosis. Her lipid profile is excellent, with an LDL below 100 and HDL at 53, resulting in a low cardiovascular risk score. She takes several supplements, including Vitamin D, Calcium, B12, CoQ10, and Omega-3, which have supported her overall health. Advised maintaining her Vitamin D levels between 60-80 ng/mL to support brain health and energy levels.
+
+Current Medications: 
+
+Synthroid (levothyroxine) 125 mcg oral five times a week
+
+Vitamin D supplement
+
+Calcium supplement
+
+B12 supplement
+
+CoQ10 supplement
+
+Multivitamins
+
+Omega-3
+
+Medical History: 
+
+Allergies: Not reported at this visit
+
+Past Medical Hx: Anemia, High Cholesterol, Graves' disease
+
+Past Surgical Hx: C-section x3, septoplasty, breast augmentation, fibroids, ear tubes, hysterectomy
+
+Social Hx: Tubal ligation, never smoked or vaped, alcohol 2-4 times per month
+
+Family Hx: Mother with diabetes, Father with cancer, Paternal Grandfather with heart attack, Paternal Grandmother with cardiac arrest and diabetes
+
+ROS
+
+OBJECTIVE
+Vitals: BMI 18.9
+
+ASSESSMENT/PLAN
+Julie Hardy presents with a complex interplay of postmenopausal symptoms, thyroid management challenges, and a proactive approach to her health. Her recent self-adjustment of Synthroid dosage has led to symptoms of overmedication, necessitating a return to her prescribed regimen. Her postmenopausal status and interest in hormone therapy highlight the need for a tailored approach to support her bone and cardiovascular health.
+
+1. Hypothyroidism (E03.9)
+
+Patient has a history of Graves' disease and is currently on Synthroid. Recent labs show low TSH and elevated T4, indicating overmedication. Symptoms of anxiety and jitteriness are consistent with this pattern.
+
+Plan: Adjust Synthroid to 125 mcg five times a week. Monitor thyroid levels in a few months to ensure stability.
+
+2. Post-Menopausal Disorder with Symptom Complex (F52.0, R53.83, E34.9)
+
+Patient is postmenopausal following hysterectomy and expresses interest in hormone therapy for sleep disturbances and mood. Discussion centered on postmenopausal symptoms, hormone therapy, and related health impacts.
+
+Plan: Consider low-dose progesterone for sleep and mood; consider low-dose estrogen for postmenopausal symptoms. Reassess hormonal therapy options at next visit.
+
+Future Considerations: Progesterone and estrogen therapy were discussed with the patient, highlighting their roles in sleep, mood, and bone health. Patient expressed interest in addressing sleep disturbances and understanding estrogen's benefits. Follow-up plan includes reassessing hormonal therapy options at the next visit.
+
+CARE PLAN
+Adjust Synthroid to 125 mcg five times a week to manage thyroid levels and reduce symptoms of overmedication.
+
+Maintain Vitamin D supplement to keep levels between 60-80 ng/mL for brain health and energy.
+
+Consider low-dose progesterone for sleep and mood disturbances; discuss at next visit.
+
+Consider low-dose estrogen for bone and cardiovascular health; discuss at next visit.
+
+Monitor thyroid levels in a few months to ensure stability.
+
+Follow a health-conscious diet and continue regular exercise to support overall health.
+
+Return for follow-up in a few months to reassess thyroid levels and discuss hormone therapy options.
+
+FOLLOW-UP
+Return in 3 months to reassess thyroid levels and discuss hormone therapy options.
+
+Use Copy Note to paste the clean note into your EHR. Evidence pills on each diagnosis open guideline citations inline.
