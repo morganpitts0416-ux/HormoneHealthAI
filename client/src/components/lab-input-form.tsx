@@ -109,10 +109,6 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {}, 
       const age = Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
       form.setValue("demographics.age" as any, age);
     }
-    // Auto-fill race from patient demographics
-    if (patient.race) {
-      form.setValue("demographics.race" as any, patient.race);
-    }
     // Auto-fill systolic BP and BMI from most recent vitals (no date cutoff —
     // vitals come back newest-first so find() always picks the most recent entry)
     if (patient.id) {
@@ -243,34 +239,6 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {}, 
                   )}
                 />
 
-
-                <FormField
-                  control={form.control}
-                  name="demographics.race"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">Race</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger data-testid="select-race">
-                            <SelectValue placeholder="Select race" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="White">White</SelectItem>
-                          <SelectItem value="Black or African American">Black or African American</SelectItem>
-                          <SelectItem value="American Indian or Alaska Native">American Indian or Alaska Native</SelectItem>
-                          <SelectItem value="Asian">Asian</SelectItem>
-                          <SelectItem value="Native Hawaiian or Pacific Islander">Native Hawaiian or Pacific Islander</SelectItem>
-                          <SelectItem value="Multiracial">Multiracial</SelectItem>
-                          <SelectItem value="Other">Other</SelectItem>
-                          <SelectItem value="Prefer not to say">Prefer not to say</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
 
                 <FormField
                   control={form.control}

@@ -7,7 +7,6 @@ import { pgTable, serial, varchar, text, timestamp, jsonb, integer, boolean, rea
 export const patientDemographicsSchema = z.object({
   age: z.number().min(20).max(120).optional(),
   sex: z.enum(['male', 'female']).optional(),
-  race: z.string().optional(),
   systolicBP: z.number().min(70).max(250).optional(),
   onBPMeds: z.boolean().default(false),
   diabetic: z.boolean().default(false),

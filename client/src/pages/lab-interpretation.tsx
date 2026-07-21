@@ -552,9 +552,6 @@ export default function LabInterpretation() {
                   if (patient.dateOfBirth) {
                     baseDemographics.age = calculateAge(patient.dateOfBirth);
                   }
-                  if (patient.race) {
-                    baseDemographics.race = patient.race;
-                  }
                   // Fetch vitals to auto-fill systolic BP and BMI, then set all at once
                   fetch(`/api/patients/${patient.id}/vitals`, { credentials: 'include' })
                     .then(r => r.ok ? r.json() : [])
@@ -656,7 +653,7 @@ export default function LabInterpretation() {
                   Lab values have been auto-filled from your PDF. To calculate ASCVD cardiovascular risk and STOP-BANG sleep apnea screening:
                   <ol className="list-decimal list-inside mt-2 space-y-1">
                     <li>Open the "Patient Demographics & Cardiovascular Risk Factors" section below</li>
-                    <li>Enter age, sex, race, blood pressure, and risk factors (diabetes, smoking, BP medications)</li>
+                    <li>Enter age, sex, blood pressure, and risk factors (diabetes, smoking, BP medications)</li>
                     <li>Complete the STOP-BANG Sleep Apnea Screening checkboxes</li>
                     <li>Review auto-filled lab values and click "Interpret Labs"</li>
                   </ol>

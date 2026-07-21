@@ -552,9 +552,6 @@ export default function FemaleLabInterpretation() {
                   if (patient.dateOfBirth) {
                     baseDemographics.age = calculateAge(patient.dateOfBirth);
                   }
-                  if (patient.race) {
-                    baseDemographics.race = patient.race;
-                  }
                   // Fetch vitals to auto-fill systolic BP and BMI, then set all at once
                   fetch(`/api/patients/${patient.id}/vitals`, { credentials: 'include' })
                     .then(r => r.ok ? r.json() : [])
@@ -655,7 +652,7 @@ export default function FemaleLabInterpretation() {
                 <AlertDescription>
                   Lab values have been auto-filled from your PDF. To calculate ASCVD cardiovascular risk and get accurate hormone interpretations:
                   <ol className="list-decimal list-inside mt-2 space-y-1">
-                    <li>Enter patient Age, Race, and Systolic Blood Pressure</li>
+                    <li>Enter patient Age and Systolic Blood Pressure</li>
                     <li>Select current Menstrual Phase (affects hormone reference ranges)</li>
                     <li>Check any applicable boxes (HRT, Birth Control, Risk Factors)</li>
                     <li>Complete STOP-BANG screening questions</li>
