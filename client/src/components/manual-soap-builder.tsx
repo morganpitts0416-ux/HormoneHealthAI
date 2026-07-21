@@ -1593,7 +1593,21 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
     };
 
     for (const tb of tplBlocks) {
-      if (tb.type === "section_header") continue; // headers are visual-only in templates
+      // Section headers become labeled custom_text blocks so the template's
+      // visual structure (e.g. "SUBJECTIVE", "OBJECTIVE") is preserved in the note.
+      if (tb.type === "section_header") {
+        const heading = (tb.label ?? tb.defaultValue ?? "").trim();
+        if (heading) {
+          newSoapBlocks.push({
+            uid: uid(),
+            type: "custom_text",
+            content: "",
+            mode: "freetext",
+            customLabel: heading,
+          });
+        }
+        continue;
+      }
 
       // Vitals block maps directly to the structured vitals editor
       if (tb.type === "vitals") {
@@ -1665,19 +1679,21 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
         }
         newSoapBlocks.push(block);
         claimed.add(mapped);
-      } else if (value || tb.label) {
-        // No SOAP mapping — each unmapped field becomes its own labeled
-        // custom_text block so content stays visually separated (not jammed
-        // into HPI). Multiple custom_text blocks are allowed.
+      } else {
+        // No SOAP mapping (or the mapped type is already claimed by an earlier
+        // block) — every generic field (free_text, long_text, short_text, etc.)
+        // becomes its own labeled custom_text block. We never silently drop a
+        // block the provider placed in the template: even an empty unlabeled
+        // free-text area is an intentional note-taking area.
+        // Multiple custom_text blocks are always allowed.
         newSoapBlocks.push({
           uid: uid(),
           type: "custom_text",
           content: value,
           mode: "freetext",
-          customLabel: sanitizeFieldLabel(tb.label) || "Notes",
+          customLabel: sanitizeFieldLabel(tb.label) || "Note",
           ...(hasTemplateBlanks(value) ? { fillValues: [] } : {}),
         });
-        // Note: do NOT add "custom_text" to `claimed` — multiple are allowed
       }
     }
 
