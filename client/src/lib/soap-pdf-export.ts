@@ -279,10 +279,9 @@ export async function exportSoapPdf(opts: SoapPdfOptions): Promise<void> {
   doc.setFontSize(8.5);
   doc.setTextColor('#444444');
   try {
-    // Signed notes: use the signing date as the official note date.
-    // Unsigned drafts: fall back to the encounter visit date.
-    const dateSource = opts.signedAt ? new Date(opts.signedAt) : parseDateOnly(opts.visitDate);
-    const dateStr = dateSource.toLocaleDateString('en-US', {
+    // Always show the encounter/visit date — not the signing date.
+    // The signing date appears only in the signature block at the bottom.
+    const dateStr = parseDateOnly(opts.visitDate).toLocaleDateString('en-US', {
       month: 'long', day: 'numeric', year: 'numeric',
     });
     doc.text(`Date: ${dateStr}`, PAGE_W - MARGIN, y, { align: 'right' });
