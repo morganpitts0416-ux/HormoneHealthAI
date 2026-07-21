@@ -11040,7 +11040,7 @@ FORMAT RULES — NON-NEGOTIABLE
     [number]. [Diagnosis name] ([ICD-10 code])
     [Clinical reasoning paragraph — plain prose, no brackets]
     Plan: [treatment orders: drug name, dose, route, frequency; labs; referrals; follow-up]
-    Future Considerations: [optional — include ONLY if the original note already has a Future Considerations sub-section for this item, or if a fired trigger rule explicitly requires documenting a deferred option; do not add this sub-section speculatively]
+    Future Considerations: [include when (a) this Assessment item has an associated STATE B discussed-but-deferred treatment or option — i.e., a specific clinical discussion occurred and was deferred with a named trigger — OR (b) a fired trigger rule explicitly requires documenting a deferred option; if the original note already has a "Future Considerations:" sub-section for this item, preserve and refine it — never remove it; if neither (a) nor (b) applies, omit this sub-section — do not fabricate deferred items]
   Do not merge the Plan text into the reasoning paragraph. Do not add sub-labels other than "Plan:" and "Future Considerations:".
 • CARE PLAN SECTION: Must remain a dash-prefixed bullet list (- item). Never convert to prose or numbered list.`,
           },

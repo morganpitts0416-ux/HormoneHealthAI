@@ -1767,6 +1767,39 @@ SECTION 5 — FABRICATION GUARDRAILS
 - Physical Exam not performed → "Physical examination not performed at this encounter."
 
 ═══════════════════════════════════════
+COVERAGE CONTRACT — EXTRACTION COMPLETENESS GATE
+═══════════════════════════════════════
+The STRUCTURED CLINICAL EXTRACTION in the user prompt is the verified index of everything that was discussed at this encounter. Before writing the note, you MUST confirm that every item in the following extraction fields appears somewhere in the note — either in the Assessment/Plan, HPI, or (for STATE C exploratory items) at minimum a clause in the HPI narrative. Silent omission of any extracted item is a documentation failure.
+
+MANDATORY COVERAGE CHECKLIST — go through each list item by item:
+
+1. PLAN ITEMS (extraction: "Plan items discussed") — every entry must appear in the note:
+   - STATE A items (explicitly decided) → must appear in a numbered A/P entry with a definitive Plan line
+   - STATE B items (discussed but deferred with specific trigger) → must appear in a numbered A/P entry with a "Future Considerations:" sub-section on its own line
+   - STATE C items (exploratory, conversational mention) → must appear at minimum as a clause in the HPI ("GLP-1 therapy was discussed as a future option for weight management")
+   - If you cannot classify a plan item from the STATE assignment, default to STATE B treatment — give it an A/P entry
+
+2. DIAGNOSES DISCUSSED (extraction: "Diagnoses discussed") — every named diagnosis must appear:
+   - As a numbered Assessment item, OR
+   - Nested under a closely related numbered item if it belongs to the same clinical cluster, OR
+   - In the HPI with a brief note explaining why it was not addressed in A/P (e.g., "not the focus of today's visit; to be addressed at follow-up")
+   - A diagnosis that appears only in the Current Medications section with no mention in HPI or A/P is an omission
+
+3. MEDICATION CHANGES DISCUSSED (extraction: "Medication changes discussed") — every item must appear:
+   - In a numbered A/P entry with the change documented (dose adjustment, addition, discontinuation, deferral)
+   - Do NOT leave a medication change only in HPI or only in Current Medications
+
+4. CURRENT MEDICATIONS (extraction: "Current medications") — any medication that was actively discussed during the visit (reviewed, confirmed, adjusted, titrated, or flagged for concern) must appear in all four locations per the FOUR-LOCATION MANDATE. Medications passively listed on the chart but never mentioned in the transcript may be noted in Current Medications only.
+
+5. PATIENT QUESTIONS (extraction: "Patient questions") — every patient question that received a clinical answer from the provider must be documented. The question and the provider's answer belong either in the HPI (as part of the clinical narrative) or woven into the relevant Assessment item's reasoning paragraph. A patient question that drove clinical discussion and is entirely absent from the note is an omission.
+
+COVERAGE FAILURE RESPONSE: If you complete your draft and realize an extracted item is not present anywhere in the note — do NOT silently omit it. Add it:
+- If it's a discussed medication/treatment → add an HPI clause and A/P entry (with Future Considerations if STATE B)
+- If it's a patient question → add it to the HPI or relevant A/P reasoning
+- If it's a diagnosis discussed → add it to the appropriate A/P cluster
+Never leave the coverage checklist incomplete.
+
+═══════════════════════════════════════
 CRITICAL SAFETY CHECK — MANDATORY BEFORE OUTPUT
 ═══════════════════════════════════════
 Before finalizing the note, perform this internal completeness audit in TWO passes.
@@ -2272,6 +2305,12 @@ CHECK FOR:
 - "Follow up as needed" does NOT adequately represent a specific follow-up interval, monitoring trigger, or safety net instruction.
 - "Education provided" does NOT adequately represent the specific content of education that was delivered.
 When a generalized phrase has replaced specific clinical content from the transcript, flag as important and revise to restore the substance of what was actually said.
+
+30. STATE B COVERAGE — DISCUSSED-BUT-DEFERRED ITEMS MUST HAVE A/P ENTRIES WITH FUTURE CONSIDERATIONS: Does the note contain a numbered Assessment/Plan entry for EVERY item listed in "Discussed but not decided" in the NORMALIZED INTELLIGENCE? Each STATE B item MUST have:
+   (a) A numbered Assessment entry with a full clinical reasoning paragraph explaining why this treatment was considered for this patient, the substance of the clinical discussion (education provided, patient response/hesitation/preference, provider rationale for deferral), and the specific deferral trigger.
+   (b) A Plan line using deferred language — naming the specific trigger: "Deferred pending [X]; patient to follow up when [condition]."
+   (c) A "Future Considerations:" sub-section on its own line immediately after the Plan line, documenting the deferred option, what was discussed, the deferral trigger, and any patient-expressed preference.
+   If any STATE B item from "discussed_but_not_decided" is missing its numbered A/P entry, OR has an A/P entry but is missing the "Future Considerations:" sub-section, flag as CRITICAL and add the missing components before returning the revised note. Do NOT reduce a STATE B item to an HPI-only mention — it must have a numbered Assessment entry regardless of whether treatment was initiated.
 
 STYLE PRESERVATION — MANDATORY WHEN REVISING:
 If you are writing a revised_fullNote, the following style rules are non-negotiable and apply to your revision exactly as they applied to the original generation. Do not introduce patterns the original generation was specifically trained to avoid.
