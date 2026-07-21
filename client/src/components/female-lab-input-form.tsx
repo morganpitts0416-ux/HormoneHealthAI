@@ -137,21 +137,25 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
   const handlePatientSuggestionSelect = (patient: any) => {
     const fullName = `${patient.firstName} ${patient.lastName}`;
     form.setValue("patientName", fullName);
-    // Auto-fill age from DOB
+    // Auto-fill age from DOB — parse as local time to avoid UTC off-by-one
     if (patient.dateOfBirth) {
-      const dob = new Date(patient.dateOfBirth);
+      const [y, mo, d] = String(patient.dateOfBirth).split('T')[0].split('-').map(Number);
+      const dob = new Date(y, mo - 1, d);
       const age = Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
       form.setValue("demographics.age" as any, age);
     }
-    // Auto-fill systolic BP and BMI from most recent vitals within last 90 days
+    // Auto-fill race from patient demographics
+    if (patient.race) {
+      form.setValue("demographics.race" as any, patient.race);
+    }
+    // Auto-fill systolic BP and BMI from most recent vitals (no date cutoff —
+    // vitals come back newest-first so find() always picks the most recent entry)
     if (patient.id) {
       fetch(`/api/patients/${patient.id}/vitals`, { credentials: "include" })
         .then(r => r.ok ? r.json() : [])
         .then((vitals: any[]) => {
-          const cutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
-          const recent = vitals.filter((v: any) => new Date(v.recordedAt).getTime() >= cutoff);
-          const bpEntry = recent.find((v: any) => v.systolicBp != null);
-          const bmiEntry = recent.find((v: any) => v.bmi != null);
+          const bpEntry = vitals.find((v: any) => v.systolicBp != null);
+          const bmiEntry = vitals.find((v: any) => v.bmi != null);
           if (bpEntry && !form.getValues("demographics.systolicBP" as any)) {
             form.setValue("demographics.systolicBP" as any, bpEntry.systolicBp);
           }
@@ -287,9 +291,14 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="white">White</SelectItem>
-                          <SelectItem value="african_american">African American</SelectItem>
-                          <SelectItem value="other">Other</SelectItem>
+                          <SelectItem value="White">White</SelectItem>
+                          <SelectItem value="Black or African American">Black or African American</SelectItem>
+                          <SelectItem value="American Indian or Alaska Native">American Indian or Alaska Native</SelectItem>
+                          <SelectItem value="Asian">Asian</SelectItem>
+                          <SelectItem value="Native Hawaiian or Pacific Islander">Native Hawaiian or Pacific Islander</SelectItem>
+                          <SelectItem value="Multiracial">Multiracial</SelectItem>
+                          <SelectItem value="Other">Other</SelectItem>
+                          <SelectItem value="Prefer not to say">Prefer not to say</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />

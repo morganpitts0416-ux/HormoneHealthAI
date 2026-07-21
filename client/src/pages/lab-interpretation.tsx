@@ -552,6 +552,9 @@ export default function LabInterpretation() {
                   if (patient.dateOfBirth) {
                     baseDemographics.age = calculateAge(patient.dateOfBirth);
                   }
+                  if (patient.race) {
+                    baseDemographics.race = patient.race;
+                  }
                   // Fetch vitals to auto-fill systolic BP and BMI, then set all at once
                   fetch(`/api/patients/${patient.id}/vitals`, { credentials: 'include' })
                     .then(r => r.ok ? r.json() : [])
