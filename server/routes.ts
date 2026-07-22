@@ -11447,6 +11447,29 @@ PATIENT-SPECIFIC vs. GENERAL FORMULARY — how to tell the difference:
 - DECISIVE TEST: If more than 8-10 medications across 4+ unrelated drug classes are listed in a short span with no "patient takes" framing, treat the entire list as a FORMULARY DISCUSSION — put NONE of those as medications_current for this patient. The patient's actual medications will be mentioned separately with explicit attribution.
 - When formulary medications ARE also explicitly stated as patient-specific (e.g., "she's on spironolactone" after a general formulary list), ONLY THEN add them to medications_current.
 
+SUPPLEMENT CONVERSATIONS — DEDICATED CAPTURE RULE:
+Supplement discussions are the single most commonly omitted element in clinical documentation. You MUST capture every supplement conversation in the "supplement_discussions" array with full context. This field is SEPARATE from medication_changes_discussed and captures the CONVERSATION, not just the action.
+
+For EVERY supplement mentioned in the transcript (vitamin D, magnesium, omega-3, berberine, zinc, B12, iron, CoQ10, curcumin, NAC, creatine, ashwagandha, probiotics, any OTC product, any nutraceutical), create one entry in supplement_discussions with these fields:
+  supplement_name — exact name + brand if mentioned
+  action — one of: "start", "stop", "continue", "adjust", "discuss_only"
+  dose — specific dose if stated (e.g., "400mg", "5000 IU", "1g")
+  timing — when/how to take (e.g., "at bedtime", "with food", "twice daily")
+  indication — why this supplement was discussed — tie to symptom, lab value, or clinical reason exactly as stated
+  patient_questions — any question the patient asked about this supplement
+  provider_education — what the clinician explained (mechanism, why this form/brand, what to expect, any warnings)
+  patient_response — patient's reaction: agreed, hesitant, already taking, tried before, declined, etc.
+  decided — true if a definitive start/stop/adjust decision was made; false if discussed only as an option
+
+Action definitions:
+  "start"        — clinician is initiating this supplement at this visit
+  "stop"         — clinician is discontinuing a supplement the patient is currently on; MUST include reason in indication
+  "continue"     — confirming patient stays on a supplement they already take
+  "adjust"       — dose or timing change to an existing supplement
+  "discuss_only" — mentioned as a future option, or education given without a definitive start/stop decision
+
+CRITICAL: Even supplements BRIEFLY mentioned must get an entry. One sentence about omega-3 dosing, one patient question about magnesium timing, one "let's stop the zinc for now" — ALL go in supplement_discussions. Do NOT omit any supplement interaction, however brief.
+
 MEDICATION TENSE & INTENT — CRITICAL RULE:
 You MUST distinguish between what the patient is CURRENTLY taking vs what the clinician is RECOMMENDING they begin:
 - medications_current = medications the patient is already taking RIGHT NOW at the time of the visit
@@ -11533,6 +11556,7 @@ Return this exact JSON structure (all arrays, even if empty):
   "patient_questions": [],
   "red_flags": [],
   "uncertain_items": [],
+  "supplement_discussions": [],
   "context_inferred_items": [],
   "source_utterance_ids": []${useStructuredV2 ? `,
   "treatment_actions": [],
@@ -11895,6 +11919,17 @@ Examples:
           if (freshExtraction.symptoms_denied?.length)           pmExtLines.push(`Symptoms denied: ${freshExtraction.symptoms_denied.join("; ")}`);
           if (freshExtraction.medications_current?.length)       pmExtLines.push(`Current medications: ${freshExtraction.medications_current.join("; ")}`);
           if (freshExtraction.supplements_current?.length)       pmExtLines.push(`Current supplements: ${freshExtraction.supplements_current.join("; ")}`);
+          if (Array.isArray(freshExtraction.supplement_discussions) && freshExtraction.supplement_discussions.length) {
+            const suppConvLines = freshExtraction.supplement_discussions.map((s: any) => {
+              const parts = [`[${(s.action ?? 'discuss').toUpperCase()}] ${s.supplement_name}`];
+              if (s.dose) parts.push(s.dose);
+              if (s.indication) parts.push(`for: ${s.indication}`);
+              if (s.provider_education) parts.push(`explained: ${s.provider_education}`);
+              if (s.patient_questions) parts.push(`pt asked: ${s.patient_questions}`);
+              return parts.join(' — ');
+            });
+            pmExtLines.push(`Supplement conversations: ${suppConvLines.join('; ')}`);
+          }
           if (freshExtraction.mental_health_context?.length)     pmExtLines.push(`Mental health context: ${freshExtraction.mental_health_context.join("; ")}`);
           if (freshExtraction.lifestyle_factors?.length)         pmExtLines.push(`Lifestyle factors: ${freshExtraction.lifestyle_factors.join("; ")}`);
           if (freshExtraction.diagnoses_discussed?.length)       pmExtLines.push(`Diagnoses discussed: ${freshExtraction.diagnoses_discussed.join("; ")}`);

@@ -2155,9 +2155,48 @@ PATIENT vs. CLINICIAN IDENTITY (apply while drafting — never include this head
       })()
     : '';
 
+  // Supplement discussions context — always active (not gated by V2 flag)
+  // These must appear in the user prompt so the generation model has the full
+  // supplement conversation (dose, indication, patient questions, provider education)
+  // and does not compress them into a bare mention.
+  const supplementDiscussionsContext = Array.isArray(extraction?.supplement_discussions) && extraction.supplement_discussions.length
+    ? (() => {
+        const decided = extraction.supplement_discussions.filter((s: any) => s.decided !== false);
+        const discussedOnly = extraction.supplement_discussions.filter((s: any) => s.decided === false);
+        const lines: string[] = ['\nSUPPLEMENT CONVERSATIONS (extracted from transcript — MUST be fully documented per Four-Location Mandate rules):'];
+        lines.push('Every supplement below must appear in HPI (with context), Current Medications (if continuing), Assessment/Plan (numbered item or nested under a related diagnosis), AND Care Plan (actionable patient instruction).');
+        lines.push('Do NOT compress these to a bare mention. Include dose, timing, indication, patient questions asked, and provider education given.');
+        if (decided.length) {
+          lines.push('\nDECIDED SUPPLEMENT ACTIONS (provider made a definitive decision at this visit):');
+          for (const s of decided) {
+            const parts: string[] = [`  [${(s.action ?? 'START').toUpperCase()}] ${s.supplement_name}`];
+            if (s.dose) parts.push(`Dose: ${s.dose}`);
+            if (s.timing) parts.push(`Timing: ${s.timing}`);
+            if (s.indication) parts.push(`Indication: ${s.indication}`);
+            if (s.provider_education) parts.push(`Provider explained: ${s.provider_education}`);
+            if (s.patient_questions) parts.push(`Patient asked: ${s.patient_questions}`);
+            if (s.patient_response) parts.push(`Patient response: ${s.patient_response}`);
+            lines.push(parts.join(' | '));
+          }
+        }
+        if (discussedOnly.length) {
+          lines.push('\nSUPPLEMENTS DISCUSSED ONLY (no definitive decision made — document in HPI; STATE B items need a numbered A/P entry with deferral language):');
+          for (const s of discussedOnly) {
+            const parts: string[] = [`  [DISCUSSED] ${s.supplement_name}`];
+            if (s.indication) parts.push(`Context: ${s.indication}`);
+            if (s.provider_education) parts.push(`Provider explained: ${s.provider_education}`);
+            if (s.patient_questions) parts.push(`Patient asked: ${s.patient_questions}`);
+            if (s.patient_response) parts.push(`Patient response: ${s.patient_response}`);
+            lines.push(parts.join(' | '));
+          }
+        }
+        return lines.join('\n');
+      })()
+    : '';
+
   const userPrompt = `Visit Type: ${encounter.visitType}
 Chief Complaint: ${encounter.chiefComplaint || "Not specified"}
-Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${patientLine}${historicalBlock}${labContext}${extractionSummary}${patternContext}${medicationContext}${normalizedMedsContext}${conditionsContext}${preventativeContext}${symptomTimelineContext}${planClassification}${futureConsiderationsContext}${exploratoryContext}${treatmentRationaleContext}${providerInterpretationsContext}${clinicalContextV2}${bundleContext}${treatmentActionsContext}${stagedPlanContext}${hpiElements}${patientPerspective}${providerReasoning}${educationProvided}${patientDecisions}${explicitRefusalsContext}${visitTerminationContext}
+Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${patientLine}${historicalBlock}${labContext}${extractionSummary}${supplementDiscussionsContext}${patternContext}${medicationContext}${normalizedMedsContext}${conditionsContext}${preventativeContext}${symptomTimelineContext}${planClassification}${futureConsiderationsContext}${exploratoryContext}${treatmentRationaleContext}${providerInterpretationsContext}${clinicalContextV2}${bundleContext}${treatmentActionsContext}${stagedPlanContext}${hpiElements}${patientPerspective}${providerReasoning}${educationProvided}${patientDecisions}${explicitRefusalsContext}${visitTerminationContext}
 ${speakerConflictContext2}
 TRANSCRIPT (CLINICIAN[?] = uncertain speaker assignment — treat with extra care in Assessment/Plan):
 ${diarizedInput}
@@ -2683,6 +2722,34 @@ function buildExtractionSummary(extraction: any): string {
   if (extraction.medications_current?.length)         lines.push(`Current medications: ${extraction.medications_current.join("; ")}`);
   if (extraction.supplements_current?.length)         lines.push(`Current supplements: ${extraction.supplements_current.join("; ")}`);
   if (extraction.medication_changes_discussed?.length) lines.push(`Medication changes discussed: ${extraction.medication_changes_discussed.join("; ")}`);
+
+  // Supplement conversations — serialize with full context so the generation
+  // model sees the complete discussion (dose, indication, patient Q&A, education)
+  if (Array.isArray(extraction.supplement_discussions) && extraction.supplement_discussions.length) {
+    const decided = extraction.supplement_discussions.filter((s: any) => s.decided !== false);
+    const discussedOnly = extraction.supplement_discussions.filter((s: any) => s.decided === false);
+    if (decided.length) {
+      lines.push(`Supplement decisions (MUST appear in HPI + A/P + Care Plan): ${decided.map((s: any) => {
+        const parts = [`[${(s.action ?? 'START').toUpperCase()}] ${s.supplement_name}`];
+        if (s.dose) parts.push(s.dose);
+        if (s.timing) parts.push(s.timing);
+        if (s.indication) parts.push(`for: ${s.indication}`);
+        if (s.provider_education) parts.push(`explained: ${s.provider_education}`);
+        if (s.patient_questions) parts.push(`pt asked: ${s.patient_questions}`);
+        if (s.patient_response) parts.push(`pt response: ${s.patient_response}`);
+        return parts.join(' — ');
+      }).join('; ')}`);
+    }
+    if (discussedOnly.length) {
+      lines.push(`Supplements discussed only (document in HPI; if substantive discussion, add A/P entry with deferral language): ${discussedOnly.map((s: any) => {
+        const parts = [`[DISCUSSED] ${s.supplement_name}`];
+        if (s.indication) parts.push(`context: ${s.indication}`);
+        if (s.provider_education) parts.push(`explained: ${s.provider_education}`);
+        if (s.patient_questions) parts.push(`pt asked: ${s.patient_questions}`);
+        return parts.join(' — ');
+      }).join('; ')}`);
+    }
+  }
   if (extraction.labs_reviewed?.length)               lines.push(`Labs reviewed: ${extraction.labs_reviewed.join("; ")}`);
   if (extraction.allergies?.length)                   lines.push(`Allergies: ${extraction.allergies.join("; ")}`);
   if (extraction.past_medical_history?.length)        lines.push(`Past medical history: ${extraction.past_medical_history.join("; ")}`);
