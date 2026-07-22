@@ -1,0 +1,287 @@
+Please review and improve ClinIQ’s SOAP note generation logic. Do not make changes yet until you have traced the full generation pipeline and identified where each problem originates.
+
+## Primary Goal
+
+The generated SOAP note should preserve:
+
+1. The provider’s configured diagnosis bundles and final rules.
+2. The provider’s actual clinical reasoning from the encounter.
+3. Explicit medication starts, stops, dose changes, and continuation instructions.
+4. Shared decision-making and the rationale for sequencing treatments.
+5. Safety counseling, contraindication screening, and follow-up contingencies.
+6. Relevant symptom patterns and lab context that influenced treatment.
+
+The generator should not replace or override a provider-configured diagnosis bundle merely because the transcript contains uncertainty about one component of the hormonal picture.
+
+For example, “Early Perimenopause Transition” may correctly come from the provider’s configured final-rule diagnosis bundle and should remain in the assessment when that rule is triggered.
+
+## Problems Seen in This Encounter
+
+### 1. Diagnosis bundles are working, but encounter reasoning is being lost
+
+The note correctly used the provider-configured early perimenopause diagnosis bundle. Preserve that behavior.
+
+However, the assessment should explain the encounter-specific reasoning supporting the diagnosis, including:
+
+* Cognitive changes
+* Word-finding difficulty
+* Poor concentration
+* Forgetfulness
+* Muscle weakness
+* Menstrual changes
+* Hot flashes occurring through most of the month
+* Improvement around ovulation
+* Symptom worsening near menstruation
+* Ongoing ovarian cycling
+* Possible fluctuating estradiol production
+
+The diagnosis bundle should define the diagnostic framework, but the narrative assessment should still be individualized using the transcript.
+
+### 2. Separate diagnosis selection from clinical narrative generation
+
+Please determine whether the system currently treats the diagnosis bundle text as a replacement for the assessment narrative.
+
+The intended behavior should be:
+
+* Final rules/provider settings determine the diagnosis and preferred diagnostic wording.
+* The transcript determines the patient-specific supporting evidence, reasoning, treatment rationale, and plan.
+* The generated assessment combines both.
+
+Do not allow the diagnosis bundle to cause the rest of the assessment to become generic.
+
+### 3. Capture explicit medication actions accurately
+
+The generator must identify and distinguish:
+
+* Start
+* Continue
+* Increase
+* Decrease
+* Stop
+* Hold
+* Trial
+* Consider later
+* Patient declined
+* Deferred until follow-up
+
+In this encounter, the note should have captured:
+
+* Start testosterone 7.5 mg IM weekly.
+* Increase progesterone from 50 mg nightly to 100 mg nightly as a trial.
+* Continue tirzepatide at the patient’s current maintenance or microdose schedule.
+* Reduce vitamin D supplementation because the level was greater than 120.
+* Stop vitamin B1.
+* Stop Fungi 5.
+* Stop milk thistle.
+* Stop black cohosh.
+* Trial Estrovera for hot flashes.
+* Continue omega-3 supplementation.
+* Consider CoQ10 and berberine.
+* Consider estradiol patch later if symptoms remain after the initial treatment trial.
+* Consider pregnenolone later if fatigue persists.
+
+The current SOAP note incorrectly reduced several of these to generic “continue” or “consider” statements and omitted others entirely.
+
+### 4. Preserve the reason a specific dose or route was chosen
+
+Medication plans should include concise treatment rationale when it was explicitly discussed.
+
+For this encounter:
+
+* Testosterone injections were selected because the patient previously experienced hair loss on topical testosterone.
+* A lower starting dose of 7.5 mg was selected instead of 10 mg because of her previous androgen-related hair loss and apparent sensitivity.
+* IM therapy was discussed as potentially producing less local DHT exposure than topical therapy.
+* Estradiol was not started at the same visit because the provider did not want to change multiple hormone therapies simultaneously.
+* The plan was to evaluate her response to testosterone and progesterone first, then add low-dose transdermal estradiol if symptoms persisted.
+
+The note should reflect this sequencing and rationale.
+
+### 5. Capture staged treatment plans and contingency logic
+
+Please add extraction logic for statements such as:
+
+* “First we will…”
+* “If this does not improve…”
+* “At the next visit…”
+* “I do not want to start too many things at once.”
+* “We will keep that as a future consideration.”
+* “If symptoms remain, then we will…”
+
+This should produce clear conditional plans.
+
+Example:
+
+“Begin testosterone 7.5 mg IM weekly and increase progesterone to 100 mg nightly. Reassess symptoms and repeat hormone labs in approximately eight weeks. If hot flashes, cognitive symptoms, or other estrogen-associated symptoms persist, consider adding a low-dose transdermal estradiol patch. Pregnenolone may be considered later if fatigue remains despite initial treatment.”
+
+Do not present deferred treatments as though they were started.
+
+### 6. Improve temporal and cycle-context extraction
+
+Lab values should not be interpreted without clinically relevant timing when timing was discussed.
+
+For this encounter:
+
+* Estradiol was 71.
+* The patient believed labs were drawn immediately before her next menstrual period.
+* The provider explained this may represent a lower-estrogen portion of the cycle.
+* Because the patient is still cycling, a single estradiol value was not considered sufficient to establish a trend.
+* The provider planned to reassess symptoms and future hormone values before adding estradiol.
+
+The note should document this context rather than simply saying estrogen was normal or low.
+
+### 7. Preserve clinically relevant symptom patterns
+
+The HPI should prioritize patterns that influenced the assessment and plan.
+
+For example:
+
+* Hot flashes occur during most of the month.
+* Symptoms briefly improve around ovulation.
+* Hot flashes recur during menstruation.
+* Progesterone improved previously heavy cycles.
+* Topical testosterone caused hair loss.
+* Previous testosterone treatment briefly improved symptoms before the benefit faded.
+* Tirzepatide use has resulted in approximately 15 pounds of weight loss.
+* Low food and protein intake may be contributing to weakness or fatigue.
+
+Do not flatten these into a simple symptom list.
+
+### 8. Improve supplement-plan extraction
+
+Supplement discussions should not overwhelm the medical note, but explicit changes should be preserved when the provider advised the patient to start or stop something.
+
+Create a concise “Supplements reviewed” section or include them under the relevant assessment.
+
+Example:
+
+“Supplement regimen reviewed. Advised discontinuing black cohosh, milk thistle, vitamin B1, and Fungi 5. May trial Estrovera for vasomotor symptoms. Continue omega-3 supplementation. Reduce vitamin D frequency due to level greater than 120. CoQ10 and berberine were discussed as optional additions.”
+
+Avoid listing every educational product unless the provider clearly recommended it as part of the active plan.
+
+### 9. Capture medication safety screening
+
+The generator should identify clinically meaningful safety questions and include them under the appropriate medication plan.
+
+For this encounter:
+
+* Partner has undergone vasectomy.
+* Pregnancy risk and androgen exposure were discussed.
+* No history of pancreatitis was reported.
+* No known personal or family history of medullary thyroid carcinoma was reported.
+
+These should be included concisely under testosterone or GLP-1 management.
+
+### 10. Do not assign a diagnosis that conflicts with current measurements unless supported by history
+
+The note labeled the patient as having obesity, but her current BMI was 25.7.
+
+The generator should distinguish between:
+
+* Current obesity
+* History of obesity
+* Overweight
+* Weight-management treatment
+* Metabolic dysfunction or insulin resistance
+
+If the diagnosis comes from a provider-configured bundle, preserve it only when the configured rule supports it. Otherwise, do not infer current obesity solely because the patient is using a GLP-1 medication.
+
+For this encounter, “weight management,” “history of obesity,” or “overweight” may be more accurate unless existing chart history or provider settings explicitly support obesity.
+
+### 11. Do not mischaracterize lipid findings
+
+The note stated that LDL and apolipoprotein B were elevated, but the provider’s interpretation was more nuanced:
+
+* Ten-year ASCVD risk was approximately 0.6%.
+* ApoB was 108 and considered acceptable for this low-risk patient.
+* Lp(a) was low.
+* hs-CRP was low.
+* No statin was recommended.
+* Lifestyle measures and omega-3 supplementation were discussed.
+
+The SOAP note should prioritize the provider’s interpretation rather than independently classifying every flagged laboratory result as a disease.
+
+Possible assessment wording:
+
+“Mild dyslipidemia with low calculated cardiovascular risk. ASCVD risk approximately 0.6%; ApoB, Lp(a), and hs-CRP reviewed. No statin therapy recommended at this time. Continue dietary optimization and omega-3 supplementation.”
+
+### 12. Add contradiction checking
+
+Before finalizing a note, run a validation pass that compares:
+
+* Current medications
+* Medication plan
+* Diagnoses
+* Current BMI and vitals
+* Labs
+* Follow-up interval
+* Provider statements
+
+Examples of contradictions that should be flagged or corrected:
+
+* HPI says progesterone 50 mg, but the plan fails to mention the increase to 100 mg.
+* BMI is 25.7, but the assessment says current obesity without supporting chart history.
+* Provider says ApoB is acceptable for risk level, but the note calls it elevated and pathologic.
+* Provider says estrogen is deferred, but the note implies it was initiated.
+* Provider recommends stopping supplements, but the care plan omits those changes.
+
+### 13. Weight explicit provider decisions more heavily than general education
+
+The transcript contains substantial patient education and conversational discussion. The SOAP generator should distinguish between:
+
+#### High-priority chart content
+
+* Patient symptoms
+* Relevant history
+* Lab interpretation
+* Diagnoses
+* Medication decisions
+* Safety screening
+* Risks and benefits
+* Treatment rationale
+* Follow-up plans
+* Contingencies
+
+#### Lower-priority educational content
+
+* General analogies
+* Broad hormone education
+* Personal anecdotes
+* Product descriptions
+* Unrelated discussion about the patient’s children
+* General discussion of genetic testing or Epstein-Barr virus not directly related to the patient’s treatment
+
+The note should not reproduce unrelated conversation, but it must preserve decisions that arose from the educational discussion.
+
+### 14. Suggested note-generation hierarchy
+
+Please adjust the SOAP generation pipeline to follow this order:
+
+1. Extract explicit provider decisions.
+2. Extract medication changes and status.
+3. Extract safety screening and counseling.
+4. Extract patient-specific symptoms and patterns.
+5. Extract relevant lab and cycle context.
+6. Apply provider-configured diagnosis bundles and final rules.
+7. Generate individualized assessment narratives for each diagnosis.
+8. Generate a plan tied directly to each assessment.
+9. Run contradiction and omission checks.
+10. Produce the final SOAP note.
+
+Provider settings and final rules should remain authoritative for diagnostic classification, but they should not erase or replace the individualized clinical reasoning extracted from the encounter.
+
+## Required Technical Review Before Changes
+
+Please trace and report back:
+
+1. Which prompt or function generates the HPI.
+2. Which prompt or function generates the assessment and plan.
+3. Where provider settings and final diagnosis rules are inserted.
+4. Whether medication changes are extracted structurally before generation or left entirely to the language model.
+5. Whether the final note is created in one model call or multiple model calls.
+6. Whether there is currently a post-generation validation step.
+7. Why explicit actions such as increasing progesterone, stopping supplements, and reducing vitamin D were omitted.
+8. Why the model overrode the provider’s interpretation of ApoB and labeled it elevated.
+9. Why obesity was selected despite a BMI of 25.7.
+10. Whether the source transcript was truncated before note generation.
+
+Do not remove or weaken the provider-configured  diagnosis bundle. The goal is to preserve that rule while improving the individualized assessment narrative, medication extraction, clinical reasoning, and plan accuracy.
