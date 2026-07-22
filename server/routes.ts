@@ -12247,11 +12247,15 @@ Return a JSON object:
       }
 
       // ── Final fidelity audit (Step 8) ─────────────────────────────────────
-      // Compares final note against pre-June note + transcript to detect and
-      // restore any clinically meaningful detail removed by refinement passes.
+      // Compares final note against the post-pipeline baseline (preJuneNote)
+      // to detect and restore clinically meaningful detail removed by ANY
+      // post-generation layer — QA pass, personalization pass, or both.
+      // The audit itself skips the AI call when the notes are identical, so
+      // we always pass preJuneNote here and let the audit decide whether work
+      // is needed rather than gating on personalization.changed.
       const fidelityResult = await finalFidelityAudit({
         finalNote: soapNote.fullNote ?? "",
-        preJuneNote: personalization.changed ? preJuneNote : null,
+        preJuneNote,
         transcriptText,
         extraction: freshExtraction,
         normalized: null,

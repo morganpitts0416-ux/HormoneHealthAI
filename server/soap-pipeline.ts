@@ -2625,6 +2625,18 @@ CRITICAL — DIAGNOSIS PRESERVATION:
 - Err on the side of KEEPING diagnoses. The provider can remove them if not relevant; missing diagnoses are far worse than extra ones.
 - The Assessment should reflect ALL clinically relevant problems discussed across the entire encounter. Do not impose any cap on the number of assessment items.
 
+ANTI-CONDENSATION MANDATE — NON-NEGOTIABLE:
+When writing a revised_fullNote, you may fix the issues identified above. You must NOT reduce factual coverage in any section you touch or in any section you rewrite for style compliance. Specifically prohibited:
+- Do not shorten or condense the HPI narrative
+- Do not combine or merge Assessment/Plan items to reduce length
+- Do not remove or generalize patient statements, provider reasoning, or treatment decisions
+- Do not replace specific clinical content with general topic labels (e.g., do not replace "patient stated she would not take the medication consistently" with "adherence discussed")
+- Do not remove medication dosing, frequency, route, or administration details
+- Do not remove declined, deferred, or pending items from the Care Plan
+- Do not remove the patient's stated reasons for decisions or refusals
+- Do not shorten the Follow-up section
+If a section needs a style fix (voice correction, format correction), make only that fix — do not simultaneously reduce its factual content. The revised note must be at least as long and at least as factually complete as the original.
+
 RESPONSE FORMAT:
 {
   "issues_found": [
@@ -2782,8 +2794,14 @@ export async function finalFidelityAudit(params: {
     }
   }
 
-  // Skip AI audit if no June pass was applied (no risk of June-induced compression)
-  if (!preJuneNote) {
+  // Skip AI audit only if there is no baseline to compare against, or if the
+  // note is byte-for-byte identical to the baseline (nothing changed at all).
+  // Previously this skipped whenever the personalization pass was a noop —
+  // but the QA pass (which runs inside runEnhancedSoapPipeline) can also
+  // condense content, and that condensation was never caught. Now we always
+  // run the audit whenever the final note differs from the pre-pipeline
+  // baseline, regardless of which layer introduced the change.
+  if (!preJuneNote || preJuneNote === finalNote) {
     return { note: finalNote, restoredDetail: false, warnings };
   }
 
