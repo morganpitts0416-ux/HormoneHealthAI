@@ -1461,12 +1461,13 @@ DIAGNOSIS BUNDLE CONSOLIDATION
 The MATCHED DIAGNOSIS BUNDLES context above (when present) lists provider-defined clinical bundles that match this visit's pattern with strong or moderate confidence. A diagnosis bundle is a clinician-curated grouping of related diagnoses representing a unified clinical picture.
 
 WHEN ONE OR MORE MATCHED BUNDLES ARE LISTED (strong or moderate confidence):
+- The bundle determines the preferred DIAGNOSTIC CLASSIFICATION and the Assessment heading format. It does NOT replace the patient-specific clinical reasoning that must be derived from THIS encounter's transcript evidence.
 - Use the bundle title as the PRIMARY Assessment item header for all component diagnoses. Instead of numbering each diagnosis separately, group them under the single bundle header.
 - Format: "[Bundle Title] ([ICD-10 code1], [ICD-10 code2], ...)\n  [Provider-defined clinical bundle]"
-- Write a SINGLE unified clinical reasoning paragraph that narrates the full clinical picture — all component diagnoses, all supporting lab values, all symptoms, as one coherent story. Do not write separate paragraphs per diagnosis.
+- Under the bundle heading, write a SINGLE unified clinical reasoning paragraph that is FULLY INDIVIDUALIZED to this patient and encounter. This paragraph must be grounded in: (a) the specific symptoms reported at this visit, (b) relevant lab values with their values cited numerically, (c) prior medication responses and adverse effects discussed, (d) the provider's explicit clinical reasoning and stated rationale, (e) shared decision-making that occurred, and (f) the staged or conditional plan decided upon. The bundle does not supply this reasoning — you must construct it from the transcript. A generic paragraph that could apply to any patient with this bundle is not acceptable.
 - The Plan section under this one Assessment item covers ALL treatment decisions:
-  - STATE A items: list as definitive orders
-  - STATE B items: name the deferral reason and trigger
+  - STATE A items: list as definitive orders with full specificity (drug name, dose, route, frequency)
+  - STATE B items: name the deferral reason and specific trigger for revisiting
   - STATE C items: omit from Plan (HPI only)
 - Do NOT also create separate numbered Assessment items for the component diagnoses — they are fully subsumed by the bundle item.
 - If additional diagnoses were discussed that are NOT part of the bundle, create separate numbered items for those in the normal format.
@@ -2070,14 +2071,93 @@ PATIENT vs. CLINICIAN IDENTITY (apply while drafting — never include this head
     ? `\n\n${historicalContext}`
     : "";
   const bundleContext = normalized.matched_bundles?.filter(b => b.confidence !== "weak").length
-    ? `\nMATCHED DIAGNOSIS BUNDLES (apply DIAGNOSIS BUNDLE CONSOLIDATION rules for these — use bundle title as Assessment header, unify all component diagnoses under it):\n${normalized.matched_bundles.filter(b => b.confidence !== "weak").map(b =>
+    ? `\nMATCHED DIAGNOSIS BUNDLES (apply DIAGNOSIS BUNDLE CONSOLIDATION rules — bundle determines diagnostic classification and Assessment heading; individualized encounter narrative must still be derived from THIS transcript):\n${normalized.matched_bundles.filter(b => b.confidence !== "weak").map(b =>
         `- "${b.bundle_title}" [${b.confidence} match]: codes ${b.matched_codes.join(", ")} — ${b.rationale}`
       ).join('\n')}`
     : "";
 
+  // V2 structured context blocks — consume new extraction fields when flag is enabled
+  const useV2 = process.env.SOAP_STRUCTURED_ACTIONS_V2 === 'true';
+  const treatmentActionsContext = (useV2 && Array.isArray(extraction.treatment_actions) && extraction.treatment_actions.length)
+    ? (() => {
+        const confirmed = extraction.treatment_actions.filter((a: any) => a.status === 'confirmed');
+        const conditional = extraction.treatment_actions.filter((a: any) => a.status === 'conditional');
+        const future = extraction.treatment_actions.filter((a: any) => a.status === 'future_consideration');
+        const lines: string[] = ['\nV2 CONFIRMED TREATMENT ACTIONS (AUTHORITATIVE — these provider decisions MUST appear in the Plan with full specificity):'];
+        if (confirmed.length) {
+          for (const a of confirmed) {
+            const dose = a.new_dose ? ` ${a.new_dose}` : '';
+            const from = a.previous_dose ? ` (from ${a.previous_dose})` : '';
+            const route = a.route ? ` ${a.route}` : '';
+            const freq = a.frequency ? ` ${a.frequency}` : '';
+            const reason = a.reason ? ` — ${a.reason}` : '';
+            const quote = a.evidence_quote ? `\n   Evidence: "${a.evidence_quote}"` : '';
+            lines.push(`  [${a.action.toUpperCase()}] ${a.item_name}${dose}${from}${route}${freq} (${a.item_type})${reason}${quote}`);
+          }
+        } else {
+          lines.push('  (none)');
+        }
+        if (conditional.length) {
+          lines.push('V2 CONDITIONAL ACTIONS (include in Plan with conditional language — NOT as initiated):');
+          for (const a of conditional) {
+            const timing = a.timing ? ` ${a.timing}` : '';
+            const reason = a.reason ? ` if: ${a.reason}` : '';
+            lines.push(`  [${a.action.toUpperCase()} IF MET] ${a.item_name}${timing}${reason}`);
+          }
+        }
+        if (future.length) {
+          lines.push('V2 FUTURE CONSIDERATIONS ONLY (discussed but NOT decided — phrase as conditional future, NOT as initiated):');
+          for (const a of future) {
+            const reason = a.reason ? ` (${a.reason})` : '';
+            lines.push(`  [FUTURE ONLY] ${a.item_name}${reason}`);
+          }
+        }
+        return lines.join('\n');
+      })()
+    : '';
+
+  const stagedPlanContext = (useV2 && Array.isArray(extraction.staged_treatment_plan) && extraction.staged_treatment_plan.length)
+    ? (() => {
+        const sorted = [...extraction.staged_treatment_plan].sort((a: any, b: any) => (a.sequence ?? 0) - (b.sequence ?? 0));
+        const lines = ['\nV2 STAGED TREATMENT PLAN (follow this sequence precisely — do not conflate later steps with current steps):'];
+        for (const s of sorted) {
+          const cond = s.condition ? ` [condition: ${s.condition}]` : '';
+          const next = s.next_step_if_met ? ` → if met: ${s.next_step_if_met}` : '';
+          const notMet = s.next_step_if_not_met ? ` → if not met: ${s.next_step_if_not_met}` : '';
+          lines.push(`  Step ${s.sequence} [${s.status}]: ${s.action}${cond}${next}${notMet}`);
+        }
+        return lines.join('\n');
+      })()
+    : '';
+
+  const providerInterpretationsContext = (useV2 && Array.isArray(extraction.provider_interpretations) && extraction.provider_interpretations.length)
+    ? (() => {
+        const lines = ['\nV2 PROVIDER INTERPRETATIONS (AUTHORITATIVE — do NOT substitute your own clinical judgment for these; if a provider explicitly interpreted a finding, use that interpretation):'];
+        for (const p of extraction.provider_interpretations) {
+          const raw = p.raw_finding ? ` (raw finding: ${p.raw_finding})` : '';
+          const sig = p.clinical_significance ? ` Clinical significance: ${p.clinical_significance}.` : '';
+          const dec = p.resulting_decision ? ` Decision: ${p.resulting_decision}.` : '';
+          const quote = p.evidence_quote ? `\n   Provider words: "${p.evidence_quote}"` : '';
+          lines.push(`  ${p.subject}${raw}: ${p.provider_interpretation}.${sig}${dec}${quote}`);
+        }
+        return lines.join('\n');
+      })()
+    : '';
+
+  const clinicalContextV2 = (useV2 && Array.isArray(extraction.clinical_context) && extraction.clinical_context.length)
+    ? (() => {
+        const lines = ['\nV2 CLINICAL CONTEXT (factors that change interpretation of findings or treatment decisions):'];
+        for (const c of extraction.clinical_context) {
+          const quote = c.evidence_quote ? ` ("${c.evidence_quote}")` : '';
+          lines.push(`  [${c.context_type}] ${c.subject}: ${c.detail}${quote}`);
+        }
+        return lines.join('\n');
+      })()
+    : '';
+
   const userPrompt = `Visit Type: ${encounter.visitType}
 Chief Complaint: ${encounter.chiefComplaint || "Not specified"}
-Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${patientLine}${historicalBlock}${labContext}${extractionSummary}${patternContext}${medicationContext}${normalizedMedsContext}${conditionsContext}${preventativeContext}${symptomTimelineContext}${planClassification}${futureConsiderationsContext}${exploratoryContext}${treatmentRationaleContext}${bundleContext}${hpiElements}${patientPerspective}${providerReasoning}${educationProvided}${patientDecisions}${explicitRefusalsContext}${visitTerminationContext}
+Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${patientLine}${historicalBlock}${labContext}${extractionSummary}${patternContext}${medicationContext}${normalizedMedsContext}${conditionsContext}${preventativeContext}${symptomTimelineContext}${planClassification}${futureConsiderationsContext}${exploratoryContext}${treatmentRationaleContext}${providerInterpretationsContext}${clinicalContextV2}${bundleContext}${treatmentActionsContext}${stagedPlanContext}${hpiElements}${patientPerspective}${providerReasoning}${educationProvided}${patientDecisions}${explicitRefusalsContext}${visitTerminationContext}
 ${speakerConflictContext2}
 TRANSCRIPT (CLINICIAN[?] = uncertain speaker assignment — treat with extra care in Assessment/Plan):
 ${diarizedInput}
@@ -2089,7 +2169,12 @@ Scan the entire transcript one more time. For every medication (prescription, OT
 
 FINAL CLINICAL RECONCILIATION CHECK — HPI-TO-ASSESSMENT COVERAGE (additive — perform after the scan above):
 Read back through the HPI you have written. For every major clinical topic, symptom cluster, or concern described in the HPI, verify a corresponding numbered Assessment/Plan entry exists. The HPI and Assessment must cover the same ground. Apply these specific checks:
-- Weight management / obesity / BMI / GLP-1 / appetite discussion in HPI → Assessment MUST contain a weight or obesity diagnosis entry (E66.x / overweight / metabolic)
+- Weight/GLP-1/appetite discussion in HPI → verify weight-related Assessment entry uses the correct evidence-based classification:
+  PRIORITY ORDER: (1) Use provider's explicitly stated diagnosis if present → (2) Use documented BMI if available → (3) Use weight management/monitoring language if no diagnosis or BMI is documented
+  BMI RULES: BMI ≥ 30 → obesity appropriate (E66.01–E66.09); BMI 25–29.9 → overweight appropriate (E66.3, NOT obesity); BMI < 25 → do NOT add an obesity or overweight diagnosis; if BMI is below 30 and provider did not diagnose obesity, do NOT use E66.0x.
+  GLP-1 RULE: Do NOT infer an obesity diagnosis solely from GLP-1 or tirzepatide use — these drugs are also used for weight management in overweight patients and metabolic optimization. The diagnosis must be supported by provider statement or documented BMI.
+  ICD-10 CONSISTENCY: Diagnosis label and ICD-10 code MUST agree. E66.3 = Overweight (NOT obesity); E66.01 = Morbid (severe) obesity; E66.09 = Other obesity. Never display "Obesity" with E66.3 or "Overweight" with E66.01.
+  If no BMI is documented and the provider did not explicitly diagnose a weight condition, use "Weight management / GLP-1 therapy monitoring" language without a specific obesity ICD-10 code.
 - Elevated BP / HTN risk / blood pressure concern / cardiovascular finding in HPI → Assessment MUST contain a BP or HTN entry (I10 or cardiovascular risk item)
 - Mood / depression / anxiety / psychiatric medications / emotional wellbeing in HPI → Assessment MUST contain a psychiatric or mood entry (F32.x / F41.x / mood monitoring)
 - Micronutrient / lab deficiency / metabolic lab findings in HPI (vitamin D, B12, ferritin, A1c, lipids, hormones) → each clinically significant finding discussed must appear in a corresponding Assessment entry or be nested under the relevant diagnosis item
@@ -2256,7 +2341,7 @@ CHECK FOR:
 21. STATE C ELEVATION CHECK: Does the Assessment contain numbered items for treatments or interventions that were discussed only as contingencies — "if needed," "if the current approach fails," "pending evaluation," "as an alternative if X doesn't work"? These are STATE C exploratory discussions and must NOT appear as numbered Assessment entries. They belong as a single clause in the HPI: "Alternative [treatment] was discussed as a contingency option if [current approach] proves insufficient." If a numbered Assessment item contains a treatment that was framed only as a contingency (never committed to, no specific deferral trigger the provider intends to act on), flag as important and remove that item from the Assessment, integrating it as an HPI clause instead.
 
 22. FINAL CLINICAL RECONCILIATION — HPI-TO-ASSESSMENT COVERAGE: Does every major clinical problem, symptom cluster, or concern described in the HPI have a corresponding numbered Assessment/Plan entry? The HPI and Assessment must tell the same clinical story. Apply these specific required coverages:
-   a) Weight management / obesity / BMI / GLP-1 / appetite discussion in HPI → must have weight or obesity Assessment entry (E66.x or metabolic item)
+   a) Weight/GLP-1/appetite discussion in HPI → verify weight-related Assessment entry matches evidence: (i) use provider's explicit diagnosis if stated; (ii) if BMI ≥ 30 → obesity E66.0x; (iii) if BMI 25–29.9 → overweight E66.3; (iv) if no BMI and no explicit diagnosis → do NOT force an obesity code; GLP-1 use alone does NOT justify an E66.x code. Verify ICD-10 code and label are consistent: E66.3 = Overweight (NOT obesity).
    b) Elevated BP / hypertension risk / cardiovascular concern / blood pressure finding in HPI → must have BP/HTN Assessment entry (I10 or CV risk item)
    c) Mood / depression / anxiety / psychiatric medication / emotional wellbeing in HPI → must have psychiatric or mood monitoring Assessment entry
    d) Micronutrient deficiency / significant lab finding discussed in HPI (vitamin D, B12, ferritin, A1c, lipids, hormones) → each clinically significant finding must appear in a corresponding Assessment entry or be nested under the relevant diagnosis
@@ -2312,6 +2397,27 @@ When a generalized phrase has replaced specific clinical content from the transc
    (c) A "Future Considerations:" sub-section on its own line immediately after the Plan line, documenting the deferred option, what was discussed, the deferral trigger, and any patient-expressed preference.
    If any STATE B item from "discussed_but_not_decided" is missing its numbered A/P entry, OR has an A/P entry but is missing the "Future Considerations:" sub-section, flag as CRITICAL and add the missing components before returning the revised note. Do NOT reduce a STATE B item to an HPI-only mention — it must have a numbered Assessment entry regardless of whether treatment was initiated.
 
+31. V2 STRUCTURED ACTION AUDIT — HIGH-RISK OMISSION CATEGORIES: When the STRUCTURED EXTRACTION contains V2 fields (treatment_actions, staged_treatment_plan, provider_interpretations, clinical_context), perform a targeted transcript audit for the following high-risk omission categories. For each category, compare the structured data against the generated note:
+
+   a) CONFIRMED STARTS missing from Plan: Any treatment_action with action="start" or action="trial" and status="confirmed" MUST appear in the Plan section with full specificity. If absent → flag CRITICAL.
+
+   b) CONFIRMED STOPS listed as "continue": Any treatment_action with action="stop" and status="confirmed" MUST NOT appear as a continued or active medication. If present as continued → flag CRITICAL.
+
+   c) CONFIRMED DOSE CHANGES: Any treatment_action with action="increase" or action="decrease" and status="confirmed" MUST reflect the new_dose in the Plan, not the previous_dose. If the note shows the old dose → flag CRITICAL.
+
+   d) FUTURE CONSIDERATIONS listed as initiated: Any treatment_action with status="future_consideration" MUST NOT be described as started, initiated, or ordered. If described as active → flag CRITICAL.
+
+   e) PROVIDER INTERPRETATIONS reversed: Any provider_interpretation in the extraction represents the provider's stated clinical judgment. The note MUST NOT replace it with a conflicting standard-range interpretation. If the note contradicts a provider interpretation → flag CRITICAL.
+
+   f) STAGED PLAN sequence violated: If a staged_treatment_plan is present, steps with status="future_consideration" or status="conditional" MUST NOT be described as current steps. Earlier steps (lower sequence number) must not be omitted. If the sequence is violated → flag important.
+
+   g) SUPPLEMENT STOPS omitted: Supplement stops (action="stop", item_type="supplement") are frequently omitted. Scan the note specifically for each stopped supplement and verify it appears as discontinued, not as currently continued. If absent or wrongly continued → flag CRITICAL.
+
+   h) CLINICAL CONTEXT LOST: Any clinical_context entry with context_type="adverse_effect" that explains a route or dose selection MUST appear in the reasoning paragraph for the affected medication. Any cycle_timing context for lab interpretation MUST be mentioned when discussing that lab. If absent → flag important.
+
+   Return structured_discrepancies (array of objects) alongside the existing issues_found array, using this schema for each discrepancy:
+   { "category": "missing_confirmed_start|stop_listed_as_continue|wrong_dose|future_as_initiated|provider_interp_reversed|staged_sequence_violated|supplement_stop_omitted|context_lost", "severity": "critical|important", "transcript_fact": "what the extraction says", "note_conflict": "what the note says instead", "recommended_correction": "specific fix" }
+
 STYLE PRESERVATION — MANDATORY WHEN REVISING:
 If you are writing a revised_fullNote, the following style rules are non-negotiable and apply to your revision exactly as they applied to the original generation. Do not introduce patterns the original generation was specifically trained to avoid.
 
@@ -2342,6 +2448,15 @@ RESPONSE FORMAT:
       "fix_instruction": "specific instruction for how to fix this in the note"
     }
   ],
+  "structured_discrepancies": [
+    {
+      "category": "missing_confirmed_start|stop_listed_as_continue|wrong_dose|future_as_initiated|provider_interp_reversed|staged_sequence_violated|supplement_stop_omitted|context_lost",
+      "severity": "critical|important",
+      "transcript_fact": "what the extraction says was decided",
+      "note_conflict": "what the note says instead or the absence",
+      "recommended_correction": "specific fix instruction"
+    }
+  ],
   "requires_revision": true/false,
   "revised_fullNote": "<if requires_revision is true, provide the corrected fullNote with all issues fixed; if false, omit this field>",
   "revised_uncertain_items": ["<if revised, updated uncertain_items>"],
@@ -2349,7 +2464,8 @@ RESPONSE FORMAT:
 }
 
 CRITICAL: Only flag requires_revision for critical or important issues. Minor issues can be noted but do not require revision.
-If requires_revision is true, you MUST provide the complete revised_fullNote — do not provide partial patches.`;
+If requires_revision is true, you MUST provide the complete revised_fullNote — do not provide partial patches.
+Populate structured_discrepancies whenever you detect a V2 structured action audit violation (check 31a-31h), even for issues that are subsumed into issues_found. This provides a machine-readable audit trail.`;
 
   const userPrompt = `STRUCTURED EXTRACTION (source of truth for what was discussed):
 ${JSON.stringify(extraction, null, 2)}
@@ -2367,8 +2483,21 @@ ${soapOutput.fullNote}
 NEEDS_CLINICIAN_REVIEW (check for duplicates of plan):
 ${JSON.stringify(soapOutput.needs_clinician_review)}
 
-TRANSCRIPT (full conversation — review the entire encounter, including later sections, before flagging diagnoses or findings as unsupported; encounters may be 60-90 minutes long, review the entire text):
-${transcriptText.substring(0, 120000)}
+TRANSCRIPT (full conversation — review the ENTIRE encounter including the final minutes; the most critical treatment decisions often occur at the end; encounters may be 60-90 minutes long):
+${(() => {
+  // Phase 8: Safe transcript length handling — preserve end-of-visit decisions
+  // gpt-4o has a 128k token context; leave ~40k tokens for system prompt + note + response
+  // 88k tokens ≈ 352k characters is a safe upper bound for the transcript portion
+  const MAX_SAFE_CHARS = 350000;
+  if (transcriptText.length <= MAX_SAFE_CHARS) return transcriptText;
+  // For very long transcripts: preserve beginning AND end (final decisions are at the end)
+  const headChars = Math.floor(MAX_SAFE_CHARS * 0.6);
+  const tailChars = MAX_SAFE_CHARS - headChars;
+  const omitted = transcriptText.length - MAX_SAFE_CHARS;
+  return transcriptText.slice(0, headChars)
+    + `\n\n[... ${omitted.toLocaleString()} characters omitted for context length — middle portion only ...]\n\n`
+    + transcriptText.slice(transcriptText.length - tailChars);
+})()}
 
 Review the note for quality issues. If critical/important issues are found, provide a corrected version.`;
 
@@ -2383,6 +2512,14 @@ Review the note for quality issues. If critical/important issues are found, prov
   }));
 
   const qaResult = JSON.parse(completion.choices[0].message.content || "{}");
+
+  // Log V2 structured discrepancies for audit trail
+  if (qaResult.structured_discrepancies?.length) {
+    const critCount = qaResult.structured_discrepancies.filter((d: any) => d.severity === 'critical').length;
+    console.log(`[SOAP QA V2] ${qaResult.structured_discrepancies.length} structured discrepancies (${critCount} critical): ${
+      qaResult.structured_discrepancies.map((d: any) => `${d.category}[${d.severity}]`).join(', ')
+    }`);
+  }
 
   if (qaResult.requires_revision && qaResult.revised_fullNote) {
     console.log(`[SOAP Pipeline QA] Revision applied. Issues found: ${qaResult.issues_found?.length ?? 0}`);
@@ -2564,7 +2701,196 @@ function buildExtractionSummary(extraction: any): string {
   if (extraction.uncertain_items?.length)             lines.push(`Uncertain/unresolved: ${extraction.uncertain_items.join("; ")}`);
   if (extraction.context_inferred_items?.length)      lines.push(`Context-inferred (confirm with patient): ${extraction.context_inferred_items.join("; ")}`);
   if (extraction.patient_questions?.length)           lines.push(`Patient questions: ${extraction.patient_questions.join("; ")}`);
+
+  // V2 structured fields — include when present
+  if (Array.isArray(extraction.treatment_actions) && extraction.treatment_actions.length) {
+    const confirmed = extraction.treatment_actions.filter((a: any) => a.status === 'confirmed');
+    const conditional = extraction.treatment_actions.filter((a: any) => a.status === 'conditional');
+    const future = extraction.treatment_actions.filter((a: any) => a.status === 'future_consideration');
+    if (confirmed.length) {
+      lines.push(`Confirmed treatment actions (MUST appear in Plan): ${confirmed.map((a: any) =>
+        `[${a.action.toUpperCase()}] ${a.item_name}${a.new_dose ? ' ' + a.new_dose : ''}${a.previous_dose ? ' (from ' + a.previous_dose + ')' : ''}${a.route ? ' ' + a.route : ''}${a.frequency ? ' ' + a.frequency : ''}${a.reason ? ' — ' + a.reason : ''}`
+      ).join('; ')}`);
+    }
+    if (conditional.length) {
+      lines.push(`Conditional actions (NOT active yet): ${conditional.map((a: any) =>
+        `[${a.action.toUpperCase()} IF] ${a.item_name}${a.reason ? ' — condition: ' + a.reason : ''}`
+      ).join('; ')}`);
+    }
+    if (future.length) {
+      lines.push(`Future considerations ONLY (do NOT list as active/started): ${future.map((a: any) =>
+        `${a.item_name}${a.reason ? ' (' + a.reason + ')' : ''}`
+      ).join('; ')}`);
+    }
+  }
+  if (Array.isArray(extraction.staged_treatment_plan) && extraction.staged_treatment_plan.length) {
+    const sorted = [...extraction.staged_treatment_plan].sort((a: any, b: any) => (a.sequence ?? 0) - (b.sequence ?? 0));
+    lines.push(`Staged treatment plan: ${sorted.map((s: any) =>
+      `Step ${s.sequence} [${s.status}]: ${s.action}${s.condition ? ' IF ' + s.condition : ''}`
+    ).join(' → ')}`);
+  }
+  if (Array.isArray(extraction.provider_interpretations) && extraction.provider_interpretations.length) {
+    lines.push(`Provider interpretations (authoritative — do not override): ${extraction.provider_interpretations.map((p: any) =>
+      `${p.subject}: ${p.provider_interpretation}${p.resulting_decision ? ' → ' + p.resulting_decision : ''}`
+    ).join('; ')}`);
+  }
+  if (Array.isArray(extraction.clinical_context) && extraction.clinical_context.length) {
+    lines.push(`Clinical context: ${extraction.clinical_context.map((c: any) =>
+      `[${c.context_type}] ${c.subject}: ${c.detail}`
+    ).join('; ')}`);
+  }
+
   return lines.length ? `\n\nSTRUCTURED CLINICAL EXTRACTION (verified from transcript):\n${lines.join('\n')}` : "";
+}
+
+// ── Phase 9: Deterministic Validation ────────────────────────────────────────
+// Code-based checks that run after QA without a model call. These catch
+// high-confidence errors that don't require language understanding:
+// confirmed actions missing from the note, future items listed as active, etc.
+//
+// Returns an array of discrepancies. The pipeline logs these and optionally
+// triggers a focused repair when the severity warrants it.
+
+interface DeterministicDiscrepancy {
+  category: string;
+  severity: "high" | "medium" | "low";
+  transcript_fact: string;
+  note_conflict: string;
+  recommended_correction: string;
+}
+
+function deterministicValidateNote(note: string, extraction: any): DeterministicDiscrepancy[] {
+  if (!note || !extraction) return [];
+  const discrepancies: DeterministicDiscrepancy[] = [];
+  const noteLower = note.toLowerCase();
+
+  // Check 1: Confirmed STOP actions — must not appear as "continue" in the note
+  if (Array.isArray(extraction.treatment_actions)) {
+    for (const action of extraction.treatment_actions) {
+      if (!action.item_name) continue;
+      const itemTokens = action.item_name.toLowerCase().split(/\s+/);
+      const itemInNote = (term: string) => noteLower.includes(term.toLowerCase());
+      const primaryToken = itemTokens.find((t: string) => t.length > 3) ?? itemTokens[0];
+
+      if ((action.action === 'stop' || action.action === 'hold') && action.status === 'confirmed') {
+        // Item name appears in note AND is framed as "continue" → wrong
+        if (itemInNote(primaryToken)) {
+          const continuePatterns = ['continue ' + primaryToken, 'continuing ' + primaryToken,
+            primaryToken + ' continued', primaryToken + ': continue'];
+          if (continuePatterns.some(p => noteLower.includes(p))) {
+            discrepancies.push({
+              category: 'stop_listed_as_continue',
+              severity: 'high',
+              transcript_fact: `Provider confirmed: ${action.action.toUpperCase()} ${action.item_name}`,
+              note_conflict: `Note appears to list "${action.item_name}" as continued`,
+              recommended_correction: `Remove "${action.item_name}" from active medications; document as discontinued`,
+            });
+          }
+        }
+      }
+
+      // Check 2: Confirmed START/TRIAL — item must appear somewhere in the note
+      if ((action.action === 'start' || action.action === 'trial') && action.status === 'confirmed') {
+        if (!itemInNote(primaryToken)) {
+          discrepancies.push({
+            category: 'missing_confirmed_start',
+            severity: 'high',
+            transcript_fact: `Provider confirmed: ${action.action.toUpperCase()} ${action.item_name}${action.new_dose ? ' ' + action.new_dose : ''}`,
+            note_conflict: `"${action.item_name}" not found in note`,
+            recommended_correction: `Add ${action.item_name} to medication list and Plan with dose/route/frequency`,
+          });
+        }
+      }
+
+      // Check 3: FUTURE CONSIDERATION — must NOT appear as "initiated", "started", "ordered"
+      if (action.status === 'future_consideration') {
+        const activePatterns = [
+          'initiated ' + primaryToken, 'started ' + primaryToken, 'starting ' + primaryToken,
+          primaryToken + ' initiated', primaryToken + ' started', 'ordered ' + primaryToken,
+          'begin ' + primaryToken, 'prescribe ' + primaryToken,
+        ];
+        if (activePatterns.some(p => noteLower.includes(p))) {
+          discrepancies.push({
+            category: 'future_as_initiated',
+            severity: 'high',
+            transcript_fact: `"${action.item_name}" is a future consideration only — not decided at this visit`,
+            note_conflict: `Note appears to describe "${action.item_name}" as initiated/started`,
+            recommended_correction: `Change to future consideration language: "discussed as a future option pending response to current therapy"`,
+          });
+        }
+      }
+
+      // Check 4: Confirmed INCREASE — verify new_dose appears, not old dose only
+      if (action.action === 'increase' && action.status === 'confirmed' && action.previous_dose && action.new_dose) {
+        const prevDoseToken = action.previous_dose.match(/\d+/)?.[0];
+        const newDoseToken = action.new_dose.match(/\d+/)?.[0];
+        if (prevDoseToken && newDoseToken && itemInNote(primaryToken)) {
+          // If old dose appears but new dose doesn't → likely wrong
+          if (noteLower.includes(primaryToken + ' ' + prevDoseToken) && !noteLower.includes(newDoseToken)) {
+            discrepancies.push({
+              category: 'wrong_dose_after_increase',
+              severity: 'high',
+              transcript_fact: `INCREASE ${action.item_name} from ${action.previous_dose} to ${action.new_dose} (confirmed)`,
+              note_conflict: `Note appears to show old dose ${action.previous_dose}, not new dose ${action.new_dose}`,
+              recommended_correction: `Update ${action.item_name} dose to ${action.new_dose} in medication list and Plan`,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // Check 5: BMI vs weight diagnosis consistency
+  if (Array.isArray(extraction.clinical_context)) {
+    const bmiCtx = extraction.clinical_context.find((c: any) =>
+      /bmi/i.test(c.subject ?? '') || /bmi/i.test(c.detail ?? ''));
+    if (bmiCtx) {
+      const bmiVal = (bmiCtx.detail ?? '').match(/(\d{2}(?:\.\d+)?)/)?.[1];
+      if (bmiVal) {
+        const bmi = parseFloat(bmiVal);
+        // Note says "obesity" or uses E66.0x when BMI < 30
+        const noteHasObesity = /\bobesity\b/i.test(note) || /E66\.0/i.test(note);
+        const noteHasOverweight = /\boverweight\b/i.test(note) || /E66\.3/i.test(note);
+        if (bmi < 30 && !bmi.toString().includes('.') === false && noteHasObesity && !noteHasOverweight) {
+          discrepancies.push({
+            category: 'bmi_obesity_mismatch',
+            severity: 'medium',
+            transcript_fact: `Documented BMI ${bmi} (below obesity threshold of 30)`,
+            note_conflict: 'Note assigns obesity diagnosis (E66.0x) despite BMI < 30',
+            recommended_correction: bmi >= 25
+              ? 'Change to overweight classification (E66.3) or weight management/GLP-1 monitoring language'
+              : 'Remove obesity/overweight diagnosis — BMI is in normal range',
+          });
+        }
+      }
+    }
+  }
+
+  // Check 6: Provider interpretation — ensure the note doesn't contradict it
+  // (Heuristic: if provider said "not treating X" but note says "initiated X")
+  if (Array.isArray(extraction.provider_interpretations)) {
+    for (const pi of extraction.provider_interpretations) {
+      if (!pi.resulting_decision) continue;
+      const decLower = pi.resulting_decision.toLowerCase();
+      const subjectToken = (pi.subject ?? '').toLowerCase().split(/\s+/)[0];
+      if (!subjectToken || subjectToken.length < 3) continue;
+      // If decision says "no X" but note says "initiated X" → conflict
+      if (/\bno\b|\bnot\b|\bdefer/i.test(decLower) && noteLower.includes(subjectToken)) {
+        const startedPatterns = ['initiated ' + subjectToken, 'started ' + subjectToken, subjectToken + ' initiated'];
+        if (startedPatterns.some(p => noteLower.includes(p))) {
+          discrepancies.push({
+            category: 'provider_interpretation_reversed',
+            severity: 'medium',
+            transcript_fact: `Provider interpretation of ${pi.subject}: "${pi.provider_interpretation}" → decision: ${pi.resulting_decision}`,
+            note_conflict: `Note appears to contradict provider decision — may show ${pi.subject} as initiated`,
+            recommended_correction: `Align note with provider's stated decision: ${pi.resulting_decision}`,
+          });
+        }
+      }
+    }
+  }
+
+  return discrepancies;
 }
 
 export async function runEnhancedSoapPipeline(input: PipelineInput): Promise<PipelineOutput> {
@@ -2614,6 +2940,40 @@ export async function runEnhancedSoapPipeline(input: PipelineInput): Promise<Pip
     soapOutput = await qaCheck(openai, extraction, normalized, soapOutput, transcriptText);
   } catch (qaErr) {
     console.warn("[SOAP Pipeline] QA check failed, using unrevised SOAP:", qaErr);
+  }
+
+  // Phase 9: Deterministic validation (code-based, no model call)
+  // Only runs when V2 extraction fields are present (treatment_actions etc.)
+  const hasV2Fields = Array.isArray(extraction?.treatment_actions) && extraction.treatment_actions.length > 0;
+  if (hasV2Fields) {
+    try {
+      const deterministicIssues = deterministicValidateNote(soapOutput.fullNote, extraction);
+      if (deterministicIssues.length > 0) {
+        const highSeverity = deterministicIssues.filter(d => d.severity === 'high');
+        console.log(`[SOAP Pipeline V2] Deterministic validation: ${deterministicIssues.length} issues (${highSeverity.length} high-severity)`);
+        deterministicIssues.forEach(d => {
+          console.log(`  [${d.severity.toUpperCase()}] ${d.category}: ${d.transcript_fact} → ${d.note_conflict}`);
+        });
+        // Append high-severity issues to needs_clinician_review as a safety net
+        // (The QA pass should have caught these, but this is a backstop)
+        if (highSeverity.length > 0) {
+          const reviewWarnings = highSeverity.map(d =>
+            `[V2 VALIDATION] ${d.category}: ${d.transcript_fact} — ${d.recommended_correction}`
+          );
+          soapOutput = {
+            ...soapOutput,
+            needs_clinician_review: [
+              ...(soapOutput.needs_clinician_review ?? []),
+              ...reviewWarnings,
+            ],
+          };
+        }
+      } else {
+        console.log("[SOAP Pipeline V2] Deterministic validation: no issues detected.");
+      }
+    } catch (detErr) {
+      console.warn("[SOAP Pipeline] Deterministic validation error (non-fatal):", detErr);
+    }
   }
 
   console.log("[SOAP Pipeline] Pipeline complete.");

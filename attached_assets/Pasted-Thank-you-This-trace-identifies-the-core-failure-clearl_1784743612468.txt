@@ -1,0 +1,379 @@
+Thank you. This trace identifies the core failure clearly. Please proceed with implementation, but treat this as one coordinated pipeline improvement rather than only modifying the extraction schema.
+
+Before implementation, note one correction to the report: E66.3 represents overweight, not morbid obesity. The generated note still incorrectly displayed “Obesity” and should not force a weight diagnosis solely because a GLP-1 was discussed, but please correct that description in the technical analysis.
+
+## Implementation Goal
+
+Improve encounter fidelity without disrupting:
+
+* Existing provider diagnosis bundles
+* Existing final-rule behavior
+* Current users
+* Existing saved encounters
+* Non-hormone SOAP generation
+* Existing API response formats consumed by the frontend
+* Current note personalization behavior
+
+Do not remove or weaken the provider-configured perimenopause diagnosis bundle. The bundle should remain authoritative for diagnosis classification and assessment organization.
+
+The changes must improve what is extracted, preserve the provider’s interpretation, and verify the final note against the encounter.
+
+## Implementation Order
+
+Please implement the following in stages, with backward-compatible defaults.
+
+### Phase 1: Expand the Stage 1 extraction schema
+
+Do not continue using a flat array with textual prefixes as the primary data structure.
+
+Instead of requiring strings such as:
+
+`[START] testosterone 7.5 mg weekly`
+
+create structured objects.
+
+Add a field similar to:
+
+```ts
+treatment_actions: Array<{
+  action:
+    | "start"
+    | "continue"
+    | "increase"
+    | "decrease"
+    | "stop"
+    | "hold"
+    | "trial"
+    | "consider"
+    | "defer"
+    | "declined";
+  item_name: string;
+  item_type:
+    | "prescription"
+    | "supplement"
+    | "otc"
+    | "device"
+    | "lifestyle"
+    | "other";
+  previous_dose?: string | null;
+  new_dose?: string | null;
+  route?: string | null;
+  frequency?: string | null;
+  status:
+    | "confirmed"
+    | "conditional"
+    | "future_consideration"
+    | "discussed_only";
+  reason?: string | null;
+  timing?: string | null;
+  evidence_quote?: string | null;
+}>;
+```
+
+The exact TypeScript structure may be adjusted to fit the current architecture, but the information must remain structurally distinct.
+
+Do not rely only on action prefixes embedded in strings. Those are difficult to validate and easy for downstream prompts to misinterpret.
+
+Keep the existing `medication_changes_discussed` field temporarily if other parts of the application depend on it, but populate the new structured field and migrate downstream generation to use the structured field. Do not break existing consumers.
+
+### Phase 2: Add structured staged-plan extraction
+
+Add a field for conditional and sequenced treatment logic.
+
+Suggested structure:
+
+```ts
+staged_treatment_plan: Array<{
+  sequence: number;
+  action: string;
+  timing?: string | null;
+  condition?: string | null;
+  next_step_if_met?: string | null;
+  next_step_if_not_met?: string | null;
+  status:
+    | "start_now"
+    | "reassess"
+    | "conditional"
+    | "future_consideration";
+  evidence_quote?: string | null;
+}>;
+```
+
+This must distinguish among:
+
+* Start now
+* Trial now
+* Reassess later
+* Add only if symptoms persist
+* Future consideration
+* Discussed but not selected
+
+For this encounter, the intended sequence is approximately:
+
+1. Start testosterone 7.5 mg IM weekly.
+2. Increase progesterone from 50 mg to 100 mg nightly as a trial.
+3. Trial Estrovera for vasomotor symptoms.
+4. Repeat labs and reassess in approximately eight weeks.
+5. Consider low-dose transdermal estradiol if symptoms remain.
+6. Consider pregnenolone later if fatigue remains.
+
+The generator must not convert Steps 5 or 6 into active treatments.
+
+### Phase 3: Add provider interpretation extraction
+
+Add a structured field that preserves an explicit provider interpretation when it differs from a laboratory flag, generic reference range, or the model’s default medical interpretation.
+
+Suggested structure:
+
+```ts
+provider_interpretations: Array<{
+  subject: string;
+  raw_finding?: string | null;
+  provider_interpretation: string;
+  clinical_significance?: string | null;
+  resulting_decision?: string | null;
+  evidence_quote?: string | null;
+}>;
+```
+
+Examples from this encounter:
+
+* ApoB 108 was interpreted as acceptable in the context of approximately 0.6% ten-year ASCVD risk.
+* Low Lp(a) and low hs-CRP supported low overall cardiovascular risk.
+* No statin was recommended.
+* Estradiol 71 was interpreted in the context of cycle timing and was not considered sufficient by itself to establish a treatment trend.
+* Vitamin D greater than 120 was considered high enough to reduce supplementation.
+* Mild isolated bilirubin elevation with normal liver enzymes was considered appropriate for monitoring.
+
+When the provider gives a clear interpretation, the note generator must not replace it with its own conflicting interpretation unless there is an explicit safety rule requiring a warning. If such a conflict occurs, flag it for provider review rather than silently rewriting the provider’s judgment.
+
+### Phase 4: Add clinically relevant context extraction
+
+Add structured fields for information that changes the interpretation of a symptom, laboratory result, or treatment decision.
+
+This should include:
+
+```ts
+clinical_context: Array<{
+  subject: string;
+  context_type:
+    | "cycle_timing"
+    | "lab_timing"
+    | "medication_response"
+    | "adverse_effect"
+    | "symptom_pattern"
+    | "nutrition"
+    | "pregnancy_risk"
+    | "contraindication_screening"
+    | "other";
+  detail: string;
+  evidence_quote?: string | null;
+}>;
+```
+
+Examples:
+
+* Estradiol was drawn near the beginning/end of menses.
+* Hot flashes occur through most of the month and improve near ovulation.
+* Progesterone improved heavy menstrual bleeding.
+* Topical testosterone caused hair loss.
+* Prior testosterone benefit lasted only approximately three days.
+* Low food, protein, and fluid intake may contribute to fatigue or weakness.
+* Partner has had a vasectomy.
+* No history of pancreatitis.
+* No reported personal or family history of medullary thyroid carcinoma.
+
+### Phase 5: Update the Stage 4 note-generation prompt
+
+Change the bundle instruction so that it clearly separates diagnostic organization from individualized reasoning.
+
+Use language with this intent:
+
+> The matched provider diagnosis bundle determines the preferred diagnostic classification and Assessment heading. It does not replace the patient-specific assessment narrative. Under the bundle heading, summarize the symptoms, patterns, relevant laboratory context, prior medication response, adverse effects, provider interpretation, treatment rationale, shared decision-making, and staged plan that are specific to this encounter.
+
+The generator should consume the structured fields directly and follow this priority:
+
+1. Explicit provider decisions
+2. Confirmed starts, stops, and dose changes
+3. Provider interpretations
+4. Safety screening
+5. Treatment rationale
+6. Staged and conditional plans
+7. Patient-specific symptom and laboratory context
+8. Provider diagnosis bundles
+9. General medical knowledge
+
+General model knowledge must not override an explicit provider interpretation or convert a discussed option into a confirmed plan.
+
+### Phase 6: Replace the unconditional GLP-1 weight-diagnosis rule
+
+Remove the current rule that automatically requires an E66.x, overweight, or metabolic diagnosis whenever a GLP-1 or weight discussion appears.
+
+Instead, reconcile weight diagnoses using available evidence:
+
+* Use current BMI when documented.
+* Use an explicit provider diagnosis when stated.
+* Use existing active chart diagnoses when appropriate.
+* Distinguish current obesity from history of obesity, overweight, weight maintenance, insulin resistance, and medication management.
+* Do not infer obesity solely from GLP-1 use.
+* Do not convert a weight-management discussion into a new diagnosis without supporting evidence.
+
+Suggested logic:
+
+```ts
+if (providerExplicitlyDiagnosedWeightCondition) {
+  useProviderDiagnosis();
+} else if (currentBmi != null && currentBmi >= 30) {
+  allowObesityDiagnosisIfClinicallySupported();
+} else if (currentBmi != null && currentBmi >= 25) {
+  allowOverweightDiagnosisIfClinicallySupported();
+} else if (historyOfObesityOrWeightLossTreatmentIsDocumented) {
+  useHistoryOfObesityOrWeightManagementLanguage();
+} else {
+  doNotForceWeightDiagnosis();
+}
+```
+
+Do not hard-code a diagnosis based on one data point when provider settings or chart history may provide more complete context.
+
+Also ensure that the diagnosis title and ICD-10 code agree. For example, do not display “Obesity” with E66.3.
+
+### Phase 7: Strengthen QA using both extraction and transcript evidence
+
+The QA stage should continue comparing the note to structured extraction, but add a targeted raw-transcript audit for high-risk omissions.
+
+The targeted categories should include:
+
+* Prescription starts and stops
+* Dose increases and decreases
+* Supplement starts and stops
+* Abnormal laboratory management
+* Deferred versus initiated therapies
+* Follow-up timing
+* Medication safety screening
+* Provider interpretations
+* Staged treatment plans
+* Adverse effects that affected route or dose selection
+
+Do not ask the QA model to reinterpret the entire encounter from scratch. Give it a focused task:
+
+> Identify explicit provider actions or interpretations in the transcript that are absent from or contradicted by the generated note.
+
+The QA result should return structured discrepancies such as:
+
+```ts
+{
+  category: "missing_treatment_action",
+  severity: "high",
+  transcript_fact: "Increase progesterone from 50 mg to 100 mg nightly",
+  note_conflict: "Note states only to continue progesterone 50 mg",
+  recommended_correction: "Update medication list and plan"
+}
+```
+
+Then apply only evidence-supported corrections.
+
+### Phase 8: Address transcript length safely
+
+Do not silently truncate the last portion of a long transcript for QA.
+
+Please inspect actual model context limits and implement one of the following:
+
+* Use the full transcript when safely within the model limit.
+* Use chunked, overlapping extraction for very long transcripts.
+* Create a targeted action/decision extraction from all chunks and provide that complete structured result to QA.
+* Explicitly record when any content had to be excluded.
+
+The later portion of an encounter often contains the final medication decisions and follow-up plan, so truncating the end creates a particularly high clinical risk.
+
+### Phase 9: Add deterministic validation before the final note is returned
+
+Add code-based checks where possible rather than leaving every check to another language-model call.
+
+At minimum, validate:
+
+1. Every confirmed `start`, `stop`, `increase`, or `decrease` action appears in the final plan.
+2. Every `future_consideration` is phrased as conditional and not as initiated.
+3. Medication dose changes do not conflict with the active plan.
+4. Diagnosis labels and ICD-10 codes are consistent.
+5. BMI and weight diagnoses do not directly conflict.
+6. Follow-up timing is internally consistent.
+7. An explicitly deferred treatment is not listed as started.
+8. An explicitly stopped supplement is not listed under “continue.”
+9. A provider interpretation is not reversed in the final note.
+10. No diagnosis is introduced solely because a medication is commonly used for that diagnosis.
+
+When a deterministic validation fails, send only the relevant discrepancy back through a focused repair step rather than regenerating the entire note unnecessarily.
+
+## Safety and Deployment Requirements
+
+Please implement this behind a feature flag first.
+
+Suggested flag:
+
+```ts
+SOAP_STRUCTURED_ACTIONS_V2
+```
+
+Requirements:
+
+* Default the feature off in production initially.
+* Allow testing on a selected clinic or provider account.
+* Do not alter previously generated or signed notes.
+* Do not run a destructive database migration.
+* Any new extraction fields must be optional and backward compatible.
+* Preserve the old extraction fields until all downstream consumers have been verified.
+* Log structured extraction results, QA discrepancies, and repair actions without logging more PHI than the existing authorized workflow already stores.
+* Ensure failed V2 generation can safely fall back to the existing pipeline.
+* Do not allow fallback to produce a duplicate note or overwrite a provider-edited note.
+
+## Testing Requirements
+
+Before enabling this broadly, create regression tests using:
+
+1. This full Laura Murray encounter.
+2. A simple primary-care follow-up with no supplements.
+3. An encounter with multiple medication stops.
+4. An encounter with a staged treatment plan.
+5. An encounter where a treatment was discussed but declined.
+6. An encounter with a GLP-1 and BMI below 25.
+7. An encounter with a GLP-1 and current BMI above 30.
+8. An encounter where the provider disagrees with the laboratory flag.
+9. An encounter using a provider-configured diagnosis bundle.
+10. A transcript longer than the current QA character threshold.
+
+For the Laura Murray regression test, the output should at minimum preserve:
+
+* Early Perimenopause Transition bundle heading
+* Patient-specific cognitive, vasomotor, menstrual, and muscle symptoms
+* Estradiol cycle-timing context
+* Prior hair loss on topical testosterone
+* Start testosterone 7.5 mg IM weekly
+* Reason the lower-dose injectable route was selected
+* Increase progesterone from 50 mg to 100 mg nightly as a trial
+* Reduce vitamin D supplementation
+* Stop black cohosh, milk thistle, vitamin B1, and Fungi 5
+* Trial Estrovera
+* Continue omega-3
+* CoQ10 and berberine as optional considerations, not required active therapies
+* Estradiol patch deferred pending response and follow-up
+* Pregnenolone as a future consideration
+* Low overall cardiovascular risk and no current statin recommendation
+* Correct weight-management classification
+* Repeat labs and follow-up in approximately eight weeks
+
+## Deliverables Before Production Enablement
+
+After implementation, please provide:
+
+1. The exact schema changes.
+2. The exact prompt changes.
+3. The deterministic validation rules added.
+4. Any database or API changes.
+5. A comparison of the original and revised Laura Murray SOAP notes.
+6. Results of the regression tests.
+7. Confirmation that existing notes and existing frontend consumers remain unaffected.
+8. A rollback procedure.
+9. The feature-flag enablement procedure.
+
+Please implement the feature-flagged version and test it, but do not enable it globally in production until the revised sample note and regression results have been reviewed.

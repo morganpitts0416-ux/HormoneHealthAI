@@ -11410,6 +11410,8 @@ Return ONLY the JSON array, no explanation.`;
       const transcriptLabel = wasNormalized ? "TRANSCRIPT (normalized)" : "TRANSCRIPT (raw — not normalized)";
 
       // ── PIPELINE STEP 2: Extract clinical facts (always fresh) ────────────
+      const useStructuredV2 = process.env.SOAP_STRUCTURED_ACTIONS_V2 === 'true';
+
       let freshExtraction: any = null;
       try {
         const extractInput = wasNormalized
@@ -11532,8 +11534,94 @@ Return this exact JSON structure (all arrays, even if empty):
   "red_flags": [],
   "uncertain_items": [],
   "context_inferred_items": [],
-  "source_utterance_ids": []
-}` },
+  "source_utterance_ids": []${useStructuredV2 ? `,
+  "treatment_actions": [],
+  "staged_treatment_plan": [],
+  "provider_interpretations": [],
+  "clinical_context": []` : ''}
+}${useStructuredV2 ? `
+
+═══════════════════════════════════════
+V2 STRUCTURED FIELDS — populate these IN ADDITION to all base fields above
+═══════════════════════════════════════
+
+TREATMENT_ACTIONS — capture EVERY explicit provider action on any medication, supplement, or OTC item.
+This is the most critical V2 field. Populate an entry for every medication start, stop, dose change, or trial.
+
+Action type values and what triggers them:
+  "start"    — clinician initiates a new medication/supplement: "let's start", "I'm going to start you on", "we'll begin", "initiate"
+  "continue" — explicitly confirming an existing treatment continues unchanged
+  "increase" — dose increase: "upping you to", "increase the dose to", "titrate up to", "let's go to [higher dose]"
+  "decrease" — dose reduction: "reduce", "cut back on", "lower the dose", "go down to"
+  "stop"     — explicit discontinuation: "stop taking", "discontinue", "you can stop", "you don't need that anymore", "hold off on", "we're going to drop that", "let's get rid of that"
+  "hold"     — temporary hold pending reassessment: "hold for now", "pause until"
+  "trial"    — time-limited trial to assess response: "let's try", "trial this for X weeks", "give it a shot"
+  "consider" — mentioned as a possible future option but NOT decided: "we could consider", "might be worth trying later", "an option would be"
+  "defer"    — discussed but decision postponed: "we'll wait on that", "hold off for now", "reassess at next visit", "once stable on X, then Y"
+  "declined" — patient declined a recommendation
+
+item_type values: "prescription", "supplement", "otc", "device", "lifestyle", "other"
+
+status values:
+  "confirmed"            — provider made a definitive decision at this visit (the action WILL happen)
+  "conditional"          — will happen only if a specific condition is met: "if symptoms persist", "if that doesn't work", "once you're stable on X"
+  "future_consideration" — discussed as a later possibility; no commitment made
+  "discussed_only"       — mentioned in passing; no action direction given
+
+CRITICAL SUPPLEMENT STOP RULE: Capture supplement stops even when phrased casually:
+  "you can go ahead and stop those" → action: "stop", status: "confirmed"
+  "we don't need those right now"   → action: "stop", status: "confirmed"
+  "let's drop the milk thistle"     → action: "stop", status: "confirmed"
+  "hold off on the black cohosh"    → action: "hold", status: "confirmed"
+Supplement stops are the most commonly missed action type.
+
+For dose changes, always populate previous_dose AND new_dose when both are stated.
+Include evidence_quote: the exact provider words that support this action.
+
+STAGED_TREATMENT_PLAN — capture sequenced and conditional treatment logic.
+Sequence number 1 = first in the plan, higher numbers = later steps.
+status values:
+  "start_now"            — happening at this visit
+  "reassess"             — will be reconsidered at a future visit
+  "conditional"          — triggered by a specific condition being met or not met
+  "future_consideration" — may happen later depending on treatment response
+
+Example: "First we'll start testosterone, then once you're stable we'll look at adding estrogen" →
+  { sequence: 1, action: "Start testosterone", status: "start_now" }
+  { sequence: 2, action: "Consider adding estrogen", condition: "stable on testosterone", status: "conditional" }
+
+PROVIDER_INTERPRETATIONS — capture provider interpretations of lab results or findings that differ from:
+  (a) the laboratory's own flagging (e.g., lab flags ApoB as high, but provider says it's acceptable)
+  (b) standard clinical guidance (e.g., provider chooses not to treat a value another guideline would treat)
+  (c) a simple reading of the number (e.g., provider explains why a hormone value must be interpreted in context)
+
+Populate whenever the provider says:
+  - "that's actually okay for her because..."
+  - "I'm not concerned about that given..."
+  - "in context of [factor], this is actually [interpretation]"
+  - "we don't need to treat that because..."
+  - "her [lab] is [value] but given [context] that's [acceptable/normal/expected]"
+
+evidence_quote: exact provider words explaining the interpretation.
+resulting_decision: what clinical decision followed (e.g., "no statin initiated", "no dose change needed").
+
+CLINICAL_CONTEXT — capture context that changes how a symptom, finding, or treatment decision should be interpreted.
+context_type values:
+  "cycle_timing"              — when labs were drawn relative to menstrual cycle
+  "lab_timing"                — time of day, fasting/non-fasting, recent activity
+  "medication_response"       — how patient responded to a current or past treatment
+  "adverse_effect"            — side effects that affected route, dose, or treatment selection
+  "symptom_pattern"           — temporal patterns (worse at X time, better at Y, cyclical)
+  "nutrition"                 — dietary factors affecting interpretation or treatment
+  "pregnancy_risk"            — contraception discussed, pregnancy planning context
+  "contraindication_screening" — safety questions asked before starting a medication
+  "other"                     — other clinically relevant context
+
+Examples:
+  { subject: "Estradiol 71", context_type: "cycle_timing", detail: "Drawn near menses onset — not representative of peak mid-cycle level", evidence_quote: "..." }
+  { subject: "Topical testosterone", context_type: "adverse_effect", detail: "Hair loss on topical route — reason IM route selected", evidence_quote: "..." }
+  { subject: "Testosterone response", context_type: "medication_response", detail: "Prior testosterone benefit lasted approximately 3 days — duration too short", evidence_quote: "..." }
+  { subject: "Tirzepatide", context_type: "contraindication_screening", detail: "No personal or family history of MTC; no pancreatitis history", evidence_quote: "..." }` : ''}` },
             { role: "user", content: `Visit Type: ${encounter.visitType}\nChief Complaint: ${encounter.chiefComplaint ?? "Not specified"}\n\nTranscript:\n${extractInput}` },
           ],
           response_format: { type: "json_object" },
@@ -11589,6 +11677,46 @@ Return this exact JSON structure (all arrays, even if empty):
         if (freshExtraction.red_flags?.length)                   exLines.push(`Red flags noted: ${freshExtraction.red_flags.join("; ")}`);
         if (freshExtraction.uncertain_items?.length)             exLines.push(`Uncertain/unresolved: ${freshExtraction.uncertain_items.join("; ")}`);
         if (freshExtraction.context_inferred_items?.length)      exLines.push(`Context-inferred (confirm with patient): ${freshExtraction.context_inferred_items.join("; ")}`);
+
+        // V2 structured fields summary
+        if (useStructuredV2) {
+          if (Array.isArray(freshExtraction.treatment_actions) && freshExtraction.treatment_actions.length) {
+            const confirmed = freshExtraction.treatment_actions.filter((a: any) => a.status === 'confirmed');
+            const conditional = freshExtraction.treatment_actions.filter((a: any) => a.status === 'conditional');
+            const future = freshExtraction.treatment_actions.filter((a: any) => a.status === 'future_consideration');
+            if (confirmed.length) {
+              exLines.push(`Confirmed treatment actions: ${confirmed.map((a: any) =>
+                `${a.action.toUpperCase()} ${a.item_name}${a.new_dose ? ' ' + a.new_dose : ''}${a.route ? ' ' + a.route : ''}${a.frequency ? ' ' + a.frequency : ''}${a.previous_dose ? ' (from ' + a.previous_dose + ')' : ''}${a.reason ? ' — reason: ' + a.reason : ''}`
+              ).join('; ')}`);
+            }
+            if (conditional.length) {
+              exLines.push(`Conditional treatment actions: ${conditional.map((a: any) =>
+                `${a.action.toUpperCase()} ${a.item_name}${a.timing ? ' ' + a.timing : ''}${a.reason ? ' if: ' + a.reason : ''}`
+              ).join('; ')}`);
+            }
+            if (future.length) {
+              exLines.push(`Future considerations only (NOT active): ${future.map((a: any) =>
+                `${a.item_name}${a.reason ? ' (' + a.reason + ')' : ''}`
+              ).join('; ')}`);
+            }
+          }
+          if (Array.isArray(freshExtraction.staged_treatment_plan) && freshExtraction.staged_treatment_plan.length) {
+            const steps = freshExtraction.staged_treatment_plan
+              .sort((a: any, b: any) => (a.sequence ?? 0) - (b.sequence ?? 0))
+              .map((s: any) => `Step ${s.sequence}: ${s.action}${s.condition ? ' (if: ' + s.condition + ')' : ''} [${s.status}]`);
+            exLines.push(`Staged treatment plan: ${steps.join(' → ')}`);
+          }
+          if (Array.isArray(freshExtraction.provider_interpretations) && freshExtraction.provider_interpretations.length) {
+            exLines.push(`Provider interpretations (AUTHORITATIVE — do not override): ${freshExtraction.provider_interpretations.map((p: any) =>
+              `${p.subject}: "${p.provider_interpretation}"${p.resulting_decision ? ' → ' + p.resulting_decision : ''}`
+            ).join('; ')}`);
+          }
+          if (Array.isArray(freshExtraction.clinical_context) && freshExtraction.clinical_context.length) {
+            exLines.push(`Clinical context: ${freshExtraction.clinical_context.map((c: any) =>
+              `${c.subject} (${c.context_type}): ${c.detail}`
+            ).join('; ')}`);
+          }
+        }
       } catch (extractErr) {
         console.warn("[SOAP Pipeline] Extraction failed:", extractErr);
       }
