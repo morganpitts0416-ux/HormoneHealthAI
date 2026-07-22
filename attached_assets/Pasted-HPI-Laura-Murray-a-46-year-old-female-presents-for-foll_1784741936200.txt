@@ -1,0 +1,87 @@
+HPI: Laura Murray, a 46-year-old female, presents for follow-up regarding hormone optimization and symptom management. She reports ongoing difficulty finding words, inability to focus, forgetfulness, muscle weakness, migraines, heavy menstrual periods, weight fluctuations, and hair loss. Laura has been taking tirzepatide (ZepBound) 1.0 mg every other week, resulting in a 15-pound weight loss. Progesterone 50 mg daily has helped regulate her menstrual cycles. She previously discontinued topical testosterone due to hair loss. Family history is significant for hypothyroidism, sarcoidosis, lupus, and rheumatoid arthritis.
+
+Recent labs reveal elevated cholesterol, LDL, and apolipoprotein B levels, with vitamin D levels above 120. Thyroid function appears normal with TSH at 1.47 and T4 at 1.37. Hormone levels show a free testosterone level of 3, total testosterone of 40.5, estrogen at 71, and progesterone at 5.
+
+Discussed potential treatments, including starting testosterone injections and considering a low-dose estradiol patch if symptoms persist. Laura expressed interest in the estradiol patch but agreed to wait for further lab results. The role of estradiol in managing perimenopausal symptoms was explained, highlighting its benefits for mood, vasomotor symptoms, and bone protection. Recommended testosterone injections to avoid DHT conversion and improve symptoms of low energy and cognitive issues.
+
+Current Medications: 
+
+Tirzepatide (ZepBound) 1.0 mg subcutaneous every other week
+
+Progesterone 50 mg oral daily
+
+Citalopram (Celexa) 5 mg oral daily
+
+Medical History: 
+
+Allergies: Not reported at this visit
+
+Past Medical Hx: Anxiety, Migraines
+
+Past Surgical Hx: Stent during pregnancy, Breast reduction, implants and lift
+
+Social Hx: 2, Vasectomy (partner), Never smoked or vaped, Once a month or less
+
+Family Hx: Mother: Hashimotos, osteoarthritis; Father: Heart ablation, high blood pressure, sarcoidosis; Paternal Grandmother: Heart disease; Siblings: Psoriasis, psoriatic arthritis, Hashimotos, migraines, Graves’ disease, OCD, anxiety
+
+ROS
+
+Musculoskeletal
+Muscle weakness reported.
+Skin
+Hair loss reported.
+Neurological
+Difficulty finding words, can't focus, forgetfulness reported.
+Psychiatric
+Anxiety, depression symptoms managed with Celexa.
+OBJECTIVE
+Vitals: BP 110/71 | HR 69 | BMI 25.7
+
+ASSESSMENT/PLAN
+1. Early Hormonal Transition with Symptom Complex (F52.0, E34.9, R53.83)
+
+Laura's symptoms align with an early hormonal transition pattern, characterized by cognitive issues, muscle weakness, and menstrual irregularities. Free testosterone is low at 3, supporting the diagnosis of low testosterone. Progesterone has helped regulate her cycles, but further hormone optimization is needed.
+
+Plan: Initiate testosterone 7.5 mg IM weekly to improve energy and cognitive symptoms. Monitor symptoms and hormone levels, with labs to be drawn in 8 weeks. Consider low-dose estradiol patch if symptoms persist; reassess candidacy at next visit after evaluating hormone levels.
+
+Future Considerations: Consider adding pregnenolone if energy levels remain low.
+
+2. Obesity (E66.3)
+
+Laura has been using tirzepatide with a resultant weight loss of 15 pounds, indicating effective management of obesity. Her BMI is 25.7.
+
+Plan: Continue tirzepatide 1.0 mg subcutaneous every other week. Monitor weight and metabolic parameters. Encourage adherence to a Mediterranean diet.
+
+Clinical need: A specific clinical need is not being met by a commercially available product. Documentation from the supplying pharmacy confirms that comprehensive chemical analysis and API verification testing have been conducted. The EXEMPTION FOR COMPOUNDED GLP-1 MEDICATION has been met based on the information issued by Executive Director of MISSISSIPPI STATE BOARD OF MEDICAL LICENSURE on July 17, 2024. Compounded GLP-1 medication is clinically appropriate due to cost barriers in accessing commercially available options. Financial disparities can lead to poor medication adherence and health outcomes. This compound is less expensive, especially when not covered by insurance, improving medication adherence and overall health outcomes by reducing financial strain on patients. It mitigates financial barriers, enhances medication adherence, and improves clinical outcomes for underinsured patients.
+
+3. Anxiety/Depression (F41.9)
+
+Managed with citalopram 5 mg daily, addressing symptoms of anxiety and depression.
+
+Plan: Continue citalopram 5 mg oral daily. Monitor mental health symptoms and adjust treatment as needed.
+
+4. Hyperlipidemia (E78.5)
+
+Elevated LDL and apolipoprotein B levels noted; however, cardiovascular risk remains low.
+
+Plan: Monitor cholesterol and lipids. Consider omega-3 supplementation and dietary modifications to manage lipid levels.
+
+CARE PLAN
+Start testosterone 7.5 mg IM weekly to improve energy and cognitive symptoms.
+
+Continue tirzepatide 1.0 mg subcutaneous every other week for weight management.
+
+Continue citalopram 5 mg oral daily for anxiety and depression.
+
+Monitor hormone levels and symptoms; draw labs in 8 weeks.
+
+Consider low-dose estradiol patch if symptoms persist; reassess at next visit.
+
+Monitor cholesterol and lipids; consider omega-3 supplementation.
+
+Maintain a Mediterranean diet and increase protein intake.
+
+Follow up in 8 weeks to evaluate treatment response and adjust as necessary.
+
+FOLLOW-UP
+Return in 8 weeks for lab review and reassessment of hormone therapy.
