@@ -148,6 +148,7 @@ interface PipelineOutput {
   fullNote: string;
   uncertain_items: string[];
   needs_clinician_review: string[];
+  provider_review_flags?: string[];
 }
 
 interface NormalizedExtraction {
@@ -300,6 +301,28 @@ These five states are mutually exclusive and strictly defined. When in doubt, de
     - Any drug mentioned as a future possibility, a contingency, or an option the patient is still weighing → discussed
 
     PATIENT SAFETY RULE: A medication classified as "discussed" MUST NEVER be added to "explicitly_decided_plan_items". It belongs ONLY in "exploratory_discussions" (STATE C) if there is no specific committed trigger, or "discussed_but_not_decided" (STATE B) if deferred with a specific trigger. It must NEVER populate an active medication list.
+
+MEDICATION ACTION TAXONOMY — FINER-GRAINED CLASSIFICATION FOR GENERATION:
+Beyond the five status gates above, each medication action at this visit falls into one of these specific action types. When writing explicitly_decided_plan_items, prefix each entry with the appropriate verb so the generation model uses precise Plan language — never just "medication adjusted":
+
+  START         — new medication initiated at this visit for the first time
+  CONTINUE      — existing medication reviewed and continued unchanged
+  REFILL        — existing medication continued; a refill was issued (patient running low or requested refill)
+  INCREASE      — dose increased at this visit (requires both previous_dose and new_dose)
+  DECREASE      — dose decreased at this visit (requires both previous_dose and new_dose)
+  STOP          — medication being discontinued at this visit
+  HOLD          — medication temporarily paused pending a specific condition, lab result, or timeframe; document the trigger
+  RESUME        — medication restarted after a prior hold or discontinuation
+  SWITCH        — one medication replaced with another; capture what is stopping and what is starting
+  TAPER         — dose being reduced gradually over time; document the taper schedule if stated
+  TRIAL         — medication started on a short-term trial basis to assess response or tolerance
+  PRN           — prescribed for as-needed use only; not a scheduled daily medication
+  DEFER         — initiation or change explicitly postponed to a future visit with a stated reason
+  CONSIDER LATER— mentioned as a future possibility; no commitment made at this visit (maps to STATE C)
+  DECLINED      — patient refused a recommended medication or change at this visit; document reason if given
+  DISCUSSED ONLY— mentioned in conversation with no prescribing decision or active plan (maps to STATE C)
+
+Do not combine these categories. "CONSIDER LATER" must never appear as "START." "DISCUSSED ONLY" must never appear in the active plan. "HOLD" must always include the resumption trigger.
 
 ═══════════════════════════════════════
 PART 2 — CONDITION INFERENCE
@@ -868,10 +891,59 @@ STYLE STANDARD:
 - Integrate patient education into the treatment narrative naturally — it should read as part of the clinical reasoning, not as a bolted-on "Counseling" section
 - The note should feel like a real clinician synthesizing a real encounter, not a template being filled in
 
+AUTHORSHIP QUICK-REFERENCE — WRITE IN PROVIDER VOICE THROUGHOUT:
+The note reads as though the treating provider personally authored it immediately after the encounter.
+Never use: "The provider stated…" / "The clinician recommended…" / "The transcript indicates…" / "According to the encounter…" / "It was mentioned that…"
+Instead write directly: "Recommended…" / "Reviewed…" / "Advised…" / "Will initiate…" / "Patient elected to…" / "Discussed risks, benefits, and alternatives…"
+This applies across the entire note — HPI, Assessment, Plan, and Care Plan without exception.
+
 DOCUMENT EVERYTHING — but document it once, where it belongs. Completeness means every clinical decision is captured with its reasoning, dosing, and monitoring. It does not mean repeating the same medication in five separate places or narrating the patient's personal story.
+
+═══════════════════════════════════════
+RELEVANCE FILTER — WHAT TO INCLUDE AND EXCLUDE
+═══════════════════════════════════════
+Include ordinary conversation when it carries clinical meaning. Examples of clinically meaningful conversational content:
+- The patient reports eating very little while taking a GLP-1
+- The patient describes symptom improvement during ovulation or at a specific cycle phase
+- The patient says a medication worked for only a few days
+- The patient reports a partner's vasectomy when pregnancy risk is discussed
+- The patient explains that an adverse effect caused them to stop a medication
+- The patient states that symptoms interfere with work, sleep, or relationships
+- Cost or access affects the patient's medication choice
+- The provider informally instructs the patient to stop or change a supplement
+- The patient describes a change in symptom severity tied to a dose change
+
+Exclude:
+- Unrelated discussion about family members that has no bearing on diagnosis or treatment
+- Provider personal anecdotes that do not change clinical reasoning or counseling
+- Jokes, greetings, scheduling chatter, and administrative conversation
+- Repeated explanations that add no new clinical content
+- Sales language or product descriptions without specific clinical application
+- Any content the provider or patient themselves signals is off-topic
 
 EXTRACTION IS AN INDEXING AID — NOT A NARRATIVE REPLACEMENT:
 The structured extraction and normalized metadata are verification and organization tools. They confirm what facts are present and assist medication normalization, plan-state classification, and omission detection. They are NOT a condensed substitute for the transcript. You must reconstruct the encounter using the full transcript. Use the extraction to verify that facts are not missed — not to replace the transcript as the source of clinical narrative.
+
+═══════════════════════════════════════
+PRE-WRITING INTERNAL RECONCILIATION — PERFORM SILENTLY BEFORE DRAFTING
+═══════════════════════════════════════
+Before writing a single word of the note, silently perform this internal checklist. Do not show this process in the output.
+
+A. VISIT CONTEXT — identify: visit type (new patient / follow-up / acute); primary reason; chronic conditions addressed; any acute concerns; procedures performed or planned.
+
+B. MEDICATION ACTIONS — for every medication in the transcript or extraction, determine: action type (START / CONTINUE / REFILL / INCREASE / DECREASE / STOP / HOLD / RESUME / SWITCH / TAPER / TRIAL / PRN / DEFER / CONSIDER LATER / DECLINED / DISCUSSED ONLY); current dose; new dose if changed; route; frequency; whether action is confirmed, conditional, or deferred; whether it begins now or later.
+
+C. STAGED AND CONDITIONAL PLANS — identify all sequencing language. Determine: what starts now; what changes now; what is monitored; when reassessment occurs; what condition triggers the next action; what will be considered if symptoms persist; what will be avoided if adverse effects occur. Never collapse a staged plan into a list that makes all treatments appear simultaneously active.
+
+D. SAFETY SCREENING — capture any screening that occurred: allergies; pregnancy possibility; contraception; cancer history; thromboembolic history; cardiovascular history; organ disease; controlled-substance risk; drug interactions; relevant baseline testing. Document only screening that actually occurred.
+
+E. SHARED DECISION-MAKING — identify: treatment options reviewed; patient concerns expressed; patient preference stated; therapies accepted; therapies declined; decisions deferred with stated reason; financial or access considerations.
+
+F. CLINICAL REASONING — identify: why each diagnosis was selected; what evidence supports it; what uncertainty remains; why each medication was chosen at this dose and route; why treatment was delayed or deferred; how patient preference affected the plan.
+
+G. AMBIGUITY FLAGS — identify any item where: two doses were given and the final dose is unclear; a medication appears both continued and stopped; a diagnosis conflicts with objective data; follow-up timing is inconsistent; whether treatment was started or only discussed is genuinely unclear. Flag these for the provider_review_flags output — do not silently resolve them by guessing.
+
+Only after completing this internal checklist, begin drafting the note.
 
 STATEMENT-LEVEL PRESERVATION — NON-NEGOTIABLE:
 For every clinically meaningful statement in the transcript, preserve:
@@ -1943,13 +2015,37 @@ Copy every medication and drug name EXACTLY as it appears in the NORMALIZED MEDI
 LAB LEVEL TARGETS: "increase vitamin D to 60-80" = lab level target (ng/mL), NOT a dose.
 
 ═══════════════════════════════════════
+CONSOLIDATED PROHIBITED BEHAVIORS — FINAL PRE-OUTPUT CHECK
+═══════════════════════════════════════
+Before producing output, confirm you have not done any of the following:
+
+- Invented history, physical findings, diagnoses, or patient understanding not present in the transcript or supplied data
+- Invented negative findings or a comprehensive normal examination that was not performed or supplied
+- Invented consent, patient agreement, or counseling that did not occur ("all questions were answered," "patient verbalized understanding and consented")
+- Diagnosed a condition based only on a medication's common indication (e.g., do not diagnose obesity simply because a GLP-1 is prescribed; do not diagnose depression simply because an SSRI is listed)
+- Converted a laboratory flag into a diagnosis against the provider's stated interpretation
+- Turned a future option or deferred plan into a current active treatment
+- Written "Consider later" as if it were a current start
+- Written "Discussed only" in the active plan or Care Plan as an active medication instruction
+- Omitted a medication stop or discontinuation because the item is a supplement
+- Omitted informal dose instructions or conversational dose changes
+- Used "provider stated," "the clinician noted," "the transcript indicates," or any observer-voice language anywhere in the note
+- Included unrelated personal conversation, scheduling chatter, or social anecdotes
+- Generated billing-level complexity statements not supported by the encounter
+- Stated that records were reviewed unless records were actually supplied
+- Stated that risks and benefits were discussed unless the discussion actually occurred
+- Silently resolved a contradiction by guessing — flag it in provider_review_flags instead
+- Included anything in the Care Plan that contradicts or is absent from the problem-based Assessment/Plan
+
+═══════════════════════════════════════
 OUTPUT FORMAT
 ═══════════════════════════════════════
 Return JSON with exactly these keys:
 {
   "fullNote": "<complete formatted SOAP note as plain text>",
   "uncertain_items": ["<items needing clinician clarification>"],
-  "needs_clinician_review": ["<specific flags — NO duplicates of explicit plan items>"]
+  "needs_clinician_review": ["<specific flags — NO duplicates of explicit plan items>"],
+  "provider_review_flags": ["<clinically material ambiguities or contradictions that cannot be safely resolved — format each as one of: 'Medication dose requires confirmation: ...', 'Diagnosis/code mismatch: ...', 'Unclear whether treatment was started or only discussed: ...', 'Conflicting follow-up intervals: ...', 'Medication appears both continued and stopped: ...', 'Safety concern raised but not resolved: ...' — OMIT this key entirely if there are no unresolvable ambiguities>"]
 }
 
 Use this EXACT format for fullNote:
@@ -2038,10 +2134,26 @@ CONTENT — include a bullet for each of the following that applies to this visi
 - Recommendations that were declined or deferred, so the patient understands the status ("You declined starting a statin at this visit — we will reassess your lipid levels at your next visit")
 
 Do NOT include bullets for medications that were discussed but are continuing unchanged with no patient action required — only include continuing medications if there is something specific the patient needs to do or know about them.
-Keep each bullet concise — one clear sentence per action.]
+Keep each bullet concise — one clear sentence per action.
+
+CARE PLAN vs. ASSESSMENT/PLAN CONSISTENCY — MANDATORY:
+The Care Plan must agree exactly with the problem-based Assessment/Plan above it. Specifically:
+- Every medication START in the A/P must appear as a Care Plan bullet — never omit a newly prescribed item
+- Every dose CHANGE in the A/P must appear in the Care Plan with the NEW dose — never carry the old dose into the Care Plan
+- Every STOP or HOLD in the A/P must appear in the Care Plan so the patient knows what to discontinue
+- Every lab order, referral, and follow-up from the A/P must appear in the Care Plan
+- The Care Plan must not introduce any medication, instruction, or recommendation that does not appear somewhere in the A/P — no new clinical content in this section
+- If an item appears in the Care Plan but is absent from or contradicts the A/P, that is a documentation error — revise before output]
 
 FOLLOW-UP
-[Specific interval with clinical rationale]
+[Document follow-up with all five of these elements when applicable:
+1. Follow-up interval — specific timeframe (e.g., "Return in 6 weeks"), not "follow up as needed"
+2. Purpose — why this specific interval was chosen and what will be assessed at that visit
+3. Laboratory timing — which labs to obtain before or at follow-up and when to get them
+4. Monitoring symptoms or adverse effects to watch for between now and the next visit
+5. Return precautions — symptoms or conditions that warrant earlier return or urgent evaluation, when discussed
+
+If any element was not discussed or does not apply to this encounter, omit it — do not fabricate monitoring instructions.]
 
 ═══════════════════════════════════════
 END OF NOTE — STOP HERE.
@@ -2270,6 +2382,7 @@ If any major HPI topic has no Assessment coverage — ADD the Assessment entry b
     fullNote: stripLeakedInstructions(soapResult.fullNote ?? ""),
     uncertain_items: soapResult.uncertain_items ?? [],
     needs_clinician_review: soapResult.needs_clinician_review ?? [],
+    provider_review_flags: soapResult.provider_review_flags ?? [],
   };
 }
 
@@ -2601,6 +2714,7 @@ Review the note for quality issues. If critical/important issues are found, prov
       fullNote: qaResult.revised_fullNote,
       uncertain_items: qaResult.revised_uncertain_items ?? soapOutput.uncertain_items,
       needs_clinician_review: qaResult.revised_needs_clinician_review ?? soapOutput.needs_clinician_review,
+      provider_review_flags: soapOutput.provider_review_flags,
     };
   }
 
