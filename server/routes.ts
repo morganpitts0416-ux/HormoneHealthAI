@@ -11476,6 +11476,8 @@ You MUST distinguish between what the patient is CURRENTLY taking vs what the cl
   → Triggered by: "she is on", "he takes", "currently taking", "has been on", "patient is on", "continues on", "she's been on for X weeks/months", "patient's medications include"
 - medication_changes_discussed = medications being RECOMMENDED, STARTED, STOPPED, ADJUSTED, or PLANNED at this visit
   → Triggered by: "I recommend starting", "we'll begin", "I'd like to add", "we'll add once", "let's start", "I'm going to start her on", "she should start", "I recommended", "plan to initiate", "we'll hold off on X until Y"
+  → ALSO triggered by dose adjustments — capture BOTH the old and new dose explicitly: "increase X to Y", "bump X up to Y", "double her X", "titrate X to Y", "drop X down to Y", "reduce X to Y", "cut X back to Y", "go up to Y mg", "go down to Y mg", "change X to Y mg", "switch from X mg to Y mg"
+  → For dose adjustments, format as: "Increase progesterone from 50mg to 100mg (dose increase at this visit)"
 EXAMPLES:
   - "I recommended starting progesterone" → medication_changes_discussed: ["Start progesterone (new — clinician recommendation)"]
   - "Once stable on progesterone we'll add estrogen" → medication_changes_discussed: ["Add estrogen once stable on progesterone (future plan)"]

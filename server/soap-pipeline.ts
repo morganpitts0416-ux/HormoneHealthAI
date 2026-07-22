@@ -154,6 +154,8 @@ interface NormalizedExtraction {
   medications_normalized: Array<{
     name: string;
     dose?: string;
+    previous_dose?: string;
+    new_dose?: string;
     route?: string;
     frequency?: string;
     status: "current" | "new" | "discontinued" | "adjusted" | "discussed";
@@ -260,6 +262,15 @@ These five states are mutually exclusive and strictly defined. When in doubt, de
 
   ADJUSTED → status: "adjusted"
     Patient is currently on this medication AND the dose, route, or frequency is being changed at this visit.
+    CRITICAL FOR ADJUSTED MEDICATIONS — capture both doses separately:
+      previous_dose: the dose the patient was on BEFORE this visit (what they walked in taking)
+      new_dose: the dose the provider is changing TO at this visit (the new prescription)
+      dose: set this equal to new_dose (the active going-forward dose)
+    Example: patient on progesterone 50mg, provider says "increase to 100mg"
+      → previous_dose: "50mg", new_dose: "100mg", dose: "100mg", status: "adjusted"
+    Example: patient on testosterone 0.25mL, provider says "drop that down to 0.2mL"
+      → previous_dose: "0.25mL", new_dose: "0.2mL", dose: "0.2mL", status: "adjusted"
+    If the previous dose was not stated explicitly, use previous_dose: null and capture whatever was mentioned.
 
   DISCONTINUED → status: "discontinued"
     Provider explicitly stops a medication the patient was previously on AT THIS VISIT, OR the patient
@@ -606,7 +617,15 @@ If no PROVIDER DIAGNOSIS BUNDLES were provided in the user message: return empty
 RULE — CURRENT MEDICATIONS MENTIONED IN ANY CLINICAL CONTEXT:
 If a medication has status = "current" AND it was referenced in ANY clinical context during this encounter — including: dose stated, tolerability asked about, efficacy or weight discussed in its context, labs reviewed in relation to it, continuation confirmed, patient asked about it, side effects mentioned, refill discussed, or it was simply acknowledged as part of the ongoing plan of care — you MUST add it to "explicitly_decided_plan_items" using this format:
 "Continue [medication name] [dose] [route] [frequency] — reviewed and continued at this visit"
-The threshold is LOW. If the medication was brought up in any way that indicates it is part of this patient's active treatment plan, it belongs in explicitly_decided_plan_items. A medication is considered "discussed" even if it was mentioned in a single sentence. Do NOT require extensive discussion — ANY acknowledgment in a clinical context counts. Failing to include it means the note-writing stage will silently omit it from the Assessment/Plan, which is unacceptable.
+The threshold is LOW.
+
+RULE — ADJUSTED MEDICATIONS:
+If a medication has status = "adjusted" (dose, route, or frequency is being changed at this visit), add it to "explicitly_decided_plan_items" using this format:
+"[Action] [medication name] from [previous_dose] to [new_dose] [route] [frequency] — dose changed at this visit"
+Where [Action] = "Increase" | "Decrease" | "Adjust" | "Change" as appropriate.
+Example: "Increase progesterone from 50mg to 100mg PO QHS — dose increased at this visit"
+Example: "Decrease testosterone cypionate from 0.25mL to 0.20mL IM weekly — dose adjusted at this visit"
+NEVER use "Continue [old dose]" for an adjusted medication. The plan item must reflect the NEW dose. If the medication was brought up in any way that indicates it is part of this patient's active treatment plan, it belongs in explicitly_decided_plan_items. A medication is considered "discussed" even if it was mentioned in a single sentence. Do NOT require extensive discussion — ANY acknowledgment in a clinical context counts. Failing to include it means the note-writing stage will silently omit it from the Assessment/Plan, which is unacceptable.
 
 SAFETY EXCLUSION — NON-NEGOTIABLE: This rule applies ONLY to medications classified as status = "current" or status = "adjusted". Medications classified as status = "discussed" are DISCUSSED_ONLY items — they must NEVER be added to "explicitly_decided_plan_items" regardless of how many times or how extensively they were mentioned in the transcript. Adding a discussed-only medication to explicitly_decided_plan_items is a patient safety error that causes hallucinated active medications in the clinical note. When a medication's status is "discussed", route it to "exploratory_discussions" (STATE C) or "discussed_but_not_decided" (STATE B) only — never to STATE A.
 
@@ -739,9 +758,19 @@ async function generateSoapSections(
     : "";
 
   const normalizedMedsContext = normalized.medications_normalized.length
-    ? `\nNORMALIZED MEDICATIONS:\n${normalized.medications_normalized.map(m =>
-        `- ${m.name}${m.dose ? ` ${m.dose}` : ""}${m.route ? ` ${m.route}` : ""}${m.frequency ? ` ${m.frequency}` : ""} [${m.status}] (${m.confidence})${m.indication ? ` — for: ${m.indication}` : ""}`
-      ).join('\n')}`
+    ? `\nNORMALIZED MEDICATIONS:\n${normalized.medications_normalized.map(m => {
+        // For adjusted medications, show prior → new dose explicitly so the generation model
+        // never writes the old dose in the A/P or Care Plan.
+        let doseStr = "";
+        if (m.status === "adjusted" && m.previous_dose && m.new_dose) {
+          doseStr = ` ${m.previous_dose} → ${m.new_dose} (DOSE CHANGE: use ${m.new_dose} in A/P and Care Plan)`;
+        } else if (m.status === "adjusted" && m.new_dose) {
+          doseStr = ` → ${m.new_dose} (DOSE CHANGE: use ${m.new_dose} in A/P and Care Plan)`;
+        } else if (m.dose) {
+          doseStr = ` ${m.dose}`;
+        }
+        return `- ${m.name}${doseStr}${m.route ? ` ${m.route}` : ""}${m.frequency ? ` ${m.frequency}` : ""} [${m.status}] (${m.confidence})${m.indication ? ` — for: ${m.indication}` : ""}`;
+      }).join('\n')}`
     : "";
 
   const conditionsContext = normalized.conditions_inferred.length
@@ -908,7 +937,13 @@ MEDICATION STATUS GATE — PATIENT SAFETY — GOVERNS ALL FOUR LOCATIONS
 The NORMALIZED MEDICATIONS context tags every medication with its classified status. These status values CONTROL where a medication may and may not appear. This gate applies BEFORE the Four-Location Mandate — it restricts which medications the mandate covers.
 
   status = "current"   → ACTIVE: Four-Location Mandate applies in full (Current Meds + HPI + A/P + Care Plan)
-  status = "adjusted"  → ACTIVE + CHANGED: Current Meds (prior dose) + A/P (dose change) + HPI + Care Plan
+  status = "adjusted"  → ACTIVE + CHANGED: Current Meds (prior dose as reference) + A/P (dose change with NEW dose) + HPI + Care Plan (NEW dose)
+    ⚠ ADJUSTED DOSE MANDATE: When a medication has status = "adjusted", the NORMALIZED MEDICATIONS list shows the dose change as "prior_dose → new_dose (DOSE CHANGE: use new_dose in A/P and Care Plan)". You MUST:
+      1. Current Medications: list with the PRIOR dose as reference (e.g., "Progesterone 50mg PO QHS — dose being increased")
+      2. HPI: mention the dose change with both doses ("progesterone increased from 50mg to 100mg at this visit")
+      3. Assessment/Plan: use the NEW dose in the Plan line ("Progesterone 100mg PO QHS — dose increased from 50mg")
+      4. Care Plan: use the NEW dose in the patient instruction ("Take progesterone 100mg by mouth at bedtime")
+      NEVER copy the old/prior dose into the A/P Plan line or Care Plan. NEVER write "continue [old dose]" for an adjusted medication. The old dose is shown only as historical context in Current Medications and HPI.
   status = "new"       → NEWLY PRESCRIBED THIS VISIT: A/P + HPI + Care Plan ONLY — NEVER in Current Medications (Current Medications = what the patient walked in already taking)
   status = "discontinued" → HPI mention only (patient was previously on it, now stopped)
   status = "discussed" → DISCUSSED_ONLY: HPI narrative only for brief/passing mentions — NEVER in Current Medications, NEVER in the Care Plan as an active instruction, NEVER as an active prescribing item. Exception: when a substantive clinical discussion occurred (STATE B — see HARD RULE below), a deferred-language Assessment entry is appropriate to preserve the medical record of the discussion.
