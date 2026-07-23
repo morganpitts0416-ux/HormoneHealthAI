@@ -1,0 +1,42 @@
+Before we redeploy, please stop making additional changes and give me a complete implementation report of exactly what was changed from the previous SOAP generation pipeline.
+
+Please include:
+
+1. Every file modified.
+2. Every function modified or added.
+3. The previous prompt version and the new prompt version, shown side by side or as a clear diff.
+4. Whether the existing evidence extraction, medication normalization, decision-state classification, diagnosis bundle matching, QA checks, deterministic validation, final fidelity audit, and Teach June layers were preserved.
+5. The exact execution order now used to generate a note.
+6. Where ClinIQ Core rules, clinic-level rules, and Teach June provider rules are inserted into the prompt.
+7. Which rules are locked and which rules can be overridden.
+8. How conflicting Teach June rules are handled.
+9. Whether Teach June can intentionally shorten or alter the HPI, ROS, physical exam, diagnosis bundles, care plan, or overall note structure.
+10. Whether any previous safeguards, QA checks, or validation rules were removed, weakened, bypassed, or replaced.
+11. Whether the note is still generated in one model call or has been split into section-specific calls.
+12. Whether the new implementation changes the output JSON contract or any downstream parsing.
+13. Whether database migrations or schema changes were made.
+14. Whether the current production prompt was overwritten or whether the previous version can still be restored.
+15. The exact Git commit hash immediately before these changes and the commit hash containing these changes.
+
+Do not make any further changes yet.
+
+After providing the report, please run the new pipeline against at least five existing de-identified encounter transcripts that represent:
+
+* a complex new-patient hormone consultation,
+* a medication follow-up with multiple dose changes,
+* a multi-problem wellness visit,
+* a visit containing deferred or conditional future treatment plans,
+* and a straightforward follow-up visit.
+
+For each transcript, generate:
+
+* the note from the previous engine,
+* the note from the new engine,
+* the extracted evidence JSON,
+* the normalized medication and plan-state JSON,
+* the Teach June rules applied,
+* the QA findings,
+* the final revised note,
+* and any deterministic validation warnings.
+
+Present the old and new notes side by side. Do not deploy the new engine as the default and do not remove the previous implementation until I review these comparisons.
