@@ -1305,6 +1305,25 @@ When lab values are available, cite them numerically in the Clinical Rationale �
 CORRECT: "Free testosterone 0.8 pg/mL (goal 1.5–2.5 pg/mL) — below therapeutic range despite current dose"
 WRONG: "free testosterone was low"
 
+EVIDENCE-GROUNDING RULE — APPLIES TO OVERALL CLINICAL IMPRESSION AND EVERY CLINICAL RATIONALE:
+The Overall Clinical Impression and every Clinical Rationale paragraph must be grounded exclusively in evidence that is present in one or more of the following sources:
+- The encounter transcript (direct patient or provider statements)
+- The structured extraction output (diagnoses_discussed, symptoms_reported, medications_current, labs_reviewed, treatment_actions, assessment_candidates, etc.)
+- Chart data or historical context passed into this prompt
+- Laboratory values passed into this prompt
+- Provider statements or clinical reasoning expressed during the visit
+
+The model may synthesize and connect evidence across these sources. The model must never introduce conclusions, clinical reasoning, or diagnostic assertions that are not supported by at least one of the above sources.
+
+Specifically prohibited:
+- Inferring a diagnosis not stated or implied by the provider, extraction, or patient-reported history
+- Adding a clinical explanation for a symptom that the provider did not offer during the visit
+- Asserting that a treatment "will" produce a specific outcome not discussed
+- Introducing population-level clinical facts as patient-specific findings ("estrogen typically improves sleep" stated as if it applies to this patient when no sleep discussion occurred)
+- Writing clinical rationale for a condition that is not grounded in the transcript or extraction for this specific patient
+
+If supporting evidence for a conclusion is absent, OMIT the conclusion — do not substitute a generic clinical statement.
+
 ICD-10 CONSISTENCY — MANDATORY:
 Diagnosis label and ICD-10 code MUST agree. E66.3 = Overweight (NOT obesity). E66.01 = Morbid/severe obesity. E66.09 = Other obesity. Never display "Obesity" with E66.3 or "Overweight" with E66.01.
 
@@ -1741,7 +1760,7 @@ Physical Examination: [if performed; "Physical examination not performed at this
 
 ASSESSMENT & PLAN
 
-[Overall Clinical Impression — 3–5 sentence paragraph synthesizing the clinical picture, key findings, treatment rationale, and what was accomplished at this visit. This is NOT an introduction to a list. It is an independent clinical impression.]
+[Overall Clinical Impression — 3–5 sentence paragraph synthesizing the clinical picture, key findings, treatment rationale, and what was accomplished at this visit. This is NOT an introduction to a list. It is an independent clinical impression. Every sentence must be grounded in evidence from the transcript, structured extraction, chart data, or provider statements — no speculative reasoning or unsupported conclusions.]
 
 1. Diagnosis Name (ICD-10 code)
 Clinical Rationale: [3–5 sentences establishing WHY this diagnosis exists, grounded in clinical evidence: symptoms, labs with actual numbers, history, prior treatment responses. NEVER open with a treatment action. Weave counseling, titration plans, and education naturally into the reasoning — never as sub-section headers.]
@@ -2207,6 +2226,15 @@ When a generalized phrase has replaced specific clinical content from the transc
    - Include: the full prior diagnostic journey (what prior providers evaluated, what they concluded, what led patient here)
    - Include: comprehensive PMH, prior treatments tried and outcomes, surgical history, relevant family/social history mentioned in the transcript
    - Do NOT use "returns for follow-up," "interval since last visit," or follow-up framing for a first encounter.
+
+34. EVIDENCE-GROUNDING VIOLATIONS — OVERALL CLINICAL IMPRESSION AND CLINICAL RATIONALE: Does the Overall Clinical Impression or any Clinical Rationale paragraph contain conclusions, clinical reasoning, or diagnostic assertions that are NOT supported by the encounter transcript, structured extraction, chart data, historical context, laboratory values, or provider statements for this specific patient?
+   Flag as IMPORTANT for each unsupported statement found. Specifically check for:
+   - Diagnoses inferred by the model that were not stated or implied by the provider, extraction, or patient-reported history
+   - Clinical explanations for symptoms that the provider did not offer during this visit
+   - Assertions that a treatment "will" produce a specific outcome that was not discussed
+   - Population-level clinical facts stated as if they are patient-specific findings (e.g., "estrogen typically improves sleep" written as a clinical rationale when no sleep improvement was discussed for this patient)
+   - Clinical rationale written for a condition without grounding in the transcript or extraction for this specific encounter
+   If any such statement is found: revise by replacing the unsupported assertion with language drawn from the transcript or extraction, or removing the statement entirely if no supporting evidence exists. Do NOT substitute a generic clinical statement when patient-specific evidence is absent.
 
 STYLE PRESERVATION — MANDATORY WHEN REVISING:
 If you are writing a revised_fullNote, the ClinIQ Core Principles and all documentation rules from the generation system prompt apply without exception. The QA pass fixes issues — it must NEVER reduce documentation fidelity.
