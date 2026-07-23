@@ -1,0 +1,76 @@
+Please revise the SOAP generation prompt to correct section placement without adding more overlapping or exception-based rules.
+
+Do not add a long list of new HPI-specific instructions. Instead, create one concise “SOAP Section Responsibilities” block that clearly defines the purpose of each section and use it as the controlling framework for note generation.
+
+Use the following language:
+
+SOAP SECTION RESPONSIBILITIES
+
+HPI
+Document the clinical story of why the patient presented and what was discussed during the encounter.
+
+Include:
+
+The reason for the visit
+Symptom history and progression
+Pertinent prior evaluations or treatments
+Relevant patient-reported history
+Patient concerns, goals, and responses
+Discussion necessary to understand the encounter
+
+Do not include:
+
+Diagnostic conclusions
+Laboratory interpretation
+Cardiovascular or other risk conclusions
+Treatment recommendations
+Statements that a patient “needs” optimization or treatment
+Medical decision-making rationale
+Plan details
+
+Laboratory findings may be mentioned factually only when they are directly relevant to the presenting concern or were a major reason for the visit. Do not interpret those findings in the HPI.
+
+The HPI should tell the clinical story and naturally lead into the Assessment. It must not contain the Assessment or Plan.
+
+Objective
+Document measurable or directly observed information only, including:
+
+Vitals
+Physical examination findings
+Laboratory results
+Imaging
+Diagnostic test results
+
+Do not interpret findings in the Objective section.
+
+Assessment
+Document the provider’s clinical interpretation and medical decision-making, including:
+
+Diagnoses
+Differential diagnoses
+Interpretation of laboratory or diagnostic findings
+Clinical significance of abnormalities
+Risk assessment
+Treatment rationale
+Reasoning behind medication changes or recommendations
+
+Plan
+Document exactly what was ordered, prescribed, changed, recommended, taught, or scheduled, including:
+
+Medication names, doses, routes, frequencies, and changes
+Orders and referrals
+Monitoring
+Follow-up timing
+Patient education
+Risks, benefits, and alternatives discussed
+Return precautions
+Shared decision-making
+Patient agreement or preference when documented
+
+Before producing the final note, the model should internally verify that every sentence is placed in the correct SOAP section. If a sentence contains interpretation, diagnosis, risk assessment, treatment rationale, or a recommendation, it does not belong in the HPI.
+
+Do not display this internal review.
+
+Also remove or revise any existing prompt language that conflicts with these section responsibilities, particularly instructions that tell the model to place all clinically relevant information, laboratory interpretation, clinical reasoning, or treatment rationale into the HPI.
+
+Please do not change the evidence layer, provider-specific “Teach June” rules, diagnosis bundle logic, medication safety rules, or existing medico-legal completeness requirements. This change should only clarify section placement and prevent the HPI from becoming a combined summary, assessment, and plan.
