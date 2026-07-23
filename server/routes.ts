@@ -9839,6 +9839,19 @@ Treat the encounter as a TOTAL WELLNESS VISIT, not a narrow single-issue visit. 
 - Capture secondary concerns discussed during the visit even if they are not the primary reason for the encounter.
 - Capture lifestyle factors, mental health context, prior treatments, side effects, allergies, surgical history, family history, and social history when mentioned.
 
+FIVE CATEGORIES THAT ARE CONSISTENTLY MISSED — EACH HAS A DEDICATED FIELD — MANDATORY:
+These five categories are frequently present in transcripts but are the most often lost. Do not bury them in context_inferred_items. Each has its own dedicated array.
+
+1. PRIOR PROVIDERS SEEN (→ prior_providers_seen): Capture every clinician or specialist the patient saw BEFORE this visit — internal medicine, endocrinology, cardiology, ENT, gynecology, urgent care, ER, any other. For each: who they saw (specialty + name if given), what that provider evaluated or ordered, what that provider concluded, and what led the patient to this practice. This is distinct from past_medical_history — it is the diagnostic journey immediately before this visit.
+
+2. PRIOR EXTERNAL TESTS AND IMAGING (→ prior_external_tests_and_imaging): Capture every imaging study, cardiovascular screening test, or lab drawn at another facility that is referenced in the transcript. Include the test name and result, even if normal. Examples: "CAC score = 0 (outside facility)" / "Carotid ultrasound — no plaque per patient" / "DEXA T-score -1.8 (prior practice)" / "Outside TSH 4.2." Normal results are clinically meaningful — they rule out differentials.
+
+3. REPRODUCTIVE AND HORMONAL HISTORY (→ reproductive_history): For female patients, capture when stated: approximate LMP or years since LMP (e.g., "approximately 5 years post-menopause"), age at menopause, gravida/para, history of hysterectomy/oophorectomy with timing, contraception history, prior hormone therapy, PCOS/endometriosis history.
+
+4. PATIENT CONCERNS AND FEARS (→ patient_concerns_and_fears): Capture specific patient-expressed fears or concerns about treatments, procedures, side effects, or outcomes. Not vague hesitation — specific articulated worries. Examples: "Concerned hysterectomy will destabilize hormones" / "Fears statin myopathy" / "Worried about breast cancer risk with HRT."
+
+5. PATIENT GOALS FOR THIS VISIT (→ patient_goals_for_visit): Capture what the patient explicitly states they want from this visit or treatment. Examples: "Wants to feel like herself again" / "Goal is improving sleep and energy" / "Wants to optimize cardiovascular health before age 60."
+
 CONTEXT CLUE REQUIREMENT:
 Use context clues to capture clinically relevant information, but do not hallucinate:
 - If something is strongly supported by transcript context, capture it in the appropriate field.
@@ -9873,6 +9886,11 @@ Return this exact JSON structure (all arrays, even if empty):
   "red_flags": [],
   "uncertain_items": [],
   "context_inferred_items": [],
+  "prior_providers_seen": [],
+  "prior_external_tests_and_imaging": [],
+  "reproductive_history": [],
+  "patient_concerns_and_fears": [],
+  "patient_goals_for_visit": [],
   "source_utterance_ids": []
 }`;
 
@@ -11520,6 +11538,19 @@ Treat the encounter as a TOTAL WELLNESS VISIT, not a narrow single-issue visit. 
 - Capture prior treatments and medication trials: medications tried and stopped, treatments that failed, reasons for discontinuation, side effects experienced.
 - Capture allergies, surgical history, family history, and social history when mentioned.
 
+FIVE CATEGORIES THAT ARE CONSISTENTLY MISSED — EACH HAS A DEDICATED FIELD — MANDATORY:
+These five categories are frequently present in transcripts but are the most often lost. Do not bury them in context_inferred_items. Each has its own dedicated array. Populate whichever are present.
+
+1. PRIOR PROVIDERS SEEN (→ prior_providers_seen): For every clinician or specialist the patient saw BEFORE this visit — internal medicine, endocrinology, cardiology, ENT, gynecology, urgent care, ER, any other — capture: who they saw (specialty + name if given), what that provider evaluated or ordered, what that provider concluded, and what led the patient to this practice. Even partial information is better than omission. Format: "Internal medicine physician — ordered labs, evaluated dizziness; referred to ENT" or "ENT (Dr. [name]) — evaluated vestibular function; found no structural abnormality; suggested hormonal etiology; referred here." This is distinct from past_medical_history — it is the diagnostic journey immediately before this visit.
+
+2. PRIOR EXTERNAL TESTS AND IMAGING (→ prior_external_tests_and_imaging): For every imaging study, cardiovascular screening test, or lab drawn at another facility that is mentioned in the transcript — capture the test name and result, even if the result is normal. Examples: "CAC score = 0 (outside facility)" / "Carotid ultrasound — no plaque per patient report" / "DEXA T-score -1.8 (obtained at prior practice)" / "Outside lab TSH 4.2." Normal/negative results are clinically meaningful (they rule out differentials) and must be captured.
+
+3. REPRODUCTIVE AND HORMONAL HISTORY (→ reproductive_history): For female patients, capture all of the following when stated: approximate LMP or years since LMP (e.g., "approximately 5 years post-menopause"), age at menopause, gravida/para (e.g., "G3P2"), history of hysterectomy/oophorectomy with approximate timing, contraception history, history of hormone therapy through prior practices, PCOS or endometriosis history. These are critical clinical anchors for HRT timing, cardiovascular risk, and bone density — not optional background.
+
+4. PATIENT CONCERNS AND FEARS (→ patient_concerns_and_fears): Capture specific patient-expressed fears or concerns about treatments, procedures, side effects, or outcomes — not vague hesitation, but specific articulated worries. Examples: "Concerned hysterectomy will destabilize hormones given prior surgeries" / "Fears statin myopathy after family member's experience" / "Worried about breast cancer risk with HRT" / "Concerned about cost of ongoing injections." These are distinct from patient_questions — they are emotional or safety concerns that influence shared decision-making and must be documented.
+
+5. PATIENT GOALS FOR THIS VISIT (→ patient_goals_for_visit): Capture what the patient explicitly states they want from this visit or from treatment — their stated objectives or priorities. Examples: "Wants to feel like herself again" / "Primary goal is improving sleep and energy without medication" / "Wants to optimize cardiovascular health before age 60" / "Goal is to lose 30 lbs in 6 months" / "Wants to get off antidepressants eventually." These contextualize all treatment decisions and belong in the note.
+
 CONTEXT CLUE REQUIREMENT:
 Use context clues to capture clinically relevant information, but do not hallucinate:
 - If something is strongly supported by transcript context, capture it in the appropriate field.
@@ -11560,6 +11591,11 @@ Return this exact JSON structure (all arrays, even if empty):
   "uncertain_items": [],
   "supplement_discussions": [],
   "context_inferred_items": [],
+  "prior_providers_seen": [],
+  "prior_external_tests_and_imaging": [],
+  "reproductive_history": [],
+  "patient_concerns_and_fears": [],
+  "patient_goals_for_visit": [],
   "source_utterance_ids": []${useStructuredV2 ? `,
   "treatment_actions": [],
   "staged_treatment_plan": [],
@@ -11703,6 +11739,11 @@ Examples:
         if (freshExtraction.red_flags?.length)                   exLines.push(`Red flags noted: ${freshExtraction.red_flags.join("; ")}`);
         if (freshExtraction.uncertain_items?.length)             exLines.push(`Uncertain/unresolved: ${freshExtraction.uncertain_items.join("; ")}`);
         if (freshExtraction.context_inferred_items?.length)      exLines.push(`Context-inferred (confirm with patient): ${freshExtraction.context_inferred_items.join("; ")}`);
+        if (freshExtraction.prior_providers_seen?.length)             exLines.push(`Prior providers seen (diagnostic journey): ${freshExtraction.prior_providers_seen.join("; ")}`);
+        if (freshExtraction.prior_external_tests_and_imaging?.length) exLines.push(`Prior external tests and imaging: ${freshExtraction.prior_external_tests_and_imaging.join("; ")}`);
+        if (freshExtraction.reproductive_history?.length)             exLines.push(`Reproductive/hormonal history: ${freshExtraction.reproductive_history.join("; ")}`);
+        if (freshExtraction.patient_concerns_and_fears?.length)       exLines.push(`Patient concerns and fears: ${freshExtraction.patient_concerns_and_fears.join("; ")}`);
+        if (freshExtraction.patient_goals_for_visit?.length)          exLines.push(`Patient goals for this visit: ${freshExtraction.patient_goals_for_visit.join("; ")}`);
 
         // V2 structured fields summary
         if (useStructuredV2) {

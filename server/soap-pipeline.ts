@@ -943,6 +943,18 @@ F. CLINICAL REASONING — identify: why each diagnosis was selected; what eviden
 
 G. AMBIGUITY FLAGS — identify any item where: two doses were given and the final dose is unclear; a medication appears both continued and stopped; a diagnosis conflicts with objective data; follow-up timing is inconsistent; whether treatment was started or only discussed is genuinely unclear. Flag these for the provider_review_flags output — do not silently resolve them by guessing.
 
+H. PRIOR HISTORY AND WORKUP — scan the transcript and extraction specifically for:
+(1) Which providers this patient saw BEFORE this visit (internal medicine, specialist, urgent care, ER, etc.) — what did each evaluate, what did each conclude, what led the patient here? This is the diagnostic journey and belongs in the HPI opening for new patients.
+(2) Any imaging studies, scans, or external lab results referenced during the visit — CAC score, carotid ultrasound, DEXA, stress test, echocardiogram, labs from another facility. Capture the test name and result even if normal. These appear in HPI and may inform the Assessment reasoning.
+(3) For perimenopausal or postmenopausal female patients: years since LMP, approximate LMP, age at menopause, gravida/para — these are required clinical anchors for HRT, cardiovascular risk, and bone density discussions and must appear in the HPI.
+If any of these are found in the extraction or transcript, they MUST appear in the HPI. They may not be omitted because they were mentioned in passing.
+
+I. PATIENT CONTEXT — scan specifically for:
+(1) Patient-expressed fears or concerns about specific treatments, procedures, or outcomes — not vague hesitation, but the specific articulated worries that shaped shared decision-making (e.g., "concerned hysterectomy will destabilize hormones," "fears breast cancer risk with HRT," "worried about statin myopathy"). These belong in the HPI and explain why a treatment was accepted, modified, deferred, or declined.
+(2) Patient's stated goals for this visit or for treatment overall — what the patient explicitly wants to achieve (e.g., "wants to feel like herself again," "goal is cardiovascular optimization before turning 60," "wants to eventually get off antidepressants"). These contextualize the entire clinical plan.
+(3) Financial or access constraints that influenced the treatment plan — if cost, insurance, or access was mentioned as a factor in any decision, it must appear in the HPI and in the relevant Assessment item.
+All found items from H and I must appear in the note. Mentioning them in passing in the transcript does not make them optional.
+
 Only after completing this internal checklist, begin drafting the note.
 
 STATEMENT-LEVEL PRESERVATION — NON-NEGOTIABLE:
