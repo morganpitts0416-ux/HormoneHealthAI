@@ -286,21 +286,35 @@ These five states are mutually exclusive and strictly defined. When in doubt, de
     indication field: "previously used; discontinued by prior provider." The note must NEVER document
     this patient as currently on that therapy.
 
+  COMMITTED_FUTURE → status: "committed_future"
+    Provider has DEFINITIVELY committed to starting or changing this medication at a specific future time, but it does NOT begin at this visit. The provider used committed language with an explicit timeline.
+    REQUIRED evidence: "we'll add [drug] in two weeks" / "start [drug] at the six-week visit" / "in two weeks we're going to add [drug]" / "once you pick up [drug], start it next week" / "at your next visit we're initiating [drug]" — any phrasing where the provider made a firm future decision (not contingent on a clinical outcome that hasn't happened).
+    DISTINCTION FROM "new": "new" = starts today at this visit. "committed_future" = starts at a defined future time the provider named.
+    DISTINCTION FROM "discussed": "discussed" = no committed decision made. "committed_future" = firm commitment with a specific future start. A commitment is NOT contingent on an uncertain clinical outcome — it is a stated plan.
+    Example: "Next visit we'll add anastrozole 0.5 mg twice weekly" → committed_future, timing: "at next visit"
+    Example: "In two weeks, start the testosterone cypionate 0.2 mL IM weekly" → committed_future, timing: "in two weeks"
+    Example: "If her labs look good, we might think about estrogen" → discussed (conditional on uncertain outcome → NOT committed_future)
+    Include a timing field on committed_future medications with the exact future timeframe the provider named.
+    PLAN ROUTING: committed_future medications MUST be added to "explicitly_decided_plan_items" (see below) with their timing. They do NOT go into "discussed_but_not_decided" or "exploratory_discussions". They do NOT appear in the active current medications list since they haven't started.
+
   DISCUSSED_ONLY → status: "discussed"
     The medication was MENTIONED, CONSIDERED, or EXPLORED in conversation but:
       - The patient is NOT currently taking it, AND
-      - The provider did NOT commit to prescribing it at this visit.
-    This includes: options presented, alternatives named, patient questions about a drug, historical interest, contingency options ("if X doesn't work we could try Y"), and any medication where the prescribing decision was deferred, declined, or unresolved.
+      - The provider did NOT commit to prescribing it at this visit or at a specific future time.
+    This includes: options presented, alternatives named, patient questions about a drug, historical interest, and any medication where the prescribing decision is genuinely contingent on an uncertain future clinical outcome, or was declined or left unresolved.
 
-    CRITICAL EXAMPLES — the following MUST be classified as "discussed", never as "current":
+    CRITICAL EXAMPLES — the following MUST be classified as "discussed", never as "current" or "committed_future":
     - "Have you ever tried phentermine?" → discussed
     - "Adderall is an option we could consider" → discussed
     - "Bupropion can also help with weight, we might look at that" → discussed
     - "Some patients do well on [drug], but let's see how you do first" → discussed
-    - "If the GLP-1 doesn't work, we could add topiramate" → discussed
+    - "If the GLP-1 doesn't work, we could add topiramate" → discussed (contingent on uncertain outcome)
+    - "If her symptoms persist, we might consider progesterone" → discussed (contingent on uncertain outcome)
     - Any drug mentioned as a future possibility, a contingency, or an option the patient is still weighing → discussed
 
     PATIENT SAFETY RULE: A medication classified as "discussed" MUST NEVER be added to "explicitly_decided_plan_items". It belongs ONLY in "exploratory_discussions" (STATE C) if there is no specific committed trigger, or "discussed_but_not_decided" (STATE B) if deferred with a specific trigger. It must NEVER populate an active medication list.
+
+    COMMITTED_FUTURE IS NOT DISCUSSED: If the provider made a firm, unconditional future commitment — "we will start this in two weeks" — that is "committed_future", not "discussed". Only classify as "discussed" when the decision is genuinely unresolved or contingent on an uncertain outcome.
 
 MEDICATION ACTION TAXONOMY — FINER-GRAINED CLASSIFICATION FOR GENERATION:
 Beyond the five status gates above, each medication action at this visit falls into one of these specific action types. When writing explicitly_decided_plan_items, prefix each entry with the appropriate verb so the generation model uses precise Plan language — never just "medication adjusted":
@@ -317,7 +331,8 @@ Beyond the five status gates above, each medication action at this visit falls i
   TAPER         — dose being reduced gradually over time; document the taper schedule if stated
   TRIAL         — medication started on a short-term trial basis to assess response or tolerance
   PRN           — prescribed for as-needed use only; not a scheduled daily medication
-  DEFER         — initiation or change explicitly postponed to a future visit with a stated reason
+  DEFER         — initiation or change explicitly postponed to a future visit with a stated reason; no commitment to a specific future date
+  SCHEDULE      — provider committed to starting or changing this medication at a specific future time named in this visit (e.g., "in two weeks", "at the six-week visit"). Use for committed_future medications. Plan language: "[Drug] [dose] [route] [frequency] to be initiated [timing]." This is a confirmed State A2 decision — do NOT use "consider" or "may" language.
   CONSIDER LATER— mentioned as a future possibility; no commitment made at this visit (maps to STATE C)
   DECLINED      — patient refused a recommended medication or change at this visit; document reason if given
   DISCUSSED ONLY— mentioned in conversation with no prescribing decision or active plan (maps to STATE C)
@@ -573,9 +588,11 @@ PART 4 — PLAN DECISION CLASSIFICATION
 This is CRITICAL for recommendation quality. Classify every discussed action item into exactly one of these four states:
 
 STATE A — "explicitly_decided_plan_items": Provider clearly and definitively committed to this action. Patient agreed or provider stated it as a decision. → Add as a string to this array.
-   Trigger phrases: "I'm going to start you on", "let's do", "we'll begin", "I'll order", "I'm prescribing", "continue current dose", "we decided to"
+   Trigger phrases: "I'm going to start you on", "let's do", "we'll begin", "I'll order", "I'm prescribing", "continue current dose", "we decided to", "in two weeks we'll add", "next visit we're starting", "once you pick up the prescription start it", "at [timeframe] we will initiate"
+   COMMITTED_FUTURE MEDICATIONS ARE STATE A: Any medication with status="committed_future" MUST be added to explicitly_decided_plan_items using this format: "Schedule [medication] [dose] [route] [frequency] to begin [timing] — committed at this visit." Do NOT route committed_future medications to STATE B. The commitment was made — only the start date is future.
 
-STATE B — "discussed_but_not_decided": Topic was raised AND definitively deferred — a specific reason or trigger for deferral is identifiable. → Add as a string to "discussed_but_not_decided" AND as an object to "future_considerations" with deferred_reason, deferred_trigger, and the four inline content fields below.
+STATE B — "discussed_but_not_decided": Topic was raised AND definitively deferred — a specific reason or trigger for deferral is identifiable, but NO firm commitment was made. → Add as a string to "discussed_but_not_decided" AND as an object to "future_considerations" with deferred_reason, deferred_trigger, and the four inline content fields below.
+   COMMITTED_FUTURE IS NOT STATE B: A committed future action (provider said "we will start this in two weeks") is STATE A, not STATE B. STATE B is for items where the provider deferred making a decision ("we'll discuss this next time"), not for items where the provider made a decision with future timing.
    Trigger phrases: "once labs come back", "we'll revisit at next visit", "if symptoms worsen", "once you decide", "pending specialist", "once insurance approves", "after we stabilize X first", "come back and we'll discuss"
    Deferred trigger values: next_visit | labs_pending | patient_consideration | specialist_evaluation | insurance_approval | condition_stabilization | symptom_progression | other
    PATIENT HESITATION RULE — CRITICAL: When a substantive clinical discussion occurred (provider provided education or reviewed risks/benefits, patient expressed hesitation/apprehension/concerns/preferences, and a deliberate shared decision was reached to defer), this IS STATE B with deferred_trigger = "patient_consideration" — NOT STATE C. Patient hesitation as the deferral reason is a specific, identifiable trigger.
@@ -1483,13 +1500,30 @@ Every medication, supplement, or treatment plan item that is discussed, acknowle
 
 This rule applies to: existing medications being continued; dose adjustments; new prescriptions; supplements; OTC recommendations; any active treatment. There are NO exceptions. A medication listed only in Current Medications but absent from A/P is an incomplete note.
 
+COMMITTED FUTURE-DATED MEDICATIONS (State A2 — confirmed start at a specific future time): These appear in locations 1, 3, and 4 only (HPI narrative, Assessment/Plan, Care Plan). They do NOT appear in location 2 (Current Medications) because the patient is not yet taking them. In the A/P Plan line, use definitive future language: "[Drug] [dose] [route] [frequency] to be initiated [timing]." In the Care Plan, state the timing explicitly so the patient knows when to start.
+
 ═══════════════════════════════════════
 DECISION-STATE DOCUMENTATION LANGUAGE
 ═══════════════════════════════════════
-STATE A — INITIATED TODAY (provider and patient committed):
-- Definitive, present-tense treatment language in Plan: "[Drug] [dose] [route] [frequency] initiated/continued/adjusted"
-- Clinical Rationale states the treatment as a decided course of action
+STATE A — PROVIDER-COMMITTED DECISION (initiated today OR confirmed with explicit future timing):
+
+STATE A1 — INITIATED TODAY:
+- Definitive present-tense Plan language: "[Drug] [dose] [route] [frequency] initiated/continued/adjusted"
+- Clinical Rationale states this as a decided course of action
 - Do NOT hedge with "may consider" or "could potentially"
+
+STATE A2 — CONFIRMED FUTURE-DATED ACTION (provider committed; action begins at a specific future time):
+- The provider made a firm decision at this visit — the action WILL happen; only the start date is in the future
+- Definitive future language in Plan: "Anastrozole 0.5 mg twice weekly to be added in two weeks" / "Will initiate [drug] [dose] at [timing]" / "[Drug] scheduled to begin [timing]"
+- Clinical Rationale documents the timing and the reason for the staged sequence
+- FORBIDDEN: "may consider," "could potentially," "deferred pending," "Future Considerations:" — these hedging forms must NEVER be used for a State A2 action
+- The exact timing MUST appear in: the Plan line, the Care Plan, and the Follow-Up section
+- When the encounter includes a staged sequence (A today, B in two weeks, C if tolerated), preserve each committed step as a separate Plan line with its exact timing. Do NOT collapse the sequence into a single "consider treatment" summary.
+
+DISTINGUISHING A2 FROM STATE B:
+State A2 = provider committed to the action with explicit future timing ("we will start this in two weeks")
+State B  = provider deferred without a committed date ("we'll reassess once labs come back, then decide")
+The clinical difference is provider commitment. If the provider said "we will" or "we'll add" or "next visit we're starting" — that is State A2, not State B.
 
 STATE B — FUTURE CONSIDERATION (deferred with specific trigger):
 - Assessment entry EXISTS with full Clinical Rationale
@@ -1897,7 +1931,7 @@ PATIENT vs. CLINICIAN IDENTITY (apply while drafting — never include this head
         const confirmed = extraction.treatment_actions.filter((a: any) => a.status === 'confirmed');
         const conditional = extraction.treatment_actions.filter((a: any) => a.status === 'conditional');
         const future = extraction.treatment_actions.filter((a: any) => a.status === 'future_consideration');
-        const lines: string[] = ['\nV2 CONFIRMED TREATMENT ACTIONS (AUTHORITATIVE — these provider decisions MUST appear in the Plan with full specificity):'];
+        const lines: string[] = ['\nV2 CONFIRMED TREATMENT ACTIONS (AUTHORITATIVE — these provider decisions MUST appear in the Plan with full specificity. Actions with a timing field are State A2: confirmed future-dated — use definitive future language, NEVER hedging language):'];
         if (confirmed.length) {
           for (const a of confirmed) {
             const dose = a.new_dose ? ` ${a.new_dose}` : '';
@@ -1905,8 +1939,9 @@ PATIENT vs. CLINICIAN IDENTITY (apply while drafting — never include this head
             const route = a.route ? ` ${a.route}` : '';
             const freq = a.frequency ? ` ${a.frequency}` : '';
             const reason = a.reason ? ` — ${a.reason}` : '';
+            const timing = a.timing ? ` [STATE A2 — CONFIRMED FUTURE-DATED: begins ${a.timing} — use definitive future language in Plan, Care Plan, and Follow-Up]` : '';
             const quote = a.evidence_quote ? `\n   Evidence: "${a.evidence_quote}"` : '';
-            lines.push(`  [${a.action.toUpperCase()}] ${a.item_name}${dose}${from}${route}${freq} (${a.item_type})${reason}${quote}`);
+            lines.push(`  [${a.action.toUpperCase()}] ${a.item_name}${dose}${from}${route}${freq} (${a.item_type})${reason}${timing}${quote}`);
           }
         } else {
           lines.push('  (none)');
@@ -1933,12 +1968,17 @@ PATIENT vs. CLINICIAN IDENTITY (apply while drafting — never include this head
   const stagedPlanContext = (useV2 && Array.isArray(extraction.staged_treatment_plan) && extraction.staged_treatment_plan.length)
     ? (() => {
         const sorted = [...extraction.staged_treatment_plan].sort((a: any, b: any) => (a.sequence ?? 0) - (b.sequence ?? 0));
-        const lines = ['\nV2 STAGED TREATMENT PLAN (follow this sequence precisely — do not conflate later steps with current steps):'];
+        const lines = ['\nV2 STAGED TREATMENT PLAN (AUTHORITATIVE — preserve provider\'s exact treatment sequence; each step\'s timing and trigger must appear in Assessment, Care Plan, and Follow-Up):'];
+        lines.push('  LANGUAGE RULES: start_now steps use present-tense language. Steps with explicit future timing but committed by the provider use definitive future language: "will be initiated", "to be added", "scheduled to begin [timing]". NEVER use "may consider", "could potentially", or "Future Considerations:" for any committed staged step. Reserve "Future Considerations:" for genuinely undecided options only.');
         for (const s of sorted) {
           const cond = s.condition ? ` [condition: ${s.condition}]` : '';
           const next = s.next_step_if_met ? ` → if met: ${s.next_step_if_met}` : '';
           const notMet = s.next_step_if_not_met ? ` → if not met: ${s.next_step_if_not_met}` : '';
-          lines.push(`  Step ${s.sequence} [${s.status}]: ${s.action}${cond}${next}${notMet}`);
+          const langHint = s.status === 'start_now' ? ' ← PRESENT-TENSE language' :
+                           s.status === 'conditional' ? ' ← CONDITIONAL language only if condition met' :
+                           s.status === 'future_consideration' ? ' ← FUTURE CONSIDERATIONS sub-section; not as initiated' :
+                           ' ← DEFINITIVE FUTURE language; include exact timing';
+          lines.push(`  Step ${s.sequence} [${s.status}]: ${s.action}${cond}${next}${notMet}${langHint}`);
         }
         return lines.join('\n');
       })()
@@ -2261,7 +2301,11 @@ When a generalized phrase has replaced specific clinical content from the transc
 
    e) PROVIDER INTERPRETATIONS reversed: Any provider_interpretation in the extraction represents the provider's stated clinical judgment. The note MUST NOT replace it with a conflicting standard-range interpretation. If the note contradicts a provider interpretation → flag CRITICAL.
 
-   f) STAGED PLAN sequence violated: If a staged_treatment_plan is present, steps with status="future_consideration" or status="conditional" MUST NOT be described as current steps. Earlier steps (lower sequence number) must not be omitted. If the sequence is violated → flag important.
+   f) STAGED PLAN — sequence violated OR committed steps hedged: If a staged_treatment_plan is present:
+      (1) Steps with status="future_consideration" or status="conditional" MUST NOT be described as currently active. If described as active → flag CRITICAL.
+      (2) Earlier steps (lower sequence number) must not be omitted. If omitted → flag CRITICAL.
+      (3) Steps with status="start_now" or confirmed treatment_actions with a timing field are committed provider decisions — they MUST use definitive language ("will be initiated", "to be added", "scheduled to begin [timing]"). If any committed staged step is described with hedging language ("may consider", "could potentially", "might add", "Future Considerations:") → flag CRITICAL, because this changes the clinical meaning of the encounter.
+      (4) The exact timing of each confirmed future step MUST appear in both the Care Plan and the Follow-Up section. If timing is present in the Assessment but missing from Care Plan or Follow-Up → flag important.
 
    g) SUPPLEMENT STOPS omitted: Supplement stops (action="stop", item_type="supplement") are frequently omitted. Scan the note specifically for each stopped supplement and verify it appears as discontinued, not as currently continued. If absent or wrongly continued → flag CRITICAL.
 

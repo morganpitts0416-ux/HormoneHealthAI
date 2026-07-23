@@ -11624,11 +11624,25 @@ Action type values and what triggers them:
 
 item_type values: "prescription", "supplement", "otc", "device", "lifestyle", "other"
 
+timing: (optional string) — specific future date or interval when the action will occur. Populate whenever the provider states a concrete time: "in two weeks", "at the six-week visit", "next month", "once labs come back". Leave blank for actions happening today.
+
 status values:
-  "confirmed"            — provider made a definitive decision at this visit (the action WILL happen)
-  "conditional"          — will happen only if a specific condition is met: "if symptoms persist", "if that doesn't work", "once you're stable on X"
-  "future_consideration" — discussed as a later possibility; no commitment made
+  "confirmed"            — provider made a definitive decision at this visit (the action WILL happen). This includes future-dated commitments: "we'll add anastrozole in two weeks", "start the progesterone once you pick up the prescription", "in six weeks we'll initiate estrogen." A confirmed decision with future timing is STILL "confirmed" — capture the timing in the timing field.
+  "conditional"          — will happen ONLY if a specific clinical condition is met that has not yet occurred: "if symptoms persist", "if that doesn't work", "if ApoB stays elevated after three months". Do NOT use this for a committed action that simply starts later.
+  "future_consideration" — discussed as a later possibility with NO commitment made; purely exploratory. Reserve for "we could consider", "might be worth trying someday", "an option would be". Do NOT use this for any action the provider has committed to, even if the timing is weeks away.
   "discussed_only"       — mentioned in passing; no action direction given
+
+CRITICAL CLASSIFICATION RULE — CONFIRMED FUTURE-DATED ACTIONS:
+When a provider explicitly sequences therapy ("start A today, then add B in two weeks, reassess at six weeks, initiate C if B is tolerated"), each step the provider commits to is "confirmed" with a timing field — NOT conditional or future_consideration. Only use "conditional" for steps that depend on a clinical outcome that has not yet occurred. Only use "future_consideration" for options the provider mentioned but did not commit to.
+
+Examples:
+  Provider: "Start testosterone today. In two weeks we'll add anastrozole 0.5 mg twice weekly."
+    → action: "start", item_name: "Testosterone", status: "confirmed", timing: "" (today)
+    → action: "start", item_name: "Anastrozole", status: "confirmed", timing: "in two weeks"
+  Provider: "If she tolerates that, we'll add estrogen at six weeks."
+    → action: "start", item_name: "Estrogen", status: "conditional", timing: "at six weeks", reason: "if anastrozole tolerated"
+  Provider: "We could think about DHEA down the road."
+    → action: "consider", item_name: "DHEA", status: "future_consideration"
 
 CRITICAL SUPPLEMENT STOP RULE: Capture supplement stops even when phrased casually:
   "you can go ahead and stop those" → action: "stop", status: "confirmed"
