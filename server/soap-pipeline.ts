@@ -1339,6 +1339,24 @@ HPI-D9. CLINICAL TRANSLATION OF PATIENT LANGUAGE: Translate patient language int
 
 HPI-D10. CHART FOR A FUTURE PROVIDER: The completed HPI must give a future clinician the full clinical picture without needing the transcript. If a clinician reading this note six months from now would not understand what happened, when it happened, what was tried, what changed, and why the patient is distressed — the HPI is clinically incomplete regardless of word count.
 
+HPI-D11. PRIOR PROVIDER AND REFERRAL CHAIN — REQUIRED FOR NEW PATIENTS: When a new patient describes seeing other providers before arriving at this practice — an internal medicine physician, a specialist, an urgent care, an ER, or any other clinician — document that diagnostic journey explicitly. This is not background noise; it is the clinical story that explains why the patient is presenting here, now, with this concern. Required elements when stated:
+- Which provider(s) they saw (by specialty or name if given)
+- What those providers evaluated, ordered, or recommended
+- What those providers concluded — even if the conclusion was "normal" or "not our area"
+- What ultimately led to this referral or self-referral to this practice
+WRONG: "She presents with dizziness." (when transcript describes IM workup → ENT evaluation → ENT concluded likely hormonal → patient referred to this practice)
+RIGHT: "She presents after workup initiated by her internal medicine physician for recurrent dizzy spells. Per patient, labs were drawn and an ENT evaluation with Dr. [name] was completed; ENT found no structural abnormality and suggested the etiology was likely hormonal, prompting referral to this practice."
+Never attribute to the patient's own guess what a prior provider explicitly stated or concluded.
+
+HPI-D12. PRIOR EXTERNAL IMAGING AND CARDIOVASCULAR SCREENING RESULTS — REQUIRED WHEN REFERENCED: When the transcript references imaging studies, screening scans, or cardiovascular risk tests done prior to this visit at another facility — CAC (coronary artery calcium) score, carotid ultrasound, DEXA scan, echocardiogram, stress test, prior external labs — document the result and its clinical relevance. These are not optional background details. A CAC score of 0 is a meaningful negative cardiovascular finding that directly informs risk stratification. A carotid ultrasound with no plaque rules out a specific etiology. These results must appear in the HPI (and in the Assessment's clinical reasoning if referenced by the provider during the visit).
+WRONG: Omitting a CAC score of 0 that the provider referenced during the cardiovascular risk discussion.
+RIGHT: "Prior CAC score of 0 reported, obtained at another facility. Carotid evaluation was also reportedly normal. Provider reviewed these results in the context of current lipid panel."
+
+HPI-D13. REPRODUCTIVE AND MENOPAUSAL TIMING ANCHOR — REQUIRED WHEN STATED: For perimenopausal or postmenopausal female patients, document the specific menopausal timing when it was stated in the transcript — years since last menstrual period, approximate LMP, or age at menopause. This is a critical clinical anchor that affects cardiovascular risk, osteoporosis risk, bone density, the therapeutic window for hormone therapy, and the interpretation of every hormonal lab value discussed. It must appear early in the HPI — not omitted because it was mentioned in passing.
+WRONG: Writing the HPI as though menopause timing is unknown when the patient stated "I'm about five years post."
+RIGHT: "She reports she is approximately 5 years post-menopause." (followed by the clinical context this timing establishes for the visit)
+Similarly document: timing of perimenopause onset, last known menstrual period if stated, age at surgical menopause, or any other reproductive milestone the patient or provider references.
+
 ANTI-CONDENSATION RULE — MANDATORY:
 If the transcript includes ANY of the following, those details MUST appear in the HPI and/or Assessment/Plan. They cannot be compressed into a single vague phrase or omitted entirely:
 - Emotional distress or psychiatric impact of a physical symptom (not just "mood changes")
