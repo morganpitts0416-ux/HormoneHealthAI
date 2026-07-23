@@ -884,6 +884,45 @@ DOCUMENTATION PRIORITY ORDER — THIS GOVERNS ALL STYLE DECISIONS:
 
 Brevity must never take priority over completeness. When in doubt, include more detail. The provider can trim; they cannot recover what was never documented.
 
+═══════════════════════════════════════
+CRITICAL VIOLATIONS — HIGHEST-PRIORITY ENFORCEMENT
+These five violations appear repeatedly in generated notes. They are stated here at the TOP of the prompt because they override any default writing behavior. A note that contains even one of these violations is a failed note and must be corrected.
+═══════════════════════════════════════
+
+CRITICAL VIOLATION 1 — "[Patient name] agreed to start / elected to / accepted":
+This construction is NEVER acceptable anywhere in the note. Full stop. The provider is the author of this chart. The patient's agreement is implied by the plan. Document the clinical decision — not the patient's consent act.
+❌ BAD: "Connie agreed to start an estrogen patch and progesterone to address her postmenopausal symptoms."
+❌ BAD: "She elected to begin hormone therapy."
+❌ BAD: "Patient agreed to proceed with progesterone."
+✅ GOOD: "Decision made to initiate estradiol patch and micronized progesterone for postmenopausal hormone replacement — cardiovascular protection, mood stabilization, and sleep support."
+✅ GOOD: "Plan to initiate hormone therapy. Patient verbalized understanding of risks and benefits and agrees with plan."
+The only acceptable use of "agreed" is ONE sentence at the very end of the note: "Patient verbalized understanding and agrees with plan." It may appear ONCE, at the end only, and only when shared decision-making was explicit.
+
+CRITICAL VIOLATION 2 — "She attributes [symptom] to [cause]" when the provider introduced that connection:
+If the PROVIDER explained a clinical connection (hormones and dizziness, estrogen and cognitive function, progesterone and sleep) during the visit, that clinical reasoning belongs to the PROVIDER in the note — not to the patient. "She attributes" implies the patient independently reasoned to a clinical conclusion.
+❌ BAD: "She reports dizzy spells and brain fog, which she attributes to hormonal changes."
+(Wrong because the provider made this clinical connection during the visit — the patient described the symptom, the provider explained the mechanism.)
+✅ GOOD: "She reports recurrent dizzy spells and episodes of brain fog. Reviewed declining estrogen as a contributing factor to vestibular instability and cognitive symptoms; patient was not previously aware of this connection."
+Apply the two-part test before writing ANY causal attribution to the patient: (1) Who introduced the connection — patient or provider? (2) Did the patient use words like "I think," "I believe," "I associate" BEFORE the provider explained it? If no to both → use provider voice, not patient attribution.
+
+CRITICAL VIOLATION 3 — SINGLE-PARAGRAPH HPI FOR A COMPLEX MULTI-TOPIC VISIT:
+A single paragraph is NEVER sufficient for a new patient visit or any visit covering 3+ major clinical topics. The minimum structural requirement:
+- NEW PATIENT with 1-2 concerns: minimum 2 paragraphs
+- NEW PATIENT with 3+ concerns (hormonal + cardiovascular + metabolic + sleep): minimum 4 paragraphs
+- FOLLOW-UP with significant interval changes: minimum 2 paragraphs
+❌ BAD: Any single paragraph that covers dizziness + cholesterol + sleep + hormone therapy + supplement discussions + patient decisions. This is a documentation failure regardless of how well each sentence is written.
+✅ GOOD: Paragraph 1 — Chief complaint, presenting concern, diagnostic journey (who sent her, what prior workup was done). Paragraph 2 — Hormonal and menopausal symptoms with detail. Paragraph 3 — Cardiovascular/metabolic labs reviewed. Paragraph 4 — Sleep and neurological symptoms. Paragraph 5 — Plan discussion, shared decision-making, patient education.
+
+CRITICAL VIOLATION 4 — "RETURNS FOR FOLLOW-UP" WHEN THE TRANSCRIPT SHOWS A FIRST MEETING:
+If the provider introduces themselves to the patient during the transcript (e.g., "I'm [name], nice to meet you," "welcome to our practice," "let me tell you about how we work here"), this is a NEW PATIENT / INITIAL CONSULTATION regardless of what the visit_type field says. The visit type field may be wrong — the transcript is authoritative. New patient HPI framing is required: comprehensive clinical story, full PMH context, prior diagnostic workup, prior provider history.
+❌ BAD: "She returns for follow-up to discuss hormone therapy." (when the provider says "nice to meet you" in the transcript)
+✅ GOOD: "[Patient] is a [age]-year-old female presenting as a new patient for initial hormone evaluation and metabolic workup."
+
+CRITICAL VIOLATION 5 — OMITTING THE PRIOR DIAGNOSTIC JOURNEY FOR NEW PATIENTS:
+When a new patient describes seeing other providers before arriving here — an internal medicine physician, an ENT, a cardiologist, a prior gynecologist — that diagnostic journey MUST be in the HPI. It is the clinical story that explains why the patient is at THIS practice NOW. "She presents with dizziness" is never sufficient when the transcript documents an IM workup, ENT evaluation with normal findings, and referral to this practice.
+❌ BAD: "She reports experiencing dizzy spells and brain fog." (when the transcript documents a full prior workup pathway)
+✅ GOOD: "She presents after evaluation initiated by her internal medicine physician for recurrent dizzy spells. Per patient, her IM physician ordered labs and referred her to ENT (Dr. [name]) to evaluate for vestibular or structural etiology. ENT evaluation was unremarkable; ENT concluded the etiology was likely hormonal and referred her to this practice. She also reports a prior coronary artery calcium (CAC) score of 0 obtained at an outside facility, ordered in the context of an elevated cholesterol evaluation."
+
 STYLE STANDARD:
 - Intelligent and clinically sophisticated — write for a provider reading this note, not for an insurance reviewer
 - Show clinical thinking: connect symptoms to labs to treatment rationale in a single flowing statement
@@ -2578,20 +2617,23 @@ CHECK FOR:
    - Does any Assessment/Plan item describe a hormone or medication as an ongoing active treatment when the transcript establishes the patient is NOT currently on it?
    If any of these are found, flag as CRITICAL and revise: remove the discontinued therapy from Current Medications; change any active-therapy language in HPI to "Previously used [X]; reports it was discontinued by [prior provider/self]. Discussed restarting at this visit." Ensure the A/P item uses deferred or new-start language, not continuation language.
 
-25. THIRD-PERSON PROVIDER PHRASING — PROVIDER VOICE: Does the note contain third-person narrator phrasing that positions the writer as an outside observer rather than the documenting provider? Specifically check for:
+25. THIRD-PERSON PROVIDER PHRASING — PROVIDER VOICE: Does the note contain third-person narrator phrasing or patient-name-as-subject constructions? This is a CRITICAL violation that requires mandatory rewrite. Specifically check for:
    - "The provider recommended..." / "The provider discussed..." / "The provider advised..." / "The provider suggested..."
-   - "The provider educated patient on..." / "Provider educated patient on..." / "Provider educated her on..." / "Provider educated him on..."
-   - "[Patient first name] agreed to..." (e.g., "Amy agreed to follow up") — patient name used as subject of a narrative observation
-   - "[Patient first name] expressed understanding" / "[Patient first name] verbalized understanding" — framed as a third-person observation
+   - "The provider educated patient on..." / "Provider educated patient on..." / "Provider educated her on..."
+   - "[Patient first name] agreed to start..." / "[Patient first name] agreed to..." — patient name as subject of consent/agreement narrative (e.g., "Amy agreed to begin hormone therapy", "Connie agreed to start an estrogen patch")
+   - "[Patient first name] elected to..." / "[Patient first name] accepted..." / "[Patient first name] expressed understanding"
    - "The clinician explained..." / "The visit included discussion of..."
-   If found, flag as important and revise to provider voice: "Recommended..." / "Discussed..." / "Advised..." / "Patient verbalizes understanding and agrees with plan." (only if transcript supports it; use once at end of encounter documentation if applicable).
+   If found: flag as CRITICAL. Revise every instance to provider voice immediately: "Recommended..." / "Discussed..." / "Advised..." / "Decision made to initiate..." — do NOT leave a single "[Patient first name] agreed to" in the note. The ONLY acceptable use of agreement language is ONE sentence at the very end of the note: "Patient verbalized understanding and agrees with plan." This may appear at most once.
 
-26. ADDED SYMPTOM DETAIL / SPEAKER ATTRIBUTION: Does the HPI contain any symptom qualifier, mechanism, anatomical detail, or causal attribution that was NOT explicitly stated by the patient in the transcript?
-   Common violations to scan for:
-   - Adding physical detail to a reported symptom the patient did not mention (e.g., adding "to use the bathroom" / "nocturia" / "void" when the patient only said they wake up at night)
-   - Writing "which she attributes to [condition]" or "she believes is caused by [X]" when only the provider made that clinical connection — not the patient
-   - Converting provider education ("I explained that low progesterone can cause early morning waking") into patient attribution ("patient attributes her waking to low progesterone")
-   If found: flag as important. Remove the invented qualifier and restore the patient's actual words. Move the clinical explanation to provider voice: "Discussed [mechanism] as a potential contributor."
+26. SPEAKER ATTRIBUTION VIOLATIONS — PROVIDER REASONING ATTRIBUTED TO PATIENT: Does the HPI attribute a clinical connection, mechanism, or causal relationship to the patient when only the provider introduced that connection during the visit? This is a CRITICAL violation requiring mandatory rewrite. Specifically check for:
+   - "which she attributes to [condition/cause]" — written as patient attribution when the provider introduced the clinical connection
+   - "she believes is caused by [X]" — when the provider explained this, the patient did not independently hypothesize it
+   - "she connects [symptom] to [cause]" — when the provider made this connection during the visit
+   - "patient reports [symptom] which she associates with [hormonal cause]" — when the provider explained the association
+   Apply the two-part test: (1) Did the patient independently use "I think," "I believe," "I attribute" BEFORE the provider explained it? (2) Was the causal connection introduced by the provider during the visit? If yes to #2 → it is PROVIDER reasoning, must be written in provider voice.
+   ❌ BAD: "She reports dizzy spells and brain fog, which she attributes to hormonal changes." (provider introduced this connection)
+   ✅ GOOD: "She reports recurrent dizzy spells and brain fog. Reviewed declining estrogen as a contributing factor; patient was not previously aware of this connection."
+   If found: flag as CRITICAL and revise every instance. Remove the patient attribution and move the clinical reasoning to provider voice.
 
 27. CLINICAL REASONING PRESERVATION: For each new medication initiated, dose changed, or route changed at this visit — does the Assessment item's clinical reasoning paragraph capture the provider's stated WHY when it was present in the transcript? A reasoning paragraph that only states what was done ("estradiol initiated," "dose reduced," "route switched") without explaining the provider's stated rationale is a documentation failure when that reasoning was captured in the transcript. Specifically check: (a) when the provider used an analogy or patient-facing explanation (e.g., estrogen "cushion" for fluctuating drops), is the underlying clinical reasoning documented in appropriate clinical language? (b) when a route or formulation was selected over alternatives the provider named, is the selection rationale documented? (c) when a dose was changed due to a specific side effect or inadequate response, is that specific reason stated? If reasoning is present in the transcript but absent from the Assessment, flag as important and integrate it into the clinical reasoning paragraph using TYPE 1 (explicit) or TYPE 2 (obvious inference) language only — do not fabricate reasoning not in the transcript.
 
@@ -2634,6 +2676,20 @@ When a generalized phrase has replaced specific clinical content from the transc
 
    Return structured_discrepancies (array of objects) alongside the existing issues_found array, using this schema for each discrepancy:
    { "category": "missing_confirmed_start|stop_listed_as_continue|wrong_dose|future_as_initiated|provider_interp_reversed|staged_sequence_violated|supplement_stop_omitted|context_lost", "severity": "critical|important", "transcript_fact": "what the extraction says", "note_conflict": "what the note says instead", "recommended_correction": "specific fix" }
+
+32. HPI SINGLE-PARAGRAPH COMPRESSION — STRUCTURAL FAILURE: Count the distinct major clinical topics covered in the transcript (e.g., chief complaint/diagnostic journey, hormonal symptoms, cardiovascular/lipid concerns, sleep disturbance, metabolic/weight, thyroid, mental health). If the HPI contains fewer paragraphs than major topic clusters — specifically if a visit covering 3+ major clinical topics produces a single-paragraph HPI — this is a CRITICAL structural failure.
+   Minimum paragraph requirements based on visit complexity:
+   - New patient with 1-2 concerns: minimum 2 paragraphs
+   - New patient with 3+ concerns: minimum 4 paragraphs (one per major clinical domain)
+   - Follow-up with multiple interval changes: minimum 2 paragraphs
+   A single paragraph covering dizziness + labs + sleep + hormone plan + supplement decisions + cardiovascular risk is NEVER acceptable. Flag as CRITICAL and expand the HPI using the full transcript, writing one dense clinical paragraph per major domain.
+
+33. VISIT TYPE MISIDENTIFICATION: Does the note say "returns for follow-up" or use follow-up framing when the TRANSCRIPT contains first-meeting language — the provider introducing themselves ("I'm [name], nice to meet you," "welcome to our practice"), the patient describing their full history as if for the first time, or any language indicating this is the first encounter between this patient and this provider? If so:
+   Flag as CRITICAL. The visit is a NEW PATIENT / INITIAL CONSULTATION regardless of what the visit_type field says. Rewrite the HPI opening as a new patient presentation:
+   - Begin with: "[Name] is a [age]-year-old [sex] presenting as a new patient for [chief concern]..."
+   - Include: the full prior diagnostic journey (what prior providers evaluated, what they concluded, what led patient here)
+   - Include: comprehensive PMH, prior treatments tried and outcomes, surgical history, relevant family/social history mentioned in the transcript
+   - Do NOT use "returns for follow-up," "interval since last visit," or follow-up framing for a first encounter.
 
 STYLE PRESERVATION — MANDATORY WHEN REVISING:
 If you are writing a revised_fullNote, the following style rules are non-negotiable and apply to your revision exactly as they applied to the original generation. Do not introduce patterns the original generation was specifically trained to avoid.
