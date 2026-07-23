@@ -1,0 +1,360 @@
+We need to stop making incremental changes to the current SOAP note generation prompt and instead redesign the documentation architecture.
+
+After reviewing our current pipeline, I do NOT believe the evidence extraction or normalization pipeline is the problem. In fact, I think those layers are very strong. The issue is how that information is ultimately transformed into a SOAP note.
+
+The current prompt has grown into hundreds of individual rules, validations, and exceptions. At this point, many of those rules are competing with one another and the AI is beginning to summarize encounters instead of documenting them. I do not want another revision of the existing prompt. I want to redesign the philosophy of the note generator while preserving all of the existing evidence extraction, medication normalization, diagnosis inference, historical context, medication state gates, bundle matching, and QA safety features.
+
+Core Philosophy
+
+ClinIQ should not be generating "summaries."
+
+ClinIQ should generate a complete medico-legal medical record.
+
+The transcript is the source of truth. The AI's responsibility is to faithfully reconstruct the encounter into professional medical documentation while preserving the provider's clinical reasoning and every medically relevant discussion.
+
+The note should answer this question:
+
+"If another provider reads this chart five years from now, would they understand exactly what happened during this encounter, why each decision was made, what was discussed, what was deferred, and what the provider's clinical thought process was?"
+
+That is the documentation standard I want ClinIQ to become known for.
+
+Documentation Philosophy (These should become the permanent ClinIQ documentation standards)
+
+These principles should NEVER be overridden by Teach June.
+
+1. Never summarize an encounter.
+
+Convert the entire encounter into professional medical documentation.
+
+Every medically relevant discussion should be documented somewhere in the chart.
+
+2. The HPI should reconstruct the patient's clinical story.
+
+The HPI should not simply restate the chief complaint.
+
+Instead, it should paint a complete picture of the patient's current health status by incorporating:
+
+Chief complaint
+Symptoms
+Timeline
+Previous evaluations
+Previous diagnoses
+Previous specialist visits
+Previous imaging
+Previous laboratory testing
+Previous treatments
+Medication history
+Medication failures
+Medication side effects
+Current medications
+Lifestyle modifications
+Diet
+Exercise
+Supplements
+Relevant family history discussed
+Relevant social history discussed
+Previous provider recommendations
+Patient concerns
+Patient goals
+Patient questions
+Shared decision making
+Provider education
+Counseling
+Functional impact
+Pertinent positive findings
+Pertinent negative findings
+
+The HPI should read as a complete medical narrative rather than a symptom summary.
+
+3. Document the provider's clinical reasoning.
+
+The Assessment & Plan should not simply list diagnoses and treatments.
+
+Another provider should be able to understand WHY every decision was made.
+
+Each diagnosis should contain:
+
+Diagnosis Name (with ICD code)
+
+Clinical Rationale
+
+The rationale should generally be 3–5 sentences explaining:
+
+Why this diagnosis applies
+Symptoms supporting it
+Relevant physical findings
+Relevant laboratory values
+Relevant imaging
+Relevant previous evaluations
+Previous treatment failures
+Current treatment response
+Clinical thought process
+Differential diagnosis when appropriate
+Why treatment was initiated, changed, continued, or stopped
+
+This is where the provider's thinking is documented.
+
+4. Future planning is part of today's documentation.
+
+One of ClinIQ's distinguishing features should be preserving future clinical thinking.
+
+Whenever future treatment options are discussed—even if they are NOT initiated—they should be documented under:
+
+Future Considerations
+
+Examples:
+
+"If patient tolerates oral progesterone, testosterone replacement will be discussed at next follow-up."
+
+"If vasomotor symptoms fail to improve, will consider increasing estradiol dose."
+
+"If dizziness persists despite hormone optimization, neurology referral will be considered."
+
+"If insulin resistance remains uncontrolled, metformin may be initiated."
+
+These discussions are extremely valuable when reviewing previous notes and should never be lost.
+
+5. The Care Plan should function as printable patient instructions.
+
+This section should contain actionable bullet points that clearly outline:
+
+Current medications
+
+Medication changes
+
+Medication discontinuations
+
+Supplement recommendations
+
+Lifestyle modifications
+
+Exercise recommendations
+
+Diet recommendations
+
+Laboratory testing
+
+Imaging
+
+Referrals
+
+Monitoring instructions
+
+Expected side effects
+
+Follow-up timing
+
+Patient responsibilities
+
+This should be detailed enough that, if requested, it could be printed and handed directly to the patient.
+
+Proposed Note Structure
+
+Please change the default note layout to the following:
+
+HPI
+
+Allergies
+
+Current Medications
+
+Medical History
+
+Surgical History
+
+Social History
+
+Family History
+
+Review of Systems (clean table)
+
+Vital Signs
+
+Physical Examination (clean table)
+
+Assessment & Plan
+
+Overall Clinical Impression (3–5 sentence provider narrative summarizing the provider's overall assessment of the patient's health, major findings, and treatment strategy)
+
+Diagnosis 1 (ICD-10)
+
+Clinical Rationale
+
+Plan
+
+Future Considerations (if applicable)
+
+Diagnosis 2
+
+Clinical Rationale
+
+Plan
+
+Future Considerations
+
+Continue for all diagnoses discussed during the encounter.
+
+Care Plan
+
+Follow-Up
+
+Provider Voice
+
+The note should ALWAYS be written from the provider's perspective.
+
+Never use phrases like:
+
+"The provider stated..."
+
+"The provider recommended..."
+
+"The provider discussed..."
+
+Instead use active documentation language:
+
+Discussed...
+
+Reviewed...
+
+Recommended...
+
+Initiated...
+
+Discontinued...
+
+Continued...
+
+Explained...
+
+The note should read exactly as though the provider personally documented the encounter.
+
+Speaker Attribution
+
+Correctly identifying who is speaking is absolutely critical.
+
+Patient concerns should remain patient concerns.
+
+Provider conclusions should remain provider conclusions.
+
+For example:
+
+Patient:
+
+"I wonder if this could be hormone related."
+
+Document:
+
+Patient expressed concern that symptoms may be hormone related.
+
+Provider:
+
+"I actually don't think this is hormone related."
+
+Assessment:
+
+Clinical presentation appears unlikely to be hormone related based on current findings.
+
+The AI must never confuse patient speculation with provider assessment.
+
+Medication State Fidelity
+
+Medication actions must be documented accurately.
+
+Examples:
+
+"Let's start estrogen."
+
+→ Initiated estrogen therapy.
+
+"Let's increase your tirzepatide."
+
+→ Increased tirzepatide dosage.
+
+"Let's stop spironolactone."
+
+→ Recommended discontinuation of spironolactone.
+
+"Let's continue current testosterone."
+
+→ Continue testosterone therapy without change.
+
+The AI must never confuse initiation with continuation or continuation with discontinuation.
+
+Preserve Diagnostic Journey
+
+For new patients especially, previous evaluations are often medically important.
+
+If a patient states they previously:
+
+Saw Internal Medicine
+Saw Cardiology
+Saw ENT
+Saw Neurology
+Had CT imaging
+Had MRI
+Had CAC scoring
+Had carotid ultrasound
+Had colonoscopy
+Had endoscopy
+Had previous laboratory work
+
+Those evaluations should be incorporated into the HPI because they demonstrate what has already been investigated and what conditions have already been reasonably excluded.
+
+This protects the provider by accurately documenting previous diagnostic workup and clinical reasoning.
+
+The HPI should document those prior evaluations as part of the patient's medical journey, not merely as isolated historical facts.
+
+Teach June Architecture
+
+I do NOT want Teach June changing ClinIQ's documentation philosophy.
+
+Instead, I want three distinct layers:
+
+Layer 1 — ClinIQ Core (Locked)
+
+This defines our permanent documentation standards.
+
+It should never be overridden.
+
+Examples:
+
+Preserve clinical reasoning
+Preserve future considerations
+Preserve medication changes
+Preserve patient concerns
+Preserve diagnostic journey
+Preserve provider education
+Preserve shared decision making
+Preserve medically relevant conversations
+Never summarize encounters
+
+These are part of ClinIQ's identity.
+
+Layer 2 — Clinic-Level Documentation Preferences
+
+Entire organizations may customize things such as:
+
+Preferred diagnosis bundles
+Preferred physical exam defaults
+Preferred ROS format
+Preferred terminology
+Preferred templates
+Layer 3 — Teach June (Individual Provider Preferences)
+
+Providers may customize style without reducing documentation quality.
+
+Examples:
+
+Keep HPI shorter
+Use different formatting
+Use my preferred diagnosis bundles
+Prefer paragraph format
+Prefer bullet format
+Use my preferred hormone diagnosis terminology
+Always include normal physical exam unless otherwise specified
+
+However, Teach June should NEVER be allowed to remove medically relevant documentation or reduce the fidelity of the medical record.
+
+Final Goal
+
+I want ClinIQ to become known for producing the most complete, clinically useful, and medico-legally defensible AI-generated medical documentation available. Our competitive advantage should not be that we create shorter notes—it should be that we faithfully reconstruct the entire encounter into a medical record that preserves the provider's clinical reasoning, documents every medically relevant discussion, and serves as a reliable reference for future care. The evidence layer should continue to provide factual accuracy, while the generation layer should focus on transforming that evidence into documentation that reads as though it was written by an experienced clinician. The QA layer should verify completeness and fidelity rather than forcing increasingly complex prompt logic.
