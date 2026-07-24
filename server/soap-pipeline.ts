@@ -580,6 +580,20 @@ PROVIDER CLINICAL EXPLANATIONS: When the provider explains a clinical mechanism,
 
 PATIENT EXPLICIT REFUSALS: When the patient explicitly declines a specific recommendation — a medication, procedure, diagnostic test, referral, or lifestyle intervention — capture each refusal in "explicit_patient_refusals" with the recommendation and the patient's stated reason if given. These are clinically and medicolegally required documentation events. Do NOT capture general hesitation or deferral here — only clear explicit declines ("No," "I don't want that," "I'm not going to do that," "I'd rather not"). Examples: patient refuses statin therapy and states she wants to pursue diet first; patient declines referral to endocrinology; patient refuses a specific medication because of a prior bad experience.
 
+DECISION ATTRIBUTION — WHO INITIATED EACH DECISION (CRITICAL): For EVERY treatment decision, medication change, or plan item, determine WHO introduced it and capture it in "decision_attribution". Classify as:
+- "provider_initiated": the provider proposed, recommended, or offered it ("we can also increase your estrogen", "I'm going to send in metformin", "let's decide on one"). This is the DEFAULT for most decisions — providers drive clinical care.
+- "patient_requested": the patient explicitly asked FOR the specific treatment or change BEFORE the provider raised it ("can we increase my dose?", "I want to try metformin").
+- "shared_decision": the provider presented options and the patient actively chose between them.
+CRITICAL DISTINCTION: A patient ASKING A QUESTION, seeking guidance, or mentioning something they read is NOT a patient request and NOT a patient belief that treatment will help ("I was reading some people had to lower it... so I was thinking about trying" = seeking guidance, provider then decides). Capture the patient's actual words in supporting_quote so the note writer can verify attribution. NEVER promote patient curiosity or questions into patient-driven clinical intent.
+
+CONDITIONAL / IF-THEN PLANS (CRITICAL — THESE ARE FREQUENTLY LOST): When the provider states a contingent instruction — "if X happens/persists after [timeframe], then do Y" — capture it in "conditional_plans" with the exact trigger condition, the action, and any timeframe. Examples: "if hot flashes persist after a few weeks on the higher estrogen, decrease progesterone to 100 mg"; "if you get GI side effects, stop the metformin and call us". These are standing patient instructions and MUST reach the note writer. Do NOT collapse them into the unconditional plan and do NOT drop them.
+
+MENSTRUAL / CYCLE DISCUSSIONS: Any discussion of menstrual bleeding, cycle timing, cycle changes, IUD effects on bleeding, or expectations for future cycles MUST be captured in "hpi_chronological_elements" — even when the outcome is reassuring ("period was later and lighter, resolved; expected to lighten further as IUD levels out"). These map to the genitourinary ROS and are core content for hormone-practice visits. A visit that OPENS with a menstrual discussion is never incidental.
+
+EPISODIC SYMPTOM EVENTS: When the patient narrates a discrete symptom episode — a dizzy spell, fainting, palpitation event, fall, severe headache — capture the full episode (trigger, symptoms, resolution, provider's explanation) in "hpi_chronological_elements" and map the symptom to the appropriate ROS system. These are reportable clinical events even when benign.
+
+EXACT CURRENT DOSING: When the patient states exactly how they take a medication ("I take two at night", "I use two pumps"), capture the precise quantity/dose in the medication data — never record "unspecified" when the transcript states the amount, even informally.
+
 VISIT EARLY TERMINATION: If the transcript indicates the patient abruptly ended the visit before all planned topics were fully addressed — by saying they need to leave, indicating time constraints, or the transcript clearly ends before counseling is complete — set "visit_terminated_early" to true. In "visit_termination_context" describe what was addressed and what was left incomplete. If the visit concluded normally, leave "visit_terminated_early" as false and "visit_termination_context" as an empty string.
 
 ═══════════════════════════════════════
@@ -723,6 +737,20 @@ Return this exact JSON structure:
     "provider_reasoning_statements": ["provider explanations, interpretations, or clinical reasoning shared with patient"],
     "education_provided": ["specific clinical education topics discussed with depth of what was explained"],
     "patient_decisions": ["patient-stated decisions, preferences, or deferred choices"],
+    "decision_attribution": [
+      {
+        "item": "the treatment decision or plan item",
+        "initiated_by": "provider_initiated|patient_requested|shared_decision",
+        "supporting_quote": "verbatim or close-paraphrase transcript evidence for the attribution"
+      }
+    ],
+    "conditional_plans": [
+      {
+        "trigger_condition": "the if-condition exactly as stated (e.g. 'if hot flashes persist after a few weeks on increased estrogen')",
+        "action": "the then-action (e.g. 'decrease progesterone from 200 mg to 100 mg at night')",
+        "timeframe": "timeframe if stated, else empty string"
+      }
+    ],
     "explicit_patient_refusals": ["each recommendation the patient explicitly declined — include what was refused and why if stated (e.g., 'Patient refused statin therapy, stating she wants to try diet first'; 'Patient declined referral to endocrinology')"],
     "visit_terminated_early": false,
     "visit_termination_context": "empty string if visit concluded normally; if patient abruptly ended the visit early, describe what was addressed and what was left incomplete (e.g., 'Patient indicated time constraints and left before lipid management discussion was completed; statin therapy and dietary counseling deferred to next visit')"
@@ -877,6 +905,18 @@ STATE D — Clinically relevant follow-up (for needs_clinician_review only; neve
 
   const patientDecisions = normalized.enhanced_extraction?.patient_decisions?.length
     ? `\nPATIENT DECISIONS (document in HPI + Plan):\n${normalized.enhanced_extraction.patient_decisions.map((s: string) => `- ${s}`).join('\n')}`
+    : "";
+
+  const decisionAttribution = normalized.enhanced_extraction?.decision_attribution?.length
+    ? `\nDECISION ATTRIBUTION (AUTHORITATIVE — who initiated each decision; the note MUST reflect this attribution and NEVER invert it):\n${normalized.enhanced_extraction.decision_attribution.map((d: any) =>
+        `- ${d.item} → ${d.initiated_by}${d.supporting_quote ? ` (evidence: "${d.supporting_quote}")` : ""}`
+      ).join('\n')}\nFor provider_initiated items: write the recommendation in provider voice ("Recommended...", "Decision made to...") — do NOT write that the patient expressed interest in, desired, requested, or believed in the treatment. For patient_requested items: the supporting quote must actually show an explicit request before attributing intent to the patient.`
+    : "";
+
+  const conditionalPlans = normalized.enhanced_extraction?.conditional_plans?.length
+    ? `\nCONDITIONAL (IF/THEN) PLANS (MANDATORY — each MUST appear in the relevant Assessment item's plan or Future Considerations AND in the Care Plan as a patient instruction; never drop or collapse into the unconditional plan):\n${normalized.enhanced_extraction.conditional_plans.map((c: any) =>
+        `- IF ${c.trigger_condition} → THEN ${c.action}${c.timeframe ? ` (timeframe: ${c.timeframe})` : ""}`
+      ).join('\n')}`
     : "";
 
   const explicitRefusalsContext = normalized.enhanced_extraction?.explicit_patient_refusals?.length
@@ -1061,6 +1101,22 @@ If the provider introduces themselves to the patient (e.g., "nice to meet you," 
 CRITICAL VIOLATION 5 — OMITTING PRIOR DIAGNOSTIC JOURNEY FOR NEW PATIENTS:
 When a new patient describes prior providers and workups, that entire diagnostic journey must appear in the HPI. It explains why the patient is at this practice, now.
 
+CRITICAL VIOLATION 6 — INVERTED AGENCY: ATTRIBUTING PROVIDER-DRIVEN DECISIONS TO THE PATIENT:
+Never write that the patient "expresses a desire," "expresses interest in," "believes further adjustments could help," "is interested in addressing X through medication," or "requested" a treatment UNLESS the transcript contains an explicit patient request in the patient's own words BEFORE the provider raised it. Patients who ask questions, mention things they read, or seek guidance are NOT driving the plan — the provider is. Misattributing clinical intent to the patient misrepresents the encounter and the medical decision-making record.
+BAD: "Discussion centered on insulin resistance, with Amanda expressing interest in addressing this through medication." (provider introduced SHBG finding and proposed metformin)
+GOOD: "Reviewed her low SHBG and its association with insulin resistance. Recommended initiating low-dose metformin."
+BAD: "She believes further adjustments to her regimen could enhance her well-being." (provider proposed the adjustments)
+GOOD: "She asked about reducing her nighttime progesterone after reading that it may contribute to night sweats. Reviewed options; recommended increasing estrogen first."
+
+CRITICAL VIOLATION 7 — STOCK TEMPLATE PHRASING:
+The following constructions are BANNED everywhere in the note. Replace each with natural clinical prose:
+- "which she associates with" / "which he associates with" → "She reports night sweats since starting the estrogen gel." (state the patient's reported timing/connection directly; use "she feels [X] began after [Y]" only when the patient truly voiced the connection)
+- "expresses a desire for" → state the goal plainly: "She would like more energy and better sleep."
+- "expressing interest in addressing [X] through medication" → document the actual exchange: who raised it, what was recommended.
+- "Discussion centered on" / "The discussion focused on" → write what was actually reviewed and decided.
+- "aims to address these concerns" / "to enhance her well-being" → name the specific target symptoms or findings.
+These phrases read as machine-generated boilerplate and destroy the provider-authored character of the note.
+
 ═══════════════════════════════════════
 RELEVANCE FILTER — WHAT TO INCLUDE AND EXCLUDE
 ═══════════════════════════════════════
@@ -1101,6 +1157,12 @@ G. AMBIGUITY FLAGS: items where two doses were given and the final is unclear; a
 H. PRIOR HISTORY AND WORKUP: (1) Which providers this patient saw BEFORE this visit — what each evaluated, concluded, what led the patient here. This is the diagnostic journey and belongs in the HPI for new patients. (2) Any imaging studies or external labs referenced — CAC score, carotid ultrasound, DEXA, stress test, echocardiogram, prior external labs. Capture test name and result even if normal. (3) For perimenopausal or postmenopausal female patients: years since LMP, approximate LMP, age at menopause, gravida/para — required clinical anchors that must appear in the HPI.
 
 I. PATIENT CONTEXT: (1) Patient-expressed fears or concerns about specific treatments or outcomes — specific articulated worries that shaped shared decision-making. (2) Patient's stated goals for this visit or treatment overall. (3) Financial or access constraints that influenced the treatment plan. All found items from H and I must appear in the note; mentioning them in passing does not make them optional.
+
+J. DOSE CONSISTENCY: every medication dose must be IDENTICAL everywhere it appears — HPI, Current Medications, Assessment/Plan, and Care Plan. Before drafting, fix on ONE dose per medication from the transcript/extraction. If the transcript itself gives conflicting doses, use "unspecified" consistently and flag in provider_review_flags. A note that says 2.5 mg in one section and 2.1 mg in another is a failed note.
+
+K. DECISION AGENCY: for every plan item, confirm WHO initiated it (see DECISION ATTRIBUTION data when provided; otherwise determine from the transcript). Provider-initiated decisions must be written as provider recommendations — never as patient desires, interests, or requests. A patient asking a question or mentioning something they read is seeking guidance, not driving the plan.
+
+L. ICD CODE SUPPORT: this rule governs individual ICD-10 codes, NOT Assessment items (Assessment items follow the diagnosis-preservation rules — keep them). Within a kept Assessment item, attach only ICD-10 codes whose underlying condition, symptom, or finding has support somewhere in the transcript OR structured extraction (diagnoses_discussed, conditions_inferred, symptoms_reported, labs_reviewed, medications with implied conditions). Do not carry an individual code in from a matched diagnosis bundle when NOTHING in the transcript or extraction touches that condition (e.g., do not attach a sexual dysfunction code when sexual health never came up in any form). If support is uncertain, keep the code — only omit codes with zero support anywhere.
 
 Only after completing this internal checklist, begin drafting.
 
@@ -2050,7 +2112,7 @@ PATIENT vs. CLINICIAN IDENTITY (apply while drafting — never include this head
 
   const userPrompt = `Visit Type: ${encounter.visitType}
 Chief Complaint: ${encounter.chiefComplaint || "Not specified"}
-Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${patientLine}${historicalBlock}${labContext}${extractionSummary}${supplementDiscussionsContext}${patternContext}${medicationContext}${normalizedMedsContext}${conditionsContext}${preventativeContext}${symptomTimelineContext}${planClassification}${futureConsiderationsContext}${exploratoryContext}${treatmentRationaleContext}${providerInterpretationsContext}${clinicalContextV2}${bundleContext}${treatmentActionsContext}${stagedPlanContext}${hpiElements}${patientPerspective}${providerReasoning}${educationProvided}${patientDecisions}${explicitRefusalsContext}${visitTerminationContext}
+Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${patientLine}${historicalBlock}${labContext}${extractionSummary}${supplementDiscussionsContext}${patternContext}${medicationContext}${normalizedMedsContext}${conditionsContext}${preventativeContext}${symptomTimelineContext}${planClassification}${futureConsiderationsContext}${exploratoryContext}${treatmentRationaleContext}${providerInterpretationsContext}${clinicalContextV2}${bundleContext}${treatmentActionsContext}${stagedPlanContext}${hpiElements}${patientPerspective}${providerReasoning}${educationProvided}${patientDecisions}${decisionAttribution}${conditionalPlans}${explicitRefusalsContext}${visitTerminationContext}
 ${speakerConflictContext2}
 TRANSCRIPT (CLINICIAN[?] = uncertain speaker assignment — treat with extra care in Assessment/Plan):
 ${diarizedInput}
@@ -2337,6 +2399,18 @@ When a generalized phrase has replaced specific clinical content from the transc
    - Clinical rationale written for a condition without grounding in the transcript or extraction for this specific encounter
    If any such statement is found: revise by replacing the unsupported assertion with language drawn from the transcript or extraction, or removing the statement entirely if no supporting evidence exists. Do NOT substitute a generic clinical statement when patient-specific evidence is absent.
 
+35. INVERTED AGENCY — PATIENT ATTRIBUTED WITH PROVIDER-DRIVEN INTENT: Scan for any statement that the patient "expresses a desire," "expresses interest in," "believes [treatment/adjustment] could help," "is interested in addressing X through medication," "requested," or otherwise drove a clinical decision. For each, verify the transcript contains an explicit patient request in the patient's own words BEFORE the provider raised the topic. If the provider introduced the finding, mechanism, or treatment, flag as CRITICAL and rewrite in provider voice ("Reviewed low SHBG... Recommended initiating metformin."). Patient questions, curiosity, or mentions of things they read are guidance-seeking — never clinical intent.
+
+36. STOCK TEMPLATE PHRASING: Scan for banned constructions: "which she/he associates with", "expresses a desire for", "expressing interest in addressing", "Discussion centered on", "The discussion focused on", "aims to address these concerns", "to enhance her/his well-being". If found, flag as important and rewrite in natural clinical prose per CRITICAL VIOLATION 7 in the generation rules — state reported symptoms and timing directly, name specific target symptoms, and document who raised each topic.
+
+37. CROSS-SECTION DOSE CONSISTENCY: For every medication appearing in more than one section (HPI, Current Medications, Assessment/Plan, Care Plan), verify the dose, route, and frequency are IDENTICAL in every mention. If any mention conflicts (e.g., 2.5 mg in HPI but 2.1 mg in the med list), flag as CRITICAL, determine the transcript-supported value, and make every mention match it. If the transcript itself is ambiguous, use "unspecified" consistently and add the conflict to needs_clinician_review.
+
+38. CONDITIONAL PLAN COVERAGE: If the generation input included CONDITIONAL (IF/THEN) PLANS, verify EACH conditional instruction appears in the note — in the relevant Assessment item (Plan or Future Considerations) AND as a patient-facing instruction in the Care Plan (e.g., "If hot flashes persist after a few weeks on the increased estrogen, decrease progesterone to 100 mg at night."). If any conditional plan is missing from either location, flag as CRITICAL and add it.
+
+39. UNSUPPORTED ICD CODES: This check governs individual ICD-10 codes only — NEVER remove an entire Assessment item under this check (Assessment items are governed by DIAGNOSIS PRESERVATION below, which takes precedence for whole diagnoses). For each individual ICD-10 code, verify the underlying condition, symptom, or finding has support somewhere in the transcript OR structured extraction (diagnoses_discussed, assessment_candidates, conditions_inferred, symptoms_reported, labs_reviewed, medications with implied conditions). Remove an individual code ONLY when it has zero support in ALL of those sources — e.g., a sexual dysfunction code from a bundle when sexual health never came up in any form. If support is uncertain or partial, KEEP the code. Flag each removal as important.
+
+40. SILENTLY RESOLVED AMBIGUITY: Identify decisions where the transcript is genuinely ambiguous or contradictory (e.g., an item first deferred and later possibly approved: "we were going to hold off... I guess we could add it in... you can get it in"). The note must NOT confidently state one outcome. Flag as CRITICAL, document the ambiguity neutrally in the note, and add the item to needs_clinician_review with both readings so the provider can confirm the actual decision.
+
 STYLE PRESERVATION — MANDATORY WHEN REVISING:
 If you are writing a revised_fullNote, the ClinIQ Core Principles and all documentation rules from the generation system prompt apply without exception. The QA pass fixes issues — it must NEVER reduce documentation fidelity.
 
@@ -2408,6 +2482,8 @@ NORMALIZED INTELLIGENCE:
 - Preventative signals: ${JSON.stringify(normalized.preventative_signals)}
 - Explicitly decided plan items: ${JSON.stringify(normalized.explicitly_decided_plan_items)}
 - Discussed but not decided: ${JSON.stringify(normalized.discussed_but_not_decided)}
+- Decision attribution (who initiated each decision — authoritative for check 35): ${JSON.stringify(normalized.enhanced_extraction?.decision_attribution ?? [])}
+- Conditional (if/then) plans (must all appear in the note — check 38): ${JSON.stringify(normalized.enhanced_extraction?.conditional_plans ?? [])}
 
 GENERATED SOAP NOTE:
 ${soapOutput.fullNote}
