@@ -11217,7 +11217,7 @@ DRIFT — flag only concrete, verifiable problems (not stylistic issues):
           const noteText: string = ((e.soapNote as any)?.fullNote ?? "").slice(0, 4000);
           return `--- Prior Note ${idx + 1} (${type}, ${date}) ---\n${noteText}${noteText.length >= 4000 ? "\n[note continues — truncated for context]" : ""}`;
         });
-        sections.push(`PRIOR VISIT NOTES (most recent first — use these to understand medication history, dose adjustments, ongoing treatment plans, prior diagnoses, and clinical decisions made at prior visits; when the current transcript references prior visits or ongoing therapies, cross-reference here):\n${noteLines.join("\n\n")}`);
+        sections.push(`PRIOR VISIT NOTES (most recent first — use these to understand medication history, dose adjustments, ongoing treatment plans, and clinical decisions made at prior visits; when the current transcript references prior visits or ongoing therapies, cross-reference here. IMPORTANT: these prior notes are context ONLY — they are NOT a valid source for Medical History items or "history of [condition]" claims. Only the PATIENT CHART DATA block and the current transcript may supply those):\n${noteLines.join("\n\n")}`);
       }
 
       // 2. Current medications & full chart data

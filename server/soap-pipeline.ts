@@ -1175,6 +1175,8 @@ L. ICD CODE SUPPORT: this rule governs individual ICD-10 codes, NOT Assessment i
 
 M. ENCOUNTER COMPLETENESS: verify each of the following, when present in the extraction/transcript, appears in the note: (1) administration-technique counseling (application site, drying, technique, timing) → as patient instructions in the Care Plan; (2) alternate delivery trials the patient reported (e.g., a patch trial and its result) → in the HPI; (3) in-office actions performed today (injections administered, supplements dispensed) → documented in the Plan; (4) refills/prescriptions sent during the visit → stated in the Plan; (5) open medication-delivery follow-ups (patient to confirm shipment arrived; provider to contact pharmacy if not) → in the Care Plan.
 
+N. HISTORY PROVENANCE: every Medical History item and every "history of [condition]" claim in the HPI must trace to the PATIENT CHART DATA block or THIS transcript. Prior visit notes are NOT a valid source for history items — a condition appearing only in a prior note must be omitted and flagged in needs_clinician_review, never silently carried forward.
+
 Only after completing this internal checklist, begin drafting.
 
 ═══════════════════════════════════════
@@ -1351,6 +1353,7 @@ List every medication and supplement the patient is CURRENTLY taking — meaning
 
 MEDICAL HISTORY:
 All past diagnoses, conditions, and significant medical history mentioned in the transcript or present in chart data. When PATIENT CHART DATA provides a "Past Medical History" block, use those exact items verbatim — never omit or condense them. Add anything new from the transcript.
+STRICT PROVENANCE RULE — ONLY TWO VALID SOURCES: Every item in Medical History must come from (1) the PATIENT CHART DATA block, or (2) THIS visit's transcript. PRIOR VISIT NOTES are context for understanding medication history and treatment trajectory — they are NOT a source for Medical History items. Never import a diagnosis, condition, or finding (e.g., "carotid artery blockage") from a prior note when it appears in neither the chart data nor this transcript. A prior AI-generated note may itself contain an error — copying its history forward propagates that error into every future record. If a prior note mentions a condition that seems clinically important but is absent from chart data and this transcript, OMIT it from the note and add it to needs_clinician_review ("Prior note references [condition] — not found in chart data or this visit; verify with patient chart"). The same provenance rule applies to any "history of [condition]" claim in the HPI.
 
 SURGICAL HISTORY:
 All prior surgeries mentioned. "Not reported at this visit" if not mentioned. When PATIENT CHART DATA provides surgical history, use those exact items verbatim.
@@ -2266,7 +2269,8 @@ async function qaCheck(
   extraction: any,
   normalized: NormalizedExtraction,
   soapOutput: PipelineOutput,
-  transcriptText: string
+  transcriptText: string,
+  historicalContext?: string
 ): Promise<PipelineOutput> {
   const systemPrompt = `You are a clinical documentation quality assurance specialist. Your job is to compare the SOAP note against the source extraction data and transcript to catch omissions, contradictions, and over-compression.
 
@@ -2430,6 +2434,8 @@ When a generalized phrase has replaced specific clinical content from the transc
    - Refills or prescriptions sent to the pharmacy during the visit → must appear in the Plan
    - Open medication-delivery follow-ups (patient to confirm a shipment arrived; provider to contact pharmacy if not) → must appear in the Care Plan and, if unresolved, in needs_clinician_review
 
+42. FABRICATED OR UNTRACEABLE HISTORY: For EVERY item in the Medical History section and every "history of [condition]" claim in the HPI or ROS, verify it appears in (1) the PATIENT CHART DATA / chart context provided, or (2) the transcript of THIS visit. Prior visit notes are NOT a valid source — a condition that appears only in a prior note may itself be a propagated error. If a history item has no support in chart data or this transcript, flag as CRITICAL, REMOVE it from the note (Medical History, HPI, and ROS), and add it to needs_clinician_review ("[Condition] appeared in draft but is not in chart data or this visit's transcript — verify before charting"). Fabricated medical history is among the most serious documentation errors possible.
+
 STYLE PRESERVATION — MANDATORY WHEN REVISING:
 If you are writing a revised_fullNote, the ClinIQ Core Principles and all documentation rules from the generation system prompt apply without exception. The QA pass fixes issues — it must NEVER reduce documentation fidelity.
 
@@ -2504,7 +2510,12 @@ NORMALIZED INTELLIGENCE:
 - Decision attribution (who initiated each decision — authoritative for check 35): ${JSON.stringify(normalized.enhanced_extraction?.decision_attribution ?? [])}
 - Conditional (if/then) plans (must all appear in the note — check 38): ${JSON.stringify(normalized.enhanced_extraction?.conditional_plans ?? [])}
 
-GENERATED SOAP NOTE:
+${historicalContext ? `PATIENT CHART CONTEXT (chart data and prior notes provided to the writer — the ONLY valid non-transcript source for Medical History items per check 42; prior visit notes within this block are NOT a valid source for history items):
+${historicalContext}
+
+` : `PATIENT CHART CONTEXT: none provided. For check 42, this transcript is the ONLY valid source for Medical History items.
+
+`}GENERATED SOAP NOTE:
 ${soapOutput.fullNote}
 
 NEEDS_CLINICIAN_REVIEW (check for duplicates of plan):
@@ -2999,7 +3010,7 @@ export async function runEnhancedSoapPipeline(input: PipelineInput): Promise<Pip
 
   console.log("[SOAP Pipeline] Step 5: Omission/contradiction QA check...");
   try {
-    soapOutput = await qaCheck(openai, extraction, normalized, soapOutput, transcriptText);
+    soapOutput = await qaCheck(openai, extraction, normalized, soapOutput, transcriptText, historicalContext);
   } catch (qaErr) {
     console.warn("[SOAP Pipeline] QA check failed, using unrevised SOAP:", qaErr);
   }
