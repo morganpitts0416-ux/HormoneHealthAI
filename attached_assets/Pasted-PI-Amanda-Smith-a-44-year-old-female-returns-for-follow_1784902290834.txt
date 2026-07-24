@@ -1,0 +1,97 @@
+PI: Amanda Smith, a 44-year-old female, returns for follow-up regarding her hormone therapy and metabolic management. She reports experiencing night sweats and waking up at night, which she associates with starting the estrogen gel. Her estrogen level has increased from 53 to 75 pg/mL, indicating improved absorption with the gel compared to the patch. Amanda expresses a desire for more energy and improved sleep quality, noting that while she feels better overall, she believes further adjustments to her regimen could enhance her well-being.
+
+Discussion centered on insulin resistance, with Amanda expressing interest in addressing this through medication. Her SHBG level is low, which may be linked to insulin resistance. Explained that metformin could help reduce systemic inflammation and improve insulin sensitivity. Amanda agreed to initiate a low dose of metformin to address these concerns.
+
+Amanda continues to take progesterone at night and tirzepatide 2.5 mg weekly. She is also maintaining her supplement regimen, which includes omega-3, vitamin E, multivitamins, and magnesium. Berberine was discussed as a potential future addition for insulin resistance, but the decision was deferred until after evaluating the effects of metformin.
+
+Allergies: Not reported at this visit
+
+Current Medications: 
+
+Progesterone unspecified oral at night
+
+Tirzepatide 2.1 mg subcutaneous weekly
+
+Omega-3 unspecified
+
+Vitamin E unspecified
+
+Multivitamins unspecified
+
+Magnesium unspecified
+
+Iron unspecified
+
+Medical History: Hypogonadism, iron deficiency
+
+Surgical History: Not reported at this visit
+
+Social History: Not working currently
+
+Family History: Mother with heart failure and mitral valve leak; family history of heart conditions
+
+ROS
+
+Constitutional
+Night sweats; waking up at night.
+Cardiovascular
+Family history of heart conditions noted.
+Psychiatric
+Concern about sleep disturbances noted.
+Endocrine
+Discussed hormone therapy adjustments.
+Vital Signs: BMI 32
+
+Physical Examination: Physical examination not performed at this encounter.
+
+ASSESSMENT & PLAN
+
+Overall Clinical Impression: Amanda presents with symptoms consistent with estrogen deficiency and insulin resistance, contributing to her night sweats and sleep disturbances. Her estrogen level has improved with the gel, but further optimization is needed to enhance her energy and sleep quality. Initiating metformin aims to address insulin resistance and its systemic effects, including potential metabolic dysregulation.
+
+1. Perimenopausal Transition with Symptom Complex (N95.9, R53.83, F52.0, E34.9)
+
+Amanda reports night sweats and waking up at night, symptoms suggestive of estrogen deficiency. Her estrogen level has improved from 53 to 75 pg/mL with the gel, indicating better absorption. Further increase in estrogen is planned to enhance symptom control and improve sleep quality.
+
+Plan: Increase estrogen to an unspecified dose transdermal daily. Monitor symptoms and adjust as needed.
+
+2. Emerging Metabolic Dysregulation (E66.9, R63.5, E65, E78.5, R79.82)
+
+Low SHBG and systemic inflammation suggest insulin resistance. Metformin is initiated to improve insulin sensitivity and reduce inflammation, with the goal of enhancing metabolic health.
+
+Plan: Start metformin low dose oral daily. Monitor for GI side effects and efficacy. Reassess in three months with labs.
+
+3. Hormone Therapy (Z79.890)
+
+Amanda continues progesterone at night and tirzepatide weekly. These therapies support her hormonal balance and metabolic management.
+
+Plan: Continue progesterone unspecified oral at night and tirzepatide 2.1 mg subcutaneous weekly. Monitor hormone levels and symptoms.
+
+Clinical need: A specific clinical need is not being met by a commercially available product. Documentation from the supplying pharmacy confirms that comprehensive chemical analysis and API verification testing have been conducted. The EXEMPTION FOR COMPOUNDED GLP-1 MEDICATION has been met based on the information issued by Executive Director of MISSISSIPPI STATE BOARD OF MEDICAL LICENSURE on July 17, 2024. Compounded GLP-1 medication is clinically appropriate due to cost barriers in accessing commercially available options. Financial disparities can lead to poor medication adherence and health outcomes. This compound is less expensive, especially when not covered by insurance, improving medication adherence and overall health outcomes by reducing financial strain on patients. It mitigates financial barriers, enhances medication adherence, and improves clinical outcomes for underinsured patients.
+
+4. Supplement Management
+
+Omega-3 is continued for general health benefits. Berberine was discussed for insulin resistance but deferred pending metformin evaluation.
+
+Plan: Continue omega-3 unspecified. Consider adding berberine if metformin alone is insufficient.
+
+CARE PLAN
+Increase estrogen to an unspecified dose daily. Monitor for symptom improvement.
+
+Start metformin low dose oral daily. Watch for GI side effects.
+
+Continue progesterone at night and tirzepatide weekly.
+
+Maintain omega-3 supplementation for general health.
+
+Schedule labs in three months to reassess hormone levels and metabolic markers.
+
+Engage in regular exercise, including resistance training and walking after dinner.
+
+Monitor sleep quality and report persistent disturbances.
+
+FOLLOW-UP
+Return in three months for lab review and assessment of hormone therapy and metabolic management.
+
+Monitor for GI side effects from metformin and report any concerns.
+
+Schedule monthly visits for injections and ongoing evaluation of therapy effectiveness.
