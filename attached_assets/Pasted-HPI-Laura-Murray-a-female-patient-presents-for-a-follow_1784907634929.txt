@@ -1,0 +1,81 @@
+HPI: Laura Murray, a female patient, presents for a follow-up visit with ongoing concerns related to hormonal fluctuations and metabolic health. She reports experiencing difficulty finding words, inability to focus, forgetfulness, muscle weakness, migraines, and heavy menstrual cycles. These symptoms have been impacting her job performance as a speech therapist, where she frequently engages in evaluations and meetings.
+
+Laura has been taking compounded progesterone 50mg daily, which has helped normalize her previously heavy menstrual cycles. She previously used topical testosterone but discontinued it due to hair loss. Her recent lab results show a total testosterone level of 40.5 and a free testosterone level of 3, indicating low bioavailability. Her SHBG is elevated, which may contribute to the low free testosterone.
+
+Laura expressed concern about her hot flashes and night sweats, which occur predominantly outside of her ovulatory phase. She has been advised to start Estrovera, a rhubarb extract, to alleviate these symptoms. The potential use of a low-dose estradiol patch was discussed as a future consideration if symptoms persist after testosterone adjustment.
+
+Regarding metabolic health, Laura's recent labs indicate a vitamin D level above 120, prompting a discussion about reducing her intake to avoid toxicity. Her A1C is 5.1, and her LDL is 146, with an apoB of 108. Despite these findings, her overall cardiovascular risk remains low. The potential use of berberine for insulin resistance and CoQ10 for cardiac health was discussed, but no definitive decisions were made.
+
+Allergies: Not reported at this visit
+
+Current Medications: 
+
+Progesterone 50mg compounded daily
+
+Medical History: Anxiety | Migraines
+
+Surgical History: Stent during pregnancy | Breast reduction, implants and lift
+
+Social History: 2 | Vasectomy (partner) | Never smoked or vaped | Once a month or less
+
+Family History: Mother: Hashimotos, osteoarthritis | Father: Heart ablation, high blood pressure, sarcoidosis | Paternal Grandmother: Heart disease | Siblings: Psoriasis, psoriatic arthritis, Hashimotos, migraines, Graves’ disease, OCD, anxiety
+
+ROS
+
+Musculoskeletal
+Muscle weakness reported.
+Skin
+Hair loss noted from prior topical testosterone use.
+Neurological
+Difficulty finding words, can't focus, forgetfulness reported.
+Psychiatric
+Anxiety noted in medical history.
+Endocrine
+Hot flashes, night sweats reported.
+Vital Signs: BP 110/71 | HR 69 | BMI 25.7
+
+Physical Examination: Physical examination not performed at this encounter.
+
+ASSESSMENT & PLAN
+
+Overall Clinical Impression: Laura presents with symptoms suggestive of perimenopausal hormonal fluctuations, including cognitive changes and vasomotor symptoms. Her low free testosterone and elevated SHBG support the decision to initiate testosterone injections. Metabolic concerns are noted, with a focus on optimizing vitamin D levels and considering future interventions for insulin resistance.
+
+1. Perimenopausal Transition with Symptom Complex (R53.83, N95.9)
+
+Clinical Rationale: Symptoms of difficulty finding words, inability to focus, forgetfulness, and heavy menstrual cycles align with perimenopausal transition. Progesterone has helped regulate her cycles. Hot flashes and night sweats suggest fluctuating estrogen levels.
+
+Plan: Continue progesterone 50mg compounded daily. Start Estrovera for hot flashes and night sweats. Consider low-dose estradiol patch if symptoms persist after testosterone adjustment.
+
+Future Considerations: Monitor symptoms and reassess at next visit. If symptoms persist, consider initiating low-dose estradiol patch.
+
+2. Low Testosterone (E29.1)
+
+Clinical Rationale: Low free testosterone level (3) with elevated SHBG suggests low bioavailability. Prior topical testosterone caused hair loss, likely due to increased DHT conversion.
+
+Plan: Start testosterone 7.5mg IM weekly. Monitor testosterone levels and symptoms in 8 weeks.
+
+Future Considerations: Consider adjusting testosterone dosage based on symptom response and lab results.
+
+3. Metabolic Health Monitoring
+
+Clinical Rationale: Vitamin D level above 120 requires adjustment to prevent toxicity. A1C and LDL levels indicate need for ongoing monitoring.
+
+Plan: Reduce vitamin D intake to target around 100 ng/mL. Discussed potential use of berberine for insulin resistance and CoQ10 for cardiac health.
+
+Future Considerations: Monitor vitamin D and lipid levels. Consider berberine and CoQ10 if metabolic concerns persist.
+
+CARE PLAN
+Continue taking progesterone 50mg compounded daily.
+
+Start testosterone 7.5mg IM weekly. Administer as instructed.
+
+Start Estrovera for hot flashes and night sweats.
+
+Reduce vitamin D intake to target around 100 ng/mL.
+
+Monitor symptoms and report any changes.
+
+Follow up in 8 weeks for hormone level reassessment.
+
+FOLLOW-UP
+Follow up in 8 weeks to reassess hormone levels and symptoms. Monitor for any changes in symptoms or side effects from new treatments. Obtain labs prior to visit to evaluate testosterone levels and vitamin D.
