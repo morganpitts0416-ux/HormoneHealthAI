@@ -968,7 +968,7 @@ export function EncounterEditor({
         encounterId = saved.id;
       }
       const expectedPatientId = parseInt(patientId);
-      await apiRequest("PUT", `/api/encounters/${encounterId}`, { transcription: transcription || null, expectedPatientId });
+      await apiRequest("PUT", `/api/encounters/${encounterId}`, { transcription: transcription || null, visitType, chiefComplaint: chiefComplaint || null, expectedPatientId });
       setGlobalLoading("June is extracting template fields…", { june: true, juneImage: "analyzing" });
       const res = await apiRequest("POST", `/api/encounters/${encounterId}/generate-template-note`, {
         templateId: parseInt(selectedTemplateId),
@@ -1086,10 +1086,12 @@ export function EncounterEditor({
       // patient's chart.
       const expectedPatientId = parseInt(patientId);
 
-      // Always persist the current transcription to the encounter before generating SOAP.
-      // This ensures the server reads the latest text even if the encounter was created
-      // without it (e.g. save → record → generate) or diarizedTranscript was set instead.
-      await apiRequest("PUT", `/api/encounters/${encounterId}`, { transcription: transcription || null, expectedPatientId });
+      // Always persist the current transcription AND visit metadata to the encounter
+      // before generating SOAP. This ensures the server reads the latest text and the
+      // visit type currently selected in the UI — otherwise a visit-type change made
+      // after the encounter was auto-created never reaches the pipeline and the note
+      // is generated with a stale (e.g. "follow-up") visit type.
+      await apiRequest("PUT", `/api/encounters/${encounterId}`, { transcription: transcription || null, visitType, chiefComplaint: chiefComplaint || null, expectedPatientId });
 
       const res = await apiRequest("POST", `/api/encounters/${encounterId}/generate-soap`, { expectedPatientId });
       return res.json();
@@ -1154,7 +1156,9 @@ export function EncounterEditor({
         setSavedId(saved.id);
         encounterId = saved.id;
       } else {
-        await apiRequest("PUT", `/api/encounters/${encounterId}`, { transcription: transcription || null, expectedPatientId: parseInt(patientId) });
+        // Persist visit metadata too — the visit type selected in the UI must reach
+        // the pipeline even if it changed after the encounter was created.
+        await apiRequest("PUT", `/api/encounters/${encounterId}`, { transcription: transcription || null, visitType, chiefComplaint: chiefComplaint || null, expectedPatientId: parseInt(patientId) });
       }
 
       // Step 2: Fire SOAP and evidence simultaneously
@@ -2059,6 +2063,8 @@ export function EncounterEditor({
                   if (savedId) {
                     apiRequest("PUT", `/api/encounters/${savedId}`, {
                       transcription: text,
+                      visitType,
+                      chiefComplaint: chiefComplaint || null,
                       expectedPatientId: patientId ? parseInt(patientId) : undefined,
                     }).catch(() => {
                       toast({ variant: "destructive", title: "Auto-save failed", description: "Transcription update could not be saved. Please save manually." });

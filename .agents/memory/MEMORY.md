@@ -13,3 +13,4 @@
 - [prod-migrate column gap](prod-migrate-column-gap.md) — every new schema.ts column needs ALTER TABLE … ADD COLUMN IF NOT EXISTS in prod-migrate.sql or prod gets "column does not exist" 500s
 - [Note template block persistence](note-template-blocks.md) — ManualSoapBuilder saves {fullNote,blocks,chiefComplaint,visitDate,visitType}; unsigned block notes reopen in their builder via initialEncounterId; signed notes → AmendTextarea
 - [Floating panel pattern](floating-panel-pattern.md) — useFloatingPanel() hook shared by chart-side panels (lab eval, SOAP builder) needing drag/minimize instead of a blocking Dialog; pair with localStorage draft autosave
+- [Encounter metadata staleness](encounter-metadata-staleness.md) — pre-generation PUTs must persist UI visit metadata (visitType etc.), not just transcription, or notes render with stale values

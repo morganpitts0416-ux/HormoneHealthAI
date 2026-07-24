@@ -25,7 +25,7 @@ After every schema.ts column addition, before committing:
 3. Run `npm run db:push` locally to confirm dev is in sync.
 
 ## Real incident
-Commit `757e9f6` added `address TEXT` to the `patients` table in schema.ts but omitted the
+A schema change added `address TEXT` to the `patients` table in schema.ts but omitted the
 ALTER TABLE. Production DB was missing the column. Every `getAllPatients` / `searchPatients`
 call threw `column "address" does not exist`, returning HTTP 500. Frontend showed 0 patients
 for all 1743 clinic records. Fixed by adding the ALTER TABLE to both prod-migrate.sql blocks.
