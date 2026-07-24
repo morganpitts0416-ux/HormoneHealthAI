@@ -126,6 +126,7 @@ const SECTIONS: Section[] = [
   { id: "patients", icon: Users, label: "Patient Profiles & History" },
   { id: "encounters", icon: Mic, label: "Clinical Encounters & AI Pipeline", badge: "AI" },
   { id: "soap", icon: FileText, label: "SOAP Notes" },
+  { id: "templates", icon: ClipboardList, label: "Note & Encounter Templates" },
   { id: "cardiovascular", icon: Heart, label: "PREVENT Cardiovascular Risk" },
   { id: "sleep", icon: Moon, label: "STOP-BANG Sleep Screening" },
   { id: "supplements", icon: Pill, label: "Supplement Recommendations" },
@@ -355,29 +356,49 @@ const CONTENT: Record<string, React.ReactNode> = {
   ),
 
   "encounters": (
-    <div className="space-y-6">
-      <Guide title="Creating an Encounter & Recording Audio">
+    <div className="space-y-7">
+
+      <Guide title="Starting an Encounter — From the Patient Profile">
         <ScreenshotGallery shots={[
-          { src: "/help-shots/encounter-details.png", caption: "New Encounter — Details tab. Select the patient, visit type, and chief complaint. Optionally link lab results for AI context. Then record or upload the session audio." },
-          { src: "/help-shots/encounter-transcript.png", caption: "After recording or uploading, the raw transcription appears in the Session Notes area. ClinIQ shows a word count and the HIPAA notice confirming audio is never stored." },
+          { src: "/help-shots/encounter-patient-profile.png", caption: "Open the patient's profile first. The patient's name, demographics, chart, and history are all visible here. Use the top action buttons to initiate any type of visit documentation." },
+          { src: "/help-shots/encounter-list.png", caption: "Click the Encounters tab on the patient's profile to see all past visits. From here you can create any note type: New Encounter (AI transcription), Phone Note, Nurse Note, or Manual SOAP." },
         ]} />
+        <p className="text-sm mb-3" style={{ color: "#5a6a4a" }}>
+          All encounter and note creation starts from the patient's profile — the patient context is pre-loaded automatically.
+        </p>
         <Steps steps={[
-          "Click New Encounter from the Encounters page or from a patient's profile.",
-          "Select the patient, visit type (e.g. Follow-up), and enter the chief complaint.",
-          "Optionally link existing lab results — the AI will reference these when generating the SOAP note.",
-          "In Session Notes, click Record to capture live audio, or Upload File to upload a pre-recorded audio file.",
-          "Click Start Recording Session. When finished, click Stop — the transcript will appear in the text area.",
-          "Click Save before moving to the next pipeline stage.",
+          "Open Patient Profiles from the left sidebar and search for the patient by name.",
+          "Click the patient's name to open their full profile.",
+          "Click the Encounters tab to view all past notes and access the note creation buttons.",
+          "Choose the type of documentation you need: New Encounter for AI-transcribed visits, + Nurse Note, + Phone Note, or + Manual SOAP for manually-written notes.",
         ]} />
       </Guide>
+
+      <Guide title="New Encounter — AI-Transcribed Visit">
+        <ScreenshotGallery shots={[
+          { src: "/help-shots/encounter-new-form.png", caption: "New Encounter form — the patient is pre-filled. Add the visit date, visit type, and chief complaint. Optionally link lab results so the AI can reference them during SOAP generation. Then record or upload the session audio." },
+        ]} />
+        <Steps steps={[
+          "From the patient's Encounters tab, click + New Encounter.",
+          "The patient name is pre-filled. Set the Visit Date, Visit Type (e.g. Follow-up, New Patient), and Chief Complaint.",
+          "Optionally use Link Lab Results to attach a recent lab panel — the AI will reference specific values when generating the SOAP note.",
+          "In Session Notes, click Record to capture live audio during the visit, or Upload File to upload a pre-recorded audio file.",
+          "Click Start Recording Session. When the visit is done, click Stop — the transcript appears in the text area automatically.",
+          "Click Save, then move to the Transcript tab to run the AI pipeline.",
+        ]} />
+        <div className="mt-3 p-3 rounded-md text-xs" style={{ backgroundColor: "#fdf9f5", border: "1px solid #e8ddd0", color: "#7a6a54" }}>
+          <strong style={{ color: "#5a4a34" }}>Encounter Templates:</strong> Before recording, you can apply an Encounter Template that shapes how the AI structures the resulting SOAP note — defining which fields to extract, what checklists to evaluate, and any standing instructions. See the Note &amp; Encounter Templates section for details.
+        </div>
+      </Guide>
+
       <Guide title="The 6-Stage AI Pipeline">
         <ScreenshotGallery shots={[
           { src: "/help-shots/encounter-processing.png", caption: "AI Processing — the pipeline shows an animated indicator while analyzing the encounter. Each stage runs sequentially." },
         ]} />
-        <p className="text-sm mb-3" style={{ color: "#5a6a4a" }}>Run each stage in order using the pipeline buttons in the Transcript tab:</p>
+        <p className="text-sm mb-3" style={{ color: "#5a6a4a" }}>After saving the recording, open the Transcript tab and run each stage in order:</p>
         <div className="space-y-2">
           {[
-            { stage: "1", label: "Transcribe", desc: "Converts audio to raw text using OpenAI Whisper. Audio is deleted immediately — never stored." },
+            { stage: "1", label: "Transcribe", desc: "Converts audio to raw text using OpenAI Whisper. Audio is deleted immediately — never stored on ClinIQ servers." },
             { stage: "2", label: "Normalize", desc: "Corrects medical terminology and applies speaker diarization, labeling each line as Clinician or Patient." },
             { stage: "3", label: "Extract Facts", desc: "Identifies chief concerns, symptoms, diagnoses, and plan items from the transcript." },
             { stage: "4", label: "Generate SOAP", desc: "Builds a chart-ready SOAP note using extracted facts and linked lab context. Flags uncertain items for clinician review." },
@@ -394,6 +415,57 @@ const CONTENT: Record<string, React.ReactNode> = {
           ))}
         </div>
       </Guide>
+
+      <Guide title="Manual Notes — Nurse Notes, Phone Notes & Manual SOAP">
+        <ScreenshotGallery shots={[
+          { src: "/help-shots/nurse-note-blocks.png", caption: "Nurse Note — add any combination of structured blocks: Reason for Visit, Vital Signs, Nursing Assessment, Intervention, Patient Education, Follow-Up Plan, and field types like Free Text, Short Text Field, Dropdown, Checkbox, or Radio Buttons." },
+          { src: "/help-shots/manual-soap-blocks.png", caption: "Manual SOAP Note — pre-built with Subjective, Objective, and Vital Signs blocks. Add more blocks as needed. Apply a saved template using the 'Apply template' dropdown at the top." },
+        ]} />
+        <p className="text-sm mb-3" style={{ color: "#5a6a4a" }}>
+          Manual notes do not require audio — they are built block by block using a drag-and-drop note builder. All three types share the same builder interface.
+        </p>
+        <ul className="space-y-2 text-sm" style={{ color: "#5a6a4a" }}>
+          <Bullet label="+ Nurse Note" desc="For nursing visits, weight-ins, medication administration, and triage. Uses nursing-specific block types including Nursing Assessment, Intervention, and Patient Education." />
+          <Bullet label="+ Phone Note" desc="For phone encounters, portal message follow-ups, prescription refill calls, and non-visit contacts. Same block builder — lightweight by default." />
+          <Bullet label="+ Manual SOAP" desc="A full provider SOAP note built by hand rather than AI. Starts with Subjective, Objective, and Vital Signs blocks pre-added. Use when you prefer to type the note directly or for visits not recorded." />
+        </ul>
+      </Guide>
+
+      <Guide title="Adding Blocks to a Manual Note">
+        <p className="text-sm mb-3" style={{ color: "#5a6a4a" }}>
+          Every manual note type uses the same block system. Click <strong style={{ color: "#1c2414" }}>Add Block</strong> inside the note to insert structured content sections. Blocks can be reordered by dragging.
+        </p>
+        <ul className="space-y-2 text-sm" style={{ color: "#5a6a4a" }}>
+          <Bullet label="Reason for Visit" desc="A free-text area for the patient's stated reason for the visit or phone contact." />
+          <Bullet label="Vital Signs (form)" desc="Structured input fields for Blood Pressure, Heart Rate, Respiratory Rate, Temperature, SpO2, Pain scale, Height, Weight, and BMI. BMI is auto-calculated from height and weight. Values save to the patient's vitals record." />
+          <Bullet label="Nursing Assessment" desc="A clinical narrative area for the nurse's assessment findings and observations." />
+          <Bullet label="Intervention" desc="Documents actions taken during the visit: injections administered, dressings changed, labs drawn, etc." />
+          <Bullet label="Patient Education" desc="Records what was reviewed with the patient — medication instructions, lifestyle guidance, portal access, etc." />
+          <Bullet label="Follow-Up Plan" desc="Documents the next steps agreed upon: return visit timing, referrals, labs to order, or instructions given." />
+          <Bullet label="Free Text" desc="An open multi-line text area. Use for any narrative content that doesn't fit a structured block." />
+          <Bullet label="Short Text Field" desc="A single-line labeled input. Good for capturing a specific value, name, or brief answer." />
+          <Bullet label="Dropdown" desc="A select field with custom options you define. Useful for standardized responses like Visit Type, Pain Location, or Compliance Status." />
+          <Bullet label="Checkbox" desc="One or more checkboxes. Use for multi-select clinical checklists or yes/no items." />
+          <Bullet label="Radio Buttons" desc="Single-select options — only one can be chosen. Use for mutually exclusive clinical choices." />
+        </ul>
+      </Guide>
+
+      <Guide title="Applying a Template to a Manual Note">
+        <ScreenshotGallery shots={[
+          { src: "/help-shots/nurse-note-template.png", caption: "Apply Template — click the template dropdown at the top of any manual note to load a saved template. Selecting a template replaces the current blocks with the template's pre-configured layout." },
+        ]} />
+        <Steps steps={[
+          "Open a new Nurse Note, Phone Note, or Manual SOAP from the patient's Encounters tab.",
+          "At the top of the note panel, click the Apply Template dropdown.",
+          "Select a template from the list — templates are filtered to match the note type (Nurse Note templates for Nurse Notes, etc.).",
+          "The template's blocks load instantly. Type /phrase in any text block to insert a saved snippet, or /dx to search diagnoses.",
+          "Fill in the blocks, then click Save & Close or Sign to finalize.",
+        ]} />
+        <div className="mt-3 p-3 rounded-md text-xs" style={{ backgroundColor: "#fdf9f5", border: "1px solid #e8ddd0", color: "#7a6a54" }}>
+          <strong style={{ color: "#5a4a34" }}>Building templates:</strong> Create and manage your note templates under Settings → Note Templates. See the <strong style={{ color: "#5a4a34" }}>Note &amp; Encounter Templates</strong> section of this Help Center for a full guide.
+        </div>
+      </Guide>
+
     </div>
   ),
 
@@ -422,6 +494,135 @@ const CONTENT: Record<string, React.ReactNode> = {
           ClinIQ will not invent physical exam findings, vitals, or clinical observations that are not supported by the audio transcript or linked lab data. Items with insufficient evidence are flagged with a review indicator rather than stated as fact. The SOAP note is a starting point — always review before copying to your EHR.
         </p>
       </Guide>
+    </div>
+  ),
+
+  "templates": (
+    <div className="space-y-7">
+
+      <Guide title="Two Types of Templates — What's the Difference?">
+        <ScreenshotGallery shots={[
+          { src: "/help-shots/note-template-builder.png", caption: "Note Template builder — used for manual notes (Nurse Notes, Phone Notes, Manual SOAP). Combines Clinical Blocks (structured SOAP sections) and Generic Field Blocks (forms and free text) into a reusable layout." },
+          { src: "/help-shots/encounter-template-builder.png", caption: "Encounter Template builder — used for AI-transcribed encounters. Fields tell the AI what to extract from the audio transcript, what to check off, and how to structure the final SOAP note." },
+        ]} />
+        <div className="mt-3 rounded-md overflow-hidden text-sm" style={{ border: "1px solid #d8e4cb" }}>
+          <div className="grid grid-cols-2">
+            <div className="px-4 py-3 font-semibold text-center" style={{ backgroundColor: "#edf2e6", color: "#2e3a20", borderRight: "1px solid #d8e4cb" }}>Note Templates</div>
+            <div className="px-4 py-3 font-semibold text-center" style={{ backgroundColor: "#edf2e6", color: "#2e3a20" }}>Encounter Templates</div>
+          </div>
+          {[
+            ["Used with manual notes (Nurse Note, Phone Note, Manual SOAP)", "Used with AI-transcribed encounters (New Encounter)"],
+            ["Clinician fills in the blocks by hand during or after the visit", "AI fills in the fields automatically from the recorded audio"],
+            ["Built from Clinical Blocks and Generic Field Blocks", "Built from Extract Fields, Checklists, AI Instructions, and headings"],
+            ["Apply from the template dropdown at the top of any manual note", "Select before starting a recording session in the New Encounter form"],
+            ["Managed under Settings → Note Templates", "Managed under Settings → Encounter Templates"],
+          ].map(([left, right], i) => (
+            <div key={i} className="grid grid-cols-2" style={{ borderTop: "1px solid #d8e4cb" }}>
+              <div className="px-4 py-2 text-xs" style={{ color: "#5a6a4a", borderRight: "1px solid #d8e4cb" }}>{left}</div>
+              <div className="px-4 py-2 text-xs" style={{ color: "#5a6a4a" }}>{right}</div>
+            </div>
+          ))}
+        </div>
+      </Guide>
+
+      <Guide title="Note Templates — Block Reference">
+        <p className="text-sm mb-4" style={{ color: "#5a6a4a" }}>
+          Note Templates are built from two categories of blocks. <strong style={{ color: "#1c2414" }}>Clinical Blocks</strong> map directly to standard SOAP chart sections and are aware of the patient's record. <strong style={{ color: "#1c2414" }}>Generic Field Blocks</strong> are flexible input elements for custom data capture.
+        </p>
+
+        <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "#2e3a20" }}>Clinical Blocks</p>
+        <p className="text-xs mb-3" style={{ color: "#7a8a6a" }}>Structured sections that map to standard SOAP fields. History blocks default to bullet lists; ROS and Physical Exam drop in as a per-system chart.</p>
+        <ul className="space-y-2 text-sm mb-5" style={{ color: "#5a6a4a" }}>
+          <Bullet label="HPI" desc="History of Present Illness — a narrative area for the chief complaint and its clinical story." />
+          <Bullet label="Medical History" desc="Pulls in the patient's existing medical conditions from their chart. Editable within the note." />
+          <Bullet label="Surgical History" desc="Patient's surgical history from their chart, pre-populated and editable." />
+          <Bullet label="Social History" desc="Lifestyle, substance use, occupation, and social context." />
+          <Bullet label="Family History" desc="Family medical history with condition and relationship fields." />
+          <Bullet label="Allergies" desc="Pulls the patient's allergy list from their chart automatically." />
+          <Bullet label="Review of Systems" desc="A per-system checklist (Constitutional, Cardiovascular, Respiratory, etc.) that generates a structured ROS table in the note." />
+          <Bullet label="Physical Examination" desc="A per-system exam grid. Each system has a Normal/Abnormal toggle and a findings text area. Clinician Block Defaults (set in Account) can pre-fill standard normal findings." />
+          <Bullet label="Assessment / Plan" desc="The primary A/P section with ICD-10 code search and structured plan items per diagnosis." />
+          <Bullet label="Care Plan" desc="A narrative care plan separate from A/P — useful for documenting patient-facing goals and instructions." />
+          <Bullet label="Follow-Up" desc="Documents the agreed next visit, referral, or follow-up labs." />
+          <Bullet label="Vital Signs (Clinical Block)" desc="Records Blood Pressure, Heart Rate, Respiratory Rate, Temperature, SpO2, Pain, Height, Weight, and BMI. BMI is auto-calculated. Saves directly to the patient's vitals record and renders as a clean, formatted vitals table in the signed note." />
+        </ul>
+
+        <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "#2e3a20" }}>Generic Field Blocks</p>
+        <p className="text-xs mb-3" style={{ color: "#7a8a6a" }}>Flexible building blocks for capturing custom data, forms, and structured input not covered by standard SOAP sections.</p>
+        <ul className="space-y-2 text-sm" style={{ color: "#5a6a4a" }}>
+          <Bullet label="Section Header" desc="A bold label that organizes the note visually — not an input field. Use to group related blocks with a heading like 'Pre-Visit Screening' or 'Medication Review'." />
+          <Bullet label="Vital Signs Block" desc="A standalone vitals entry form with individual labeled input fields (BP, HR, Resp, Temp, SpO2, Pain, Height, Weight, BMI). Unlike the Clinical Block version above, this block is a pure data capture form — it does not generate the formatted vitals chart in the final note output. Use it when you want vitals as a generic form within a non-SOAP template." />
+          <Bullet label="Free Text Block" desc="An open multi-line text area with no label structure. Best for unstructured narrative sections." />
+          <Bullet label="Short Text Field" desc="A labeled single-line input for capturing a specific value, name, code, or brief answer." />
+          <Bullet label="Long Text Field" desc="A labeled multi-line text area — like Free Text but with a field label. Use for named narrative sections." />
+          <Bullet label="Dropdown" desc="A labeled select field with custom options you define. Useful for standardized clinical choices (visit type, compliance status, disposition)." />
+          <Bullet label="Checkbox" desc="One or more checkboxes. Use for multi-select checklists or documentation of items reviewed." />
+          <Bullet label="Radio Buttons" desc="Single-select options. Only one can be active. Use for mutually exclusive clinical answers." />
+        </ul>
+
+        <div className="mt-4 p-3 rounded-md text-xs" style={{ backgroundColor: "#fdf9f5", border: "1px solid #e8ddd0", color: "#7a6a54" }}>
+          <strong style={{ color: "#5a4a34" }}>Two Vital Signs blocks — which to use?</strong> Use the <strong style={{ color: "#5a4a34" }}>Vital Signs Clinical Block</strong> whenever you want vitals to be recorded in the patient's chart and rendered as a clean formatted table in the signed note. Use the <strong style={{ color: "#5a4a34" }}>Vital Signs Block (Generic)</strong> only in non-SOAP templates where you need a simple vitals input form without chart integration.
+        </div>
+      </Guide>
+
+      <Guide title="Note Templates — Creating & Managing">
+        <Steps steps={[
+          "Navigate to Settings → Note Templates.",
+          "Click + New Template.",
+          "Enter a Template Name and select the Note Type it applies to: Provider SOAP Note, Nurse Note, or Non-Visit Note (phone/portal messages).",
+          "Toggle Shared with entire clinic if all staff should see this template, or leave off to keep it personal.",
+          "Add Clinical Blocks and Generic Field Blocks by clicking the + buttons. Blocks appear in the order added — drag to reorder.",
+          "Click Save Template. The template will appear in the Apply Template dropdown inside any matching note type.",
+        ]} />
+        <div className="mt-3 p-3 rounded-md text-xs" style={{ backgroundColor: "#edf2e6", color: "#2e3a20" }}>
+          <strong>Tip:</strong> Use the slash shortcut field to assign a quick-insert command — e.g. type <code className="font-mono">/wellness</code> inside any note to instantly load that template's blocks.
+        </div>
+      </Guide>
+
+      <Guide title="Encounter Templates — Field Types">
+        <p className="text-sm mb-4" style={{ color: "#5a6a4a" }}>
+          Encounter Templates shape how the AI reads and documents a recorded visit. Each field type gives the AI a specific instruction about how to handle that portion of the transcript.
+        </p>
+        <ul className="space-y-3 text-sm" style={{ color: "#5a6a4a" }}>
+          <Bullet
+            label="Extract Field"
+            desc="Tells the AI to pull a specific piece of information directly from the transcript and place it in the SOAP note. For example: an Extract Field labeled 'Testosterone dose discussed' will cause the AI to find and record the exact dose mentioned during the visit. Use Extract Fields for discrete facts, values, or statements you need captured precisely."
+          />
+          <Bullet
+            label="Checklist"
+            desc="A list of items the AI evaluates against the transcript to determine whether each was addressed during the visit. For example, a checklist might include 'Discussed medication side effects', 'Reviewed follow-up labs', and 'Patient verbalized understanding'. The AI checks off each item it finds evidence for in the audio. Use Checklists for quality measures, compliance documentation, or visit protocols."
+          />
+          <Bullet
+            label="AI Instruction"
+            desc="A freeform directive to the AI about how to handle a specific section of the note. For example: 'In the Assessment, always list diagnoses in order of clinical priority' or 'If GLP-1 therapy is mentioned, include standard patient education language in the Plan'. Instructions are not visible in the final note — they guide the AI's behavior behind the scenes. Use AI Instructions for practice-wide formatting rules, specialty-specific language, or clinical documentation standards."
+          />
+          <Bullet
+            label="Section Heading"
+            desc="A visual label that organizes the encounter template into logical sections. Section Headings appear in the final SOAP note as structural dividers, making long notes easier to navigate. They do not instruct the AI — they are purely organizational."
+          />
+          <Bullet
+            label="Vital Signs Block"
+            desc="A specially formatted section that instructs the AI to extract all vitals mentioned in the transcript (BP, HR, Temp, SpO2, Weight, etc.) and render them as a clean structured vitals chart in the SOAP note — not as inline text. If vitals are dictated or mentioned during the recording, this block captures them in a scannable table format."
+          />
+        </ul>
+      </Guide>
+
+      <Guide title="Encounter Templates — Creating & Managing">
+        <Steps steps={[
+          "Navigate to Settings → Encounter Templates.",
+          "Click + New Template.",
+          "Enter a Template Name and select the Note Type: SOAP Note (standard S/O/A/P), Nurses Note, or Non-Visit Note.",
+          "Set Visible to (All users or specific staff) and toggle Clinic-wide to share with your entire clinic.",
+          "Under Template Content, click + Add Field to add fields. Choose from Extract Field, Checklist, AI Instruction, Section Heading, or Vital Signs Block.",
+          "Drag fields to reorder them. The order shapes how the AI structures the final note.",
+          "Optionally add Standing Instructions — text that is always appended to every AI prompt for this template (e.g. 'Never use abbreviations in the Assessment/Plan section').",
+          "Click Create Template. The template appears in the encounter setup form when creating a new AI encounter.",
+        ]} />
+        <div className="mt-3 p-3 rounded-md text-xs" style={{ backgroundColor: "#fdf9f5", border: "1px solid #e8ddd0", color: "#7a6a54" }}>
+          <strong style={{ color: "#5a4a34" }}>Standing Instructions vs AI Instructions:</strong> Standing Instructions apply to every note generated with this template (good for clinic-wide formatting rules). AI Instruction fields are scoped to a specific section of the note — use them when the guidance only applies to one part of the SOAP output.
+        </div>
+      </Guide>
+
     </div>
   ),
 
