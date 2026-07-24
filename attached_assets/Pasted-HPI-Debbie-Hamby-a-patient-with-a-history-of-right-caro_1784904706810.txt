@@ -1,0 +1,70 @@
+HPI: Debbie Hamby, a patient with a history of right carotid artery with 30% blockage, presents for a follow-up on her hormone replacement therapy. She reports starting to feel better with a slight increase in energy and improvement in daytime hot flashes. Debbie is currently using estrogen gel every other day and taking progesterone 300 mg at night, which has significantly helped her sleep. She also continues with testosterone injections weekly. During the visit, there was a discussion about increasing the estrogen gel dose to 1 mg for better absorption and symptom control, as the current dose of 0.75 mg was not effective. Debbie has been diligent with her supplements, including CoQ10, Fish oil, and Estrovera, which she takes for general well-being and low estrogen symptoms. She plans to schedule labs in 8 weeks to assess her estrogen levels.
+
+Allergies: Not reported at this visit
+
+Current Medications: 
+
+Estrogen gel 0.75 mg topical every other day
+
+Progesterone 300 mg oral at night
+
+Testosterone 10 mg injection weekly
+
+Rosuvastatin (Crestor) 40 mg oral daily
+
+CoQ10
+
+Fish oil
+
+Estrovera
+
+Medical History: Right carotid artery with 30% blockage
+
+Surgical History: Not reported at this visit
+
+Social History: Not reported at this visit
+
+Family History: Not reported at this visit
+
+ROS
+
+Constitutional
+Low energy improving; severe night sweats better.
+Cardiovascular
+Right carotid artery with 30% blockage.
+Psychiatric
+Wired tired feeling improving.
+Endocrine
+Low estrogen symptoms improving.
+Vital Signs: BMI 22.34
+
+Physical Examination: Physical examination not performed at this encounter.
+
+ASSESSMENT & PLAN
+
+Overall Clinical Impression: Debbie Hamby is experiencing partial improvement in her perimenopausal symptoms with current hormone replacement therapy. Her energy levels and hot flashes have shown some improvement, indicating a partial response to treatment. The decision was made to increase the estrogen gel dose to enhance absorption and further alleviate symptoms. Her current regimen of progesterone and testosterone is being continued as it has been beneficial for her sleep and overall hormone optimization.
+
+1. Perimenopausal Transition with Symptom Complex (R53.83, N95.9)
+
+Clinical Rationale: Debbie reports improvement in energy levels and hot flashes, consistent with perimenopausal transition. Current estrogen gel dose of 0.75 mg was insufficient for symptom control. Increasing to 1 mg is expected to improve absorption and symptom management.
+
+Plan: Increase estrogen gel to 1 mg topical every other day. Continue progesterone 300 mg oral at night. Continue testosterone 10 mg injection weekly. Schedule labs in 8 weeks to assess estrogen levels.
+
+2. Hyperlipidemia (E78.5)
+
+Clinical Rationale: Debbie is on rosuvastatin 40 mg daily for hyperlipidemia, which is effectively managed. No changes are needed at this time.
+
+Plan: Continue rosuvastatin (Crestor) 40 mg oral daily. Reassess lipid panel at next follow-up.
+
+CARE PLAN
+Increase estrogen gel to 1 mg topical every other day to improve absorption and manage symptoms.
+
+Continue progesterone 300 mg oral at night to aid sleep.
+
+Continue testosterone 10 mg injection weekly for hormone optimization.
+
+Continue rosuvastatin (Crestor) 40 mg oral daily for hyperlipidemia.
+
+Continue taking CoQ10, Fish oil, and Estrovera as supplements for general well-being and low estrogen symptoms.
+
+Schedule labs in 8 weeks to assess estrogen levels.
