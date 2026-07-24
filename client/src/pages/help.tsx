@@ -119,6 +119,7 @@ function Bullet({ label, desc }: { label: string; desc: string }) {
 interface Section { id: string; icon: React.ElementType; label: string; badge?: string; }
 
 const SECTIONS: Section[] = [
+  { id: "setup", icon: CheckCircle2, label: "Set Up Account", badge: "Start Here" },
   { id: "getting-started", icon: Star, label: "Getting Started" },
   { id: "male-labs", icon: FlaskConical, label: "Male Lab Interpretation" },
   { id: "female-labs", icon: FlaskConical, label: "Female Lab Interpretation" },
@@ -138,6 +139,105 @@ const SECTIONS: Section[] = [
 // ── Section content ────────────────────────────────────────────────────────
 
 const CONTENT: Record<string, React.ReactNode> = {
+
+  "setup": (
+    <div className="space-y-7">
+
+      <div className="flex items-start gap-3 p-4 rounded-md" style={{ backgroundColor: "#edf2e6", border: "1px solid #c4d4a8" }}>
+        <CheckCircle2 className="h-5 w-5 mt-0.5 flex-shrink-0" style={{ color: "#4a6a28" }} />
+        <div>
+          <p className="text-sm font-semibold" style={{ color: "#1c2414" }}>Complete your account setup before your first patient visit</p>
+          <p className="text-xs mt-1" style={{ color: "#5a6a4a" }}>
+            These steps take about 10 minutes and ensure your SOAP note PDFs, lab reports, and patient portal all display your clinic's correct name, logo, and contact information. Each section below links to the exact location in your Account settings.
+          </p>
+        </div>
+      </div>
+
+      <Guide title="Step 1 — Confirm Your Clinic Name">
+        <p className="text-sm mb-3" style={{ color: "#5a6a4a" }}>
+          Your clinic name appears at the top of every generated PDF — SOAP notes, lab reports, wellness reports — and as the sender name in patient portal messages. Make sure it is exactly as you want it to appear on printed documents.
+        </p>
+        <Steps steps={[
+          "Click your avatar or name in the top-right corner of any page and select Account.",
+          "On the Account page, locate the Clinic Name field under your profile information.",
+          "Type your clinic's full legal or trade name exactly as it should appear on documents.",
+          "Click Save to apply the change. All future PDFs will use the updated name immediately.",
+        ]} />
+        <div className="mt-3 p-3 rounded-md text-xs" style={{ backgroundColor: "#fdf9f5", border: "1px solid #e8ddd0", color: "#7a6a54" }}>
+          <strong style={{ color: "#5a4a34" }}>Tip:</strong> If your clinic has multiple locations, use the full location-specific name (e.g., "Apex Health — Nashville") so PDFs are clearly attributed to the right office.
+        </div>
+      </Guide>
+
+      <Guide title="Step 2 — Upload Your Provider Signature">
+        <p className="text-sm mb-3" style={{ color: "#5a6a4a" }}>
+          Your signature is applied to signed and locked SOAP note PDFs. Uploading a signature image allows you to electronically sign chart notes directly within ClinIQ, creating a PDF that contains your real signature above your name and credentials.
+        </p>
+        <Steps steps={[
+          "Go to Account (top-right avatar menu).",
+          "Scroll to the Provider Signature section.",
+          "Click Upload Signature and select a PNG or JPEG image of your signature. A white or transparent background works best — avoid photos with dark or colored backgrounds.",
+          "Preview the signature as it will appear on a PDF. Crop or re-upload if needed.",
+          "Click Save. Your signature will be embedded in all future signed SOAP note PDFs.",
+        ]} />
+        <div className="mt-3 p-3 rounded-md text-xs" style={{ backgroundColor: "#fdf9f5", border: "1px solid #e8ddd0", color: "#7a6a54" }}>
+          <strong style={{ color: "#5a4a34" }}>Note:</strong> You can sign and lock individual SOAP notes from inside the chart. Once locked, the note becomes read-only and the signed PDF is available for download. The lock cannot be undone — use the amendment workflow to add corrections after signing.
+        </div>
+      </Guide>
+
+      <Guide title="Step 3 — Add Your Logo & Clinic Branding">
+        <p className="text-sm mb-3" style={{ color: "#5a6a4a" }}>
+          Your clinic logo appears in the header of all exported PDFs — SOAP notes, patient wellness reports, and lab summaries. You can also add a footer tagline that appears at the bottom of documents.
+        </p>
+        <Steps steps={[
+          "Go to Account (top-right avatar menu).",
+          "Scroll to the Clinic Branding section.",
+          "Click Upload Logo and select your clinic's logo file (PNG recommended; transparent background preferred for best results on white PDFs).",
+          "In the Footer Text field, enter any tagline, disclaimer, or contact line you want to appear at the bottom of every PDF — for example: \"Apex Health | 615-555-0100 | apexhealth.com\".",
+          "Click Save. Open any existing SOAP note and export a PDF to preview how your logo and footer appear on a printed document.",
+        ]} />
+        <div className="mt-3 p-3 rounded-md text-xs" style={{ backgroundColor: "#fdf9f5", border: "1px solid #e8ddd0", color: "#7a6a54" }}>
+          <strong style={{ color: "#5a4a34" }}>Logo sizing:</strong> A horizontal logo (wider than tall) works best. Aim for a file at least 400px wide for sharp print quality. Very tall logos may be automatically scaled down — a square or landscape crop gives the cleanest result.
+        </div>
+      </Guide>
+
+      <Guide title="Step 4 — Invite Your Staff">
+        <p className="text-sm mb-3" style={{ color: "#5a6a4a" }}>
+          If your clinic has nurses, MAs, front desk staff, or other providers, you can invite them to ClinIQ so each person has their own login. Staff members can be assigned different roles — Clinical Staff, Provider, or Admin — controlling what they can see and do.
+        </p>
+        <Steps steps={[
+          "Go to Account and scroll to the Staff Access section.",
+          "Click Invite Staff Member and enter the team member's email address.",
+          "Select their role: Provider (full clinical access), Clinical Staff (limited to assigned patients and tasks), or Admin (billing and settings access).",
+          "Click Send Invite. They will receive an email with a link to create their password and join your clinic.",
+          "Invited members appear in your staff list immediately. You can remove or change their role at any time.",
+        ]} />
+      </Guide>
+
+      <Guide title="Step 5 — Bulk Import Your Existing Patients">
+        <p className="text-sm mb-3" style={{ color: "#5a6a4a" }}>
+          If you are moving to ClinIQ from another system, you can bulk-create patient accounts using the Data Import tool — no need to add patients one by one. This lets your entire existing patient list be searchable in ClinIQ from day one.
+        </p>
+        <Steps steps={[
+          "Go to Account (top-right avatar menu) and click the Data Import tab.",
+          "Download the provided CSV template. Each row represents one patient — fill in first name, last name, date of birth, email address, and any other available fields.",
+          "Save the file and click Upload CSV on the Data Import page.",
+          "ClinIQ will preview the import and flag any rows with missing required fields. Review and correct errors before confirming.",
+          "Click Import Patients. Each patient is created immediately and appears in your patient search. No portal invitations are sent automatically — you can invite patients to the portal separately from inside their profile.",
+        ]} />
+        <div className="mt-3 p-3 rounded-md text-xs" style={{ backgroundColor: "#fdf9f5", border: "1px solid #e8ddd0", color: "#7a6a54" }}>
+          <strong style={{ color: "#5a4a34" }}>Tip:</strong> You can run the import multiple times — duplicate patients (matched by name and date of birth) will be skipped automatically. Import as many rows as you need; there is no limit on patient records.
+        </div>
+      </Guide>
+
+      <div className="flex items-start gap-3 p-4 rounded-md" style={{ backgroundColor: "#fdf9f5", border: "1px solid #e8ddd0" }}>
+        <Info className="h-4 w-4 mt-0.5 flex-shrink-0" style={{ color: "#7a8a64" }} />
+        <p className="text-xs" style={{ color: "#7a6a54" }}>
+          Once these five steps are complete, you are ready to start documenting visits. Head to <strong style={{ color: "#1c2414" }}>Getting Started</strong> in the left menu for a walkthrough of the clinical workflows, or launch the guided platform tour from that page.
+        </p>
+      </div>
+
+    </div>
+  ),
 
   "getting-started": (
     <div className="space-y-6">
@@ -947,7 +1047,7 @@ const CONTENT: Record<string, React.ReactNode> = {
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function HelpCenter() {
-  const [activeSection, setActiveSection] = useState("getting-started");
+  const [activeSection, setActiveSection] = useState("setup");
   const [search, setSearch] = useState("");
 
   const filtered = SECTIONS.filter(s =>
