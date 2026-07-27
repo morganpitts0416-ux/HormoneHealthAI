@@ -1,0 +1,81 @@
+HPI: Connie Robinson, a 56-year-old female, presents for an initial consultation regarding dizziness, hormone therapy, and primary care management. She reports experiencing dizzy spells for approximately one month, which she attributes to anxiety and a possible hormonal cause. These episodes have been inconsistent and are associated with a panic attack situation. She consulted her internal medicine doctor, who ordered blood work and suggested an ENT evaluation. The ENT specialist indicated a potential hormonal etiology for her dizziness. Connie is approximately five years post-menopause and has a history of high cholesterol and hypothyroidism. She has previously tried progesterone and estrogen briefly but discontinued them due to personal preference against medication use.
+
+Connie's recent labs revealed elevated LDL cholesterol at 178 mg/dL and total cholesterol at 292 mg/dL, with an ASCVD risk score of 1.7%, categorizing her as low risk. Her iron studies indicated low iron at 66 µg/dL and low iron saturation at 15%, suggesting mild iron deficiency. She is currently taking Synthroid 125 mcg, Centrum Women, and Aminolean. She recently started taking iron supplements to address her deficiency.
+
+Connie expresses concern about her cholesterol levels but is hesitant to start statin therapy given her low ASCVD risk score. She is interested in understanding the potential metabolic benefits of hormone therapy, particularly for cardiovascular and neurological protection, although she has not pursued this treatment.
+
+Allergies: Nitrofurantoin Mono-MCR 100 MG
+
+Current Medications: 
+
+Synthroid 125 mcg PO daily
+
+Centrum Women daily
+
+Aminolean daily
+
+Medical History: High Cholesterol | Hypothyroid
+
+Surgical History: Oral surgery April 2026 and June 2026 posts/implants
+
+Social History: Post-menopausal (>1 year without a period) | Never smoked or vaped | Alcohol: 2-4 times per month
+
+Family History: Father: Heart | Maternal Grandmother: Diabetes | Maternal Grandfather: Emphysema
+
+ROS
+
+Neurological
+Reports dizzy spells; no headaches.
+Psychiatric
+Anxiety-driven dizziness; no mood changes.
+Endocrine
+Post-menopausal status; hypothyroid.
+Hematologic/Lymphatic
+Mild iron deficiency.
+Vital Signs: BMI 24.3
+
+Physical Examination: Physical examination not performed at this encounter.
+
+ASSESSMENT & PLAN
+
+Overall Clinical Impression: Connie Robinson presents with symptoms suggestive of post-menopausal hormonal changes and anxiety contributing to dizziness. Her lab results indicate mild iron deficiency and elevated cholesterol levels, though her ASCVD risk remains low. The focus of today's visit is to address her dizziness, evaluate her cardiovascular risk, and consider the potential benefits of hormone therapy.
+
+1. Post-Menopausal Disorder with Symptom Complex (F52.0, R53.83, E34.9)
+
+Clinical Rationale: Connie is five years post-menopause with symptoms of dizziness and brain fog, potentially linked to hormonal changes. Her FSH level of 91.8 mIU/mL and estradiol level of 5 pg/mL confirm menopausal status. Anxiety appears to exacerbate her dizziness.
+
+Plan: Consider hormone therapy for long-term metabolic benefits if symptoms persist. Monitor symptoms and reassess at follow-up.
+
+Future Considerations: Discuss potential initiation of transdermal estradiol and micronized progesterone if symptomatic.
+
+2. Atherogenic Dyslipidemia (E78.2)
+
+Clinical Rationale: Elevated LDL cholesterol at 178 mg/dL and total cholesterol at 292 mg/dL, with low ASCVD risk score of 1.7%. No statin therapy recommended due to low risk.
+
+Plan: Lifestyle modifications recommended to manage cholesterol levels. Reassess lipid profile and ASCVD risk at future visits.
+
+Future Considerations: Consider statin therapy if ASCVD risk increases.
+
+3. Iron Deficiency (D50.9)
+
+Clinical Rationale: Low iron at 66 µg/dL and iron saturation at 15% suggest mild iron deficiency, contributing to dizziness.
+
+Plan: Continue iron supplementation. Monitor iron levels and symptoms.
+
+CARE PLAN
+Continue taking Synthroid 125 mcg by mouth daily.
+
+Take Centrum Women daily as a multivitamin.
+
+Continue Aminolean daily as a supplement.
+
+Continue iron supplementation as directed to address mild iron deficiency.
+
+Implement lifestyle modifications to manage cholesterol levels, including dietary changes and regular exercise.
+
+Monitor symptoms of dizziness and anxiety; report any changes.
+
+Follow up in 3 months to reassess cholesterol levels, iron status, and overall symptoms.
+
+FOLLOW-UP
+Follow up in 3 months to reassess cholesterol levels, iron status, and overall symptoms. Monitor for any changes in dizziness or anxiety. Return sooner if symptoms worsen or new symptoms develop.
