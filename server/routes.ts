@@ -147,7 +147,7 @@ async function syncScreeningSmartFields(
           status: "completed",
           addedManually: existing?.addedManually ?? !def,
           nextDueDate,
-          lastCompletedDate: completedDate,
+          lastCompletedDate: eventDate,
           lastOrderedBy: existing?.lastOrderedBy ?? null,
           lastFacility: existing?.lastFacility ?? null,
           lastResultSummary: existing?.lastResultSummary ?? null,
