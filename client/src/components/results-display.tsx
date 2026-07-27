@@ -155,15 +155,15 @@ export function ResultsDisplay({
         </CardHeader>
         <CardContent>
           <div className="rounded-md border overflow-x-auto">
-            <Table>
+            <Table className="min-w-[900px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[180px]">Marker</TableHead>
                   <TableHead className="w-[120px]">Value</TableHead>
                   <TableHead className="w-[100px]">Status</TableHead>
                   <TableHead className="w-[140px]">Reference Range</TableHead>
-                  <TableHead>Assessment</TableHead>
-                  <TableHead>Management</TableHead>
+                  <TableHead className="min-w-[200px]">Assessment</TableHead>
+                  <TableHead className="min-w-[200px]">Management</TableHead>
                   <TableHead className="w-[60px] text-center">Alert</TableHead>
                   {onToggleCategory && <TableHead className="w-[36px]" />}
                 </TableRow>
