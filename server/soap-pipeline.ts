@@ -1400,18 +1400,44 @@ Relevant social history mentioned in the encounter. When PATIENT CHART DATA prov
 FAMILY HISTORY:
 Relevant family history mentioned in the encounter. When PATIENT CHART DATA provides family history, use those exact items verbatim.
 
-REVIEW OF SYSTEMS (ROS) — STRICT FORMATTING:
+REVIEW OF SYSTEMS (ROS) — STRICT FORMATTING AND CONTENT RULES:
 Always render as a fixed two-column chart — body system on the left, findings on the right. NEVER produce a running paragraph, comma-separated list, bulleted list, or partial subset.
 
-Rules:
+PURPOSE OF THE ROS: The ROS documents the patient's subjective symptoms by organ system, based only on what the patient reports experiencing or specifically denies during this encounter. It answers two questions: (1) What symptoms does the patient currently report? (2) What relevant symptoms does the patient specifically deny?
+
+CONTENT RULES — WHAT BELONGS IN THE ROS:
+- Patient-reported symptoms: things the patient says they are experiencing ("I've been having hot flashes," "I get dizzy sometimes," "I've been anxious").
+- Explicit patient denials: symptoms the patient specifically denied, or symptoms the provider directly reviewed and the patient confirmed absent.
+- Write symptom-based statements. Examples of correct ROS entries:
+  • Cardiovascular: Denies chest pain, palpitations, or syncope.
+  • Neurological: Reports intermittent dizziness and brain fog. Denies focal weakness or numbness.
+  • Psychiatric: Reports episodes of anxiety and panic-like symptoms.
+  • Endocrine: Reports hot flashes, night sweats, and sleep disturbance.
+  • Hematologic/Lymphatic: Reports persistent fatigue. Denies easy bruising or bleeding.
+
+CONTENT RULES — WHAT DOES NOT BELONG IN THE ROS:
+The following categories must NEVER appear in any ROS row. If you find yourself writing any of these, stop and move the content to the correct section (HPI, Medical History, or Assessment/Plan):
+- Diagnoses (e.g., "Elevated cholesterol noted," "Iron deficiency noted," "Hypothyroidism")
+- Laboratory abnormalities or lab values (e.g., "ferritin low," "TSH elevated," "A1c 5.8")
+- Imaging or screening results (e.g., "Carotid screening showed no blockage," "Mammogram completed," "Bone density scan ordered")
+- Menopausal status or reproductive stage (e.g., "Menopausal status confirmed," "Postmenopausal," "Last menstrual period 3 years ago")
+- Treatment discussions, medication decisions, or therapy recommendations (e.g., "Hormone therapy discussed," "Statin therapy considered," "Patient started on estradiol")
+- Provider conclusions, clinical impressions, or assessments (e.g., "Anxiety discussed and addressed," "Cardiovascular risk reviewed")
+- Medical or surgical history items that are not active symptoms reported at this visit
+
+DO NOT INFER OR FABRICATE ROS ENTRIES:
+- Do NOT write "denies" statements unless the patient explicitly denied the symptom in this encounter, or the provider directly reviewed it with the patient.
+- Do NOT infer normal findings from the absence of complaint. Silence is not a denial.
+- Do NOT populate a system row with diagnoses or chart data simply because that system is clinically relevant. If the patient did not report symptoms and the provider did not review it, the system was not addressed.
+
+FORMAT RULES:
 1. Output exactly these 13 system rows, in this exact order, each on its own line: Constitutional, HEENT, Cardiovascular, Respiratory, Gastrointestinal, Genitourinary, Musculoskeletal, Skin, Neurological, Psychiatric, Endocrine, Hematologic/Lymphatic, Allergic/Immunologic.
 2. Each row format: "System Name: <findings>." — the colon is REQUIRED so the chart renders correctly.
 3. No bullets, no dashes, no markdown tables, no numbering. One system per line.
-4. Findings: pertinent positives first, then pertinent negatives, separated by semicolons.
-5. If a system was NOT addressed: write exactly "System Name: Not addressed at this visit."
-6. Do NOT invent symptoms — only document positives from the transcript or extraction, plus relevant denials the patient explicitly stated.
-7. This format applies on EVERY note regardless of visit length. Even a 5-minute focused visit gets all 13 rows.
-8. Do NOT collapse the ROS into the HPI. Do NOT skip the ROS. Do NOT replace it with "see HPI."
+4. Pertinent positives (reported symptoms) first, then pertinent negatives (explicit denials), separated by semicolons.
+5. If a system was NOT meaningfully addressed with symptom-level discussion: write exactly "System Name: Not addressed at this visit."
+6. This format applies on EVERY note regardless of visit length. Even a 5-minute focused visit gets all 13 rows.
+7. Do NOT collapse the ROS into the HPI. Do NOT skip the ROS. Do NOT replace it with "see HPI."
 
 VITAL SIGNS:
 If provided: document each value. If not obtained: "Not obtained at this encounter."
@@ -1942,7 +1968,8 @@ Social History: [if mentioned; "Not reported at this visit" if not mentioned. If
 Family History: [if mentioned; "Not reported at this visit" if not mentioned. If PATIENT CHART DATA provides family history, use those items verbatim.]
 
 ROS:
-Constitutional: <pertinent positives; pertinent negatives — or "Not addressed at this visit.">
+[Document ONLY patient-reported symptoms and explicit patient denials. Do NOT include diagnoses, lab results, imaging findings, menopausal status, treatment discussions, or provider conclusions. If a system was not addressed with symptom-level discussion, write "Not addressed at this visit."]
+Constitutional: <patient-reported symptoms such as fatigue, fever, chills, weight changes, night sweats — OR explicit denials — OR "Not addressed at this visit.">
 HEENT: <...>
 Cardiovascular: <...>
 Respiratory: <...>
@@ -1955,7 +1982,7 @@ Psychiatric: <...>
 Endocrine: <...>
 Hematologic/Lymphatic: <...>
 Allergic/Immunologic: <...>
-[All 13 systems must appear, in this exact order, each on its own line, in "System Name: findings." format. NEVER produce a paragraph, comma-separated list, or partial list.]
+[All 13 systems must appear, in this exact order, each on its own line, in "System Name: findings." format. NEVER produce a paragraph, comma-separated list, or partial list. NEVER place diagnoses, lab values, screening results, or treatment discussions in any row.]
 
 Vital Signs: [if provided; "Not obtained at this encounter" if not]
 
@@ -2336,7 +2363,19 @@ CHECK FOR:
 14. MISCLASSIFIED SUGGESTIONS: Does needs_clinician_review contain "SUGGESTED (awaiting clinician approval):" items for actions that were EXPLICITLY DISCUSSED AND DECIDED during the encounter? If so, move them to the Plan and remove from needs_clinician_review.
 15. COUNSELING AND SDM INTEGRATION: When the transcript contains specific counseling content (named side effects, titration steps reviewed, administration instructions, alternatives weighed, return precautions stated) — is this content preserved in the note? It should appear woven into the clinical reasoning paragraph for each affected Assessment item — NOT as a separate "Counseling / Education:" sub-line. If meaningful counseling content from the transcript is collapsed into a vague phrase ("risks and benefits discussed," "patient educated"), flag as important and integrate it naturally into the clinical reasoning. Do NOT add "Counseling / Education:" or "Monitoring / Follow-up:" sub-section headers — that format is forbidden.
 16. SHARED DECISION-MAKING VISIBILITY: When the transcript shows the patient and provider weighed options or the patient stated a preference, the note should make that visible through the specifics of the reasoning — what alternatives were considered, why the chosen option was selected, what the patient preferred. This belongs in the clinical reasoning paragraph, not in boilerplate consent language.
-17. ROS FORMAT COMPLIANCE: Is the Review of Systems rendered as the required 13-row two-column chart, with each of these systems on its own line in this exact order — Constitutional, HEENT, Cardiovascular, Respiratory, Gastrointestinal, Genitourinary, Musculoskeletal, Skin, Neurological, Psychiatric, Endocrine, Hematologic/Lymphatic, Allergic/Immunologic — each in "System Name: findings." format (colon required)? If the ROS was instead written as a paragraph, a comma-separated list, a bulleted list, a partial subset of systems, or any other format — REVISE the ROS section to the strict 13-row chart format. Use "Not addressed at this visit." for any system that was not discussed. Do NOT invent symptoms; preserve all documented positives and negatives. This rule applies to the ROS section ONLY — do NOT alter Assessment/Plan/HPI/Care Plan/Follow-up formatting.
+17. ROS FORMAT AND CONTENT COMPLIANCE: Evaluate the Review of Systems on two dimensions:
+
+FORMAT: Is it rendered as the required 13-row two-column chart, with each of these systems on its own line in this exact order — Constitutional, HEENT, Cardiovascular, Respiratory, Gastrointestinal, Genitourinary, Musculoskeletal, Skin, Neurological, Psychiatric, Endocrine, Hematologic/Lymphatic, Allergic/Immunologic — each in "System Name: findings." format (colon required)? If the ROS was instead written as a paragraph, a comma-separated list, a bulleted list, a partial subset, or any other format — REVISE to the strict 13-row chart. Use "Not addressed at this visit." for any system not addressed. This rule applies to the ROS section ONLY.
+
+CONTENT: Does every ROS row contain ONLY patient-reported symptoms or explicit patient denials? Scan each row for the following prohibited content categories — if found, flag as CRITICAL and remove from that row (move to the appropriate section or omit):
+  - Diagnoses stated as findings (e.g., "Elevated cholesterol noted," "Iron deficiency noted," "Hypothyroidism present") → these belong in Assessment/Plan or Medical History, not ROS
+  - Laboratory abnormalities or lab values (e.g., "ferritin low," "TSH elevated") → Assessment/Plan only
+  - Imaging or screening results (e.g., "Carotid screening showed no blockage," "Mammogram completed") → HPI or Assessment/Plan only
+  - Menopausal status or reproductive stage (e.g., "Menopausal status confirmed," "Postmenopausal") → HPI only
+  - Treatment discussions or medication decisions (e.g., "Hormone therapy discussed," "Statin therapy considered") → HPI or Assessment/Plan only
+  - Provider conclusions or clinical impressions (e.g., "Anxiety discussed and addressed") → Assessment/Plan only
+  - Fabricated denials: "Denies X" written for a symptom the patient never explicitly addressed → remove; silence is not a denial
+After removing prohibited content, if a row has no remaining patient-reported symptom or explicit denial, replace its content with "Not addressed at this visit."
 18. TREATMENT RATIONALE COMPLETENESS: For each new medication initiated or dose changed at this visit — does the Assessment item's clinical reasoning paragraph explicitly connect: (a) the specific symptoms it addresses, (b) the diagnosis or clinical pattern driving the decision, (c) relevant lab values or findings (cited numerically if available), and (d) the provider's reasoning for choosing this treatment at this dose? A reasoning paragraph that only says "testosterone initiated for low testosterone levels" when specific symptoms, labs, and provider reasoning are present in the transcript is an important omission. If the rationale is present in the transcript but not reflected in the note, revise the clinical reasoning paragraph to include it.
 19. CAUSAL LANGUAGE ACCURACY: Does the note correctly distinguish confirmed causation from temporal association and coincidence? Specifically: (a) are symptoms that pre-date a medication incorrectly attributed to that medication? (b) does the note say a medication "is causing" a symptom when the provider only expressed uncertainty or possibility? (c) are temporally associated symptoms described without appropriate hedging language ("appears to worsen," "may be contributing," "temporally associated with")? If the note makes overconfident causal claims unsupported by the transcript, flag as important and revise to use nuanced causal language matching the provider's actual certainty level.
 20. ICD-10 CODE ACCURACY FOR RULE-OUT AND EVALUATION ITEMS: When an Assessment item is labeled as "potential," "possible," "rule out," "evaluating for," or uses similar hedged language, the ICD-10 code assigned MUST reflect the presenting symptom or sign — NOT the confirmed disease code. Specific disease codes are only appropriate when the provider has confirmed or strongly implied the diagnosis. Examples of incorrect coding: using K85.80 (acute pancreatitis) for a visit where the plan is to order enzyme labs to rule it out; using J45.x (asthma) for "possible reactive airway disease under evaluation"; using K50.x (Crohn's) for "rule out inflammatory bowel disease." For unconfirmed diagnoses being evaluated, use the appropriate symptom or sign code (e.g., R10.13 for epigastric pain, R19.7 for diarrhea, K59.9 for intestinal disorder unspecified). If the note assigns a confirmed disease ICD-10 code to an item explicitly described as a rule-out, possible, or under-evaluation diagnosis, flag as important and revise to use the appropriate symptom or sign code.
