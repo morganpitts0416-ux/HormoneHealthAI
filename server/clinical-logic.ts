@@ -708,6 +708,19 @@ export class ClinicalLogicEngine {
       });
     }
 
+    // LDL — if triglycerides are very high and LDL is absent, document why
+    if (labs.ldl === undefined && labs.triglycerides !== undefined && labs.triglycerides >= 400) {
+      interpretations.push({
+        category: 'LDL Cholesterol',
+        value: undefined,
+        unit: 'mg/dL',
+        status: 'borderline' as const,
+        referenceRange: '<130 mg/dL (optimal)',
+        interpretation: `LDL not reported — cannot be calculated when triglycerides are ≥400 mg/dL (${labs.triglycerides} mg/dL). ASCVD risk calculations requiring LDL were not performed.`,
+        recommendation: 'Obtain direct LDL measurement (non-Friedewald method) once triglycerides are reduced. Address severely elevated triglycerides first: eliminate alcohol, reduce refined carbohydrates, consider fibrate therapy.',
+      });
+    }
+
     // LDL
     if (labs.ldl !== undefined) {
       let status: LabInterpretation['status'] = 'normal';

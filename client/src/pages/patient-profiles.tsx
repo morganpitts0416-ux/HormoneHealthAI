@@ -875,7 +875,7 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
 
       {/* Scrollable content */}
       {!minimized && (
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto overflow-x-auto">
           {!interp ? (
             <div className="flex items-center justify-center h-40 text-sm text-muted-foreground">
               No interpretation data saved for this lab result.

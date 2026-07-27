@@ -133,6 +133,7 @@ EXTRACTION RULES:
    - Total Bilirubin: T. Bilirubin, TBIL
    - Total Protein: TP, Total Prot
    - LDL: LDL-C, LDL Cholesterol, LDL Chol, LDL (Calc)
+     IMPORTANT for LDL: When the lab reports LDL as "Unable to calculate", "Cannot be calculated", "---", "N/A", or any non-numeric text (which commonly occurs when triglycerides are >=400 mg/dL), do NOT extract an LDL value and do NOT substitute any nearby number. Leave "ldl" absent from the output entirely.
    - HDL: HDL-C, HDL Cholesterol, HDL Chol
    - Total Cholesterol: Cholesterol, Chol, CHOL, TC
    - Triglycerides: TG, TRIG, Trigs
@@ -147,6 +148,7 @@ EXTRACTION RULES:
    - Progesterone: Prog, P4
    - LH: Luteinizing Hormone
    - FSH: Follicle Stimulating Hormone
+     CRITICAL — LH AND FSH ARE DISTINCT TESTS: Never use the FSH value for LH, or the LH value for FSH. If only FSH appears on the lab panel, output only "fsh" and leave "lh" absent. If only LH appears, output only "lh" and leave "fsh" absent. Do NOT infer, duplicate, or cross-populate these values under any circumstances.
    - Prolactin: PRL
    - DHEA-S: DHEAS, DHEA Sulfate, Dehydroepiandrosterone Sulfate
    - AMH: Anti-Mullerian Hormone, MIS
