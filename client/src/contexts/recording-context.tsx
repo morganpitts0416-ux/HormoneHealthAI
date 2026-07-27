@@ -6,6 +6,17 @@ import type { DiarizedUtterance } from "@shared/schema";
 export type RecordingState = "idle" | "recording" | "transcribing" | "review" | "error";
 
 const SEGMENT_MS = 60_000;
+// Upload retry policy: transient network/server failures must NOT silently
+// drop a minute of clinical audio. Each segment upload is attempted up to
+// MAX_UPLOAD_ATTEMPTS times with backoff, the raw blob is retained for one
+// last retry at finalize time, and only then is an explicit gap marker
+// written into the transcript so the clinician can see exactly what's missing.
+const MAX_UPLOAD_ATTEMPTS = 3;
+const UPLOAD_BACKOFF_MS = [1500, 4000];
+export const AUDIO_GAP_MARKER_PREFIX = "[AUDIO GAP";
+const gapMarker = (segIdx: number) =>
+  `${AUDIO_GAP_MARKER_PREFIX} — minute ${segIdx + 1} of the recording could not be transcribed]`;
+const sleep = (ms: number) => new Promise<void>(res => setTimeout(res, ms));
 
 export interface StartRecordingParams {
   patientId: number;
@@ -69,12 +80,19 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
   const transcribedSegmentsRef = useRef<Map<number, string>>(new Map());
   const transcribedUtterancesRef = useRef<Map<number, DiarizedUtterance[] | null>>(new Map());
   const pendingSegmentsRef = useRef(0);
+  // Raw audio blobs for segments whose uploads exhausted all retries.
+  // Held so finalize() can make one last attempt before writing a gap marker.
+  const failedSegmentBlobsRef = useRef<Map<number, Blob>>(new Map());
   // Counts MediaRecorder.stop() calls whose onstop has not yet fired.
   // Used so stop() can wait for an in-flight mid-segment flush to land
   // (and bump pendingSegmentsRef from onstop) before deciding to finalize.
   const pendingFlushesRef = useRef(0);
   const recordingStoppedRef = useRef(false);
   const finalizedRef = useRef(false);
+  // Set when the recorder died mid-session and could not be recovered.
+  // Blocks any later finalize() from overwriting the error state with a
+  // normal "review" transition — the clinician MUST see the interruption.
+  const recordingAbortedRef = useRef(false);
 
   // PATIENT-SAFETY: Every start() bumps this generation counter. Async callbacks
   // (onstop, transcribeSegment, finalize, flushSegment timeouts) capture the
@@ -131,6 +149,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
 
   // Reset all internal state — call after review/discard/error dismiss
   const resetAll = useCallback(() => {
+    failedSegmentBlobsRef.current.clear();
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     if (segmentTimerRef.current) { clearInterval(segmentTimerRef.current); segmentTimerRef.current = null; }
     if (streamRef.current) {
@@ -146,6 +165,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     pendingFlushesRef.current = 0;
     recordingStoppedRef.current = false;
     finalizedRef.current = false;
+    recordingAbortedRef.current = false;
     boundPatientIdRef.current = null;
     boundEncounterIdRef.current = null;
     visitTypeRef.current = "follow-up";
@@ -164,6 +184,25 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     setState("idle");
   }, [releaseWakeLock]);
 
+  // Single upload+transcribe attempt for one segment blob. Throws on failure.
+  const uploadSegmentOnce = useCallback(async (blob: Blob, segIdx: number) => {
+    const ext = (blob.type || "audio/webm").includes("ogg") ? "ogg" : "webm";
+    const file = new File([blob], `seg-${segIdx}.${ext}`, { type: blob.type || "audio/webm" });
+    const formData = new FormData();
+    formData.append("audio", file);
+    formData.append("visitType", visitTypeRef.current);
+    const res = await fetch("/api/encounters/transcribe", {
+      method: "POST",
+      body: formData,
+      credentials: "include",
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || "Transcription failed");
+    }
+    return (await res.json()) as { transcription?: string; utterances?: DiarizedUtterance[] | null };
+  }, []);
+
   // Once all segments have been transcribed AND recording has stopped, persist
   // the final transcript to the bound encounter and switch to review state.
   // `session` is the recording generation captured by the caller; if it no
@@ -172,7 +211,29 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
   const finalize = useCallback(async (session: number) => {
     if (session !== recordingSessionRef.current) return;
     if (finalizedRef.current) return;
+    if (recordingAbortedRef.current) return; // recorder died — stay in error state
     finalizedRef.current = true;
+
+    // LAST-CHANCE RETRY: any segment that exhausted its upload retries still
+    // has its raw audio blob held in memory. Try each once more (sequentially)
+    // before assembling the final transcript, so a transient outage mid-visit
+    // doesn't permanently lose audio we still possess.
+    if (failedSegmentBlobsRef.current.size > 0) {
+      const failed = Array.from(failedSegmentBlobsRef.current.entries()).sort((a, b) => a[0] - b[0]);
+      for (const [segIdx, blob] of failed) {
+        if (session !== recordingSessionRef.current) return;
+        try {
+          const data = await uploadSegmentOnce(blob, segIdx);
+          if (session !== recordingSessionRef.current) return;
+          transcribedSegmentsRef.current.set(segIdx, data.transcription ?? "");
+          transcribedUtterancesRef.current.set(segIdx, data.utterances ?? null);
+          failedSegmentBlobsRef.current.delete(segIdx);
+        } catch {
+          // Gap marker already in place for this segment — leave it.
+        }
+      }
+    }
+    const unrecoveredGaps = failedSegmentBlobsRef.current.size;
 
     // Collect segment indices in ascending order
     const indices = Array.from(transcribedSegmentsRef.current.keys()).sort((a, b) => a - b);
@@ -195,6 +256,15 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
 
     setFinalTranscript(fullTranscript);
     setFinalUtterances(utterances);
+
+    if (unrecoveredGaps > 0) {
+      toast({
+        variant: "destructive",
+        title: `Transcript is INCOMPLETE — ${unrecoveredGaps} minute${unrecoveredGaps === 1 ? "" : "s"} of audio missing`,
+        description: "The missing sections are marked with [AUDIO GAP …] in the transcript. Review carefully before generating a note; the note cannot include what was not transcribed.",
+        duration: 30000,
+      });
+    }
 
     const encounterId = boundEncounterIdRef.current;
     const patientId = boundPatientIdRef.current;
@@ -231,25 +301,25 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
 
     if (session !== recordingSessionRef.current) return;
     setState("review");
-  }, []);
+  }, [toast, uploadSegmentOnce]);
 
   const transcribeSegment = useCallback(async (blob: Blob, segIdx: number, session: number) => {
-    const ext = (blob.type || "audio/webm").includes("ogg") ? "ogg" : "webm";
-    const file = new File([blob], `seg-${segIdx}.${ext}`, { type: blob.type || "audio/webm" });
     try {
-      const formData = new FormData();
-      formData.append("audio", file);
-      formData.append("visitType", visitTypeRef.current);
-      const res = await fetch("/api/encounters/transcribe", {
-        method: "POST",
-        body: formData,
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.message || "Transcription failed");
+      let data: { transcription?: string; utterances?: DiarizedUtterance[] | null } | null = null;
+      let lastErr: any = null;
+      for (let attempt = 0; attempt < MAX_UPLOAD_ATTEMPTS; attempt++) {
+        if (session !== recordingSessionRef.current) return;
+        try {
+          data = await uploadSegmentOnce(blob, segIdx);
+          break;
+        } catch (err: any) {
+          lastErr = err;
+          if (attempt < MAX_UPLOAD_ATTEMPTS - 1) {
+            await sleep(UPLOAD_BACKOFF_MS[Math.min(attempt, UPLOAD_BACKOFF_MS.length - 1)]);
+          }
+        }
       }
-      const data = await res.json();
+      if (data === null) throw lastErr ?? new Error("Transcription failed");
       // PATIENT-SAFETY: bail out if the recording session has been replaced
       // (e.g. user discarded then started a new recording for a different
       // patient). Late results from the prior session must NOT be written
@@ -272,13 +342,17 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
       }
     } catch (err: any) {
       if (session !== recordingSessionRef.current) return;
-      transcribedSegmentsRef.current.set(segIdx, "");
+      // All retries exhausted. Write an EXPLICIT gap marker (never a silent
+      // empty string) and keep the raw blob so finalize() can try once more.
+      transcribedSegmentsRef.current.set(segIdx, gapMarker(segIdx));
       transcribedUtterancesRef.current.set(segIdx, null);
+      failedSegmentBlobsRef.current.set(segIdx, blob);
       setSegmentsDone(d => d + 1);
       toast({
         variant: "destructive",
-        title: `Segment ${segIdx + 1} failed`,
-        description: err?.message || "One recording segment could not be transcribed.",
+        title: `Segment ${segIdx + 1} failed after ${MAX_UPLOAD_ATTEMPTS} attempts`,
+        description: "One minute of audio could not be transcribed yet. A final retry will run when you stop the recording; any remaining gap will be clearly marked in the transcript.",
+        duration: 10000,
       });
     } finally {
       if (session === recordingSessionRef.current) {
@@ -288,7 +362,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
         }
       }
     }
-  }, [toast, finalize]);
+  }, [toast, finalize, uploadSegmentOnce]);
 
   const startSegmentRecorder = useCallback((stream: MediaStream) => {
     const segIdx = segmentIndexRef.current;
@@ -336,12 +410,29 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
       // the user hasn't stopped/discarded.
       if (session !== recordingSessionRef.current) return;
       if (!recordingStoppedRef.current && streamRef.current) {
-        try {
-          startSegmentRecorder(stream);
-        } catch (err: any) {
+        // AUTO-RECOVERY: a single restart failure must not silently end an
+        // hour-long encounter recording. Retry the restart a few times with
+        // short delays before giving up loudly.
+        const tryRestart = (attempt: number) => {
+          if (session !== recordingSessionRef.current) return;
+          if (recordingStoppedRef.current || !streamRef.current) return;
+          try {
+            startSegmentRecorder(stream);
+            return;
+          } catch (err: any) {
+            if (attempt < 3) {
+              setTimeout(() => tryRestart(attempt + 1), 500 * attempt);
+              return;
+            }
+            failRecording(err);
+          }
+        };
+        const failRecording = (err: any) => {
           // Recorder failed to restart mid-recording. Tear everything down
           // immediately so we don't leak mic tracks / wake lock / timers
-          // while the error banner is shown.
+          // while the error banner is shown. recordingAbortedRef blocks any
+          // in-flight segment completion from finalizing into "review".
+          recordingAbortedRef.current = true;
           recordingStoppedRef.current = true;
           if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
           if (segmentTimerRef.current) { clearInterval(segmentTimerRef.current); segmentTimerRef.current = null; }
@@ -353,7 +444,8 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
           releaseWakeLock();
           setErrorMessage(err?.message || "Recording was interrupted and could not resume.");
           setState("error");
-        }
+        };
+        tryRestart(1);
       }
     }, 150);
   }, [releaseWakeLock, startSegmentRecorder]);
@@ -390,6 +482,8 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     pendingSegmentsRef.current = 0;
     recordingStoppedRef.current = false;
     finalizedRef.current = false;
+    recordingAbortedRef.current = false;
+    failedSegmentBlobsRef.current.clear();
     transcribedSegmentsRef.current.clear();
     transcribedUtterancesRef.current.clear();
     boundPatientIdRef.current = params.patientId;

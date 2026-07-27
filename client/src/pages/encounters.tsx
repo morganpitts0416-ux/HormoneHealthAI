@@ -950,6 +950,7 @@ export function EncounterEditor({
     mutationFn: async () => {
       if (!patientId) throw new Error("Please select a patient first");
       if (!selectedTemplateId) throw new Error("Please select a template first");
+      if (!confirmTranscriptGaps()) throw new Error("Generation cancelled — transcript has audio gaps");
 
       setGlobalLoading("June is reading the transcript…", { june: true, juneImage: "analyzing" });
 
@@ -1057,10 +1058,23 @@ export function EncounterEditor({
     onError: (e: any) => toast({ variant: "destructive", title: "Save failed", description: e.message }),
   });
 
+  // TRANSCRIPT-INTEGRITY: if the transcript contains explicit audio-gap
+  // markers (segments whose upload/transcription failed permanently), the
+  // clinician must acknowledge before generating a note — a note generated
+  // from an incomplete transcript can silently omit clinical decisions.
+  const confirmTranscriptGaps = (): boolean => {
+    const gaps = (transcription.match(/\[AUDIO GAP/g) || []).length;
+    if (gaps === 0) return true;
+    return window.confirm(
+      `WARNING: This transcript is INCOMPLETE — ${gaps} minute${gaps === 1 ? "" : "s"} of audio could not be transcribed (marked with [AUDIO GAP …]).\n\nA note generated now may omit parts of the encounter. Generate anyway?`
+    );
+  };
+
   // Generate SOAP note
   const soapMutation = useMutation({
     mutationFn: async () => {
       if (!patientId) throw new Error("Please select a patient first");
+      if (!confirmTranscriptGaps()) throw new Error("Generation cancelled — transcript has audio gaps");
 
       let encounterId = savedId;
 
@@ -1137,6 +1151,7 @@ export function EncounterEditor({
     if (!patientId) { toast({ variant: "destructive", title: "Select a patient first" }); return; }
     const hasContent = transcription.trim().length > 0 || (diarizedTranscript?.length ?? 0) > 0;
     if (!hasContent) { toast({ variant: "destructive", title: "No transcript", description: "Record or paste a transcript before generating." }); return; }
+    if (!confirmTranscriptGaps()) return;
 
     setAutoGenerating("both");
     try {

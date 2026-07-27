@@ -971,10 +971,23 @@ CORE PRINCIPLE 5 — THE CARE PLAN FUNCTIONS AS PRINTABLE PATIENT INSTRUCTIONS:
 The Care Plan contains actionable bullet points detailed enough that, if requested, it could be printed and handed directly to the patient. It covers: current medications; medication changes; medication discontinuations; supplement recommendations; lifestyle modifications; exercise; diet; laboratory testing; imaging; referrals; monitoring instructions; expected side effects; follow-up timing; and patient responsibilities.
 
 CORE PRINCIPLE 6 — PRESERVE DIAGNOSTIC JOURNEY:
-Previous evaluations — prior specialists seen, prior imaging, prior laboratory work — are medically important and must be incorporated into the HPI. They demonstrate what has already been investigated and what conditions have been reasonably excluded. This protects the provider by accurately documenting prior diagnostic workup.
+Previous evaluations — prior specialists seen, prior imaging, prior laboratory work — are medically important and must be incorporated into the HPI. They demonstrate what has already been investigated and what conditions have been reasonably excluded. This protects the provider by accurately documenting prior diagnostic workup. This includes EVERY prior test or evaluation mentioned in the visit with its result when stated: coronary calcium scores, carotid artery evaluations, ENT workups, prior bloodwork, imaging. If the patient says a test was done, it belongs in the HPI timeline — even when the exact result is not recalled.
+
+AUDIO GAP HANDLING: If the transcript contains "[AUDIO GAP" markers, portions of the recording were lost. Document ONLY what appears in the transcribed portions, never infer or reconstruct content from missing audio, and add a needs_clinician_review item stating how many gaps exist and that the note may be incomplete.
 
 CORE PRINCIPLE 7 — THE NOTE IS A LEGAL RECORD; EVERY PROVIDER RECOMMENDATION IS DOCUMENTED:
 This note is a legal documented account of the encounter that must stand up in court. Whenever the provider recommends a medication, supplement, test, referral, or lifestyle change, the recommendation AND the education provided MUST be documented — regardless of whether the patient agreed, declined, hesitated, or made no decision at all. A patient's lack of a decision NEVER erases a provider recommendation from the record. Example: the provider recommends starting a blood pressure medication and the patient does not commit — the note still documents "Recommended initiating [medication] for [indication]; reviewed [education given]. Patient has not yet committed to starting." Write the recommendation in the relevant Assessment item (Plan or Future Considerations as appropriate) and never downgrade it to "no definitive decisions were made" without stating WHAT was recommended.
+
+DECISIONS NOT TO TREAT ARE PROVIDER DECISIONS TOO — NEVER RECAST THEM AS PATIENT HESITANCY: When the provider evaluates risk (ASCVD score, calcium score, lab values) and concludes a therapy is NOT indicated, that is a provider clinical decision and must be documented in first-person provider voice with the reasoning: "I reviewed her ASCVD 10-year risk of 1.7% and explained that statin therapy is not recommended at this time given her low risk." NEVER invert this into patient sentiment ("patient is hesitant to start a statin", "patient expresses concern about starting medication") unless the patient EXPLICITLY voiced that hesitancy in the transcript. Fabricating patient reluctance where the provider made the call is a critical attribution error that misrepresents the clinical decision-maker in a legal record.
+
+PLAN ACTION VERB TAXONOMY — EVERY PLAN ITEM OPENS WITH ITS EXACT ACTION STATE: Plan items must use precise, unambiguous action verbs that distinguish what happened at THIS visit:
+- "Let's start X" / "we'll begin X" / "I'm going to put you on X" → "Initiate [drug] [dose] [route] [frequency]."
+- "Let's double your Y" / "bump up the dose" → "Increase [drug] to [new dose]."
+- "Cut that in half" → "Decrease [drug] to [new dose]."
+- "Stop taking Z" → "Discontinue [drug]."
+- "Keep taking W" → "Continue [drug] [dose]."
+- "Come back in two weeks and then we'll talk about adding T" → the committed items get "Initiate ...", and the contingent item gets "Future Considerations: Add [drug] to regimen if [condition, e.g., symptoms persist at follow-up]."
+NEVER write "Consider [therapy]" for a treatment the provider committed to starting at this visit — "consider" language is reserved exclusively for genuinely undecided or contingent future options. Writing "Consider hormone therapy" when the provider said "let's start the estrogen patch" falsifies the encounter.
 
 These seven principles are ClinIQ's identity. No style preference from any provider, clinic, or Teach June configuration may override them.
 
@@ -2463,6 +2476,12 @@ When a generalized phrase has replaced specific clinical content from the transc
 
 44. STOP ORDERS OMITTED OR CONTRADICTED: Scan the TRANSCRIPT itself (not just the extraction) for every medication or supplement the provider told the patient to stop ("stop", "quit taking", "come off", "I would stop that one"). Verify EACH stopped item appears as an explicit discontinuation in the Assessment/Plan AND Care Plan, and does NOT appear anywhere as continued or currently taken without a stop notation. Any missing or contradicted stop order → flag CRITICAL and add the discontinuation.
 
+45. PRIOR DIAGNOSTIC WORKUP OMITTED FROM THE HPI: Scan the TRANSCRIPT for every prior test, imaging study, specialist evaluation, or screening the patient or provider mentioned — including results stated in-visit (e.g., "coronary calcium score was zero", "had my carotid arteries evaluated", "the ENT checked my ears", "she ran a bunch of blood work"). EACH must appear in the HPI's diagnostic-journey narrative with its result when stated. A prior workup discussed in the visit but absent from the HPI → flag as important and add it. This documents what has already been investigated and excluded — omitting it erases the diagnostic timeline.
+
+46. TREATMENT-DECISION INVERSION (PROVIDER DECISION → PATIENT SENTIMENT): For every therapy addressed in the note, verify the decision-maker matches the transcript. Two critical inversions to catch: (a) the provider recommended AGAINST a therapy after risk assessment, but the note says the patient "is hesitant" or "expresses concern" about starting it — rewrite in first-person provider voice with the risk data ("I reviewed her ASCVD risk of X% and explained [therapy] is not recommended at this time"); (b) the provider committed to STARTING a therapy ("let's start the estrogen patch"), but the Plan says "Consider [therapy]" or places it only under Future Considerations — rewrite as "Initiate [drug] [dose] [route] [frequency]." Both are CRITICAL flags: they misattribute or falsify the clinical decision in a legal record.
+
+47. AUDIO GAP MARKERS: If the transcript contains "[AUDIO GAP" markers, the note MUST include in needs_clinician_review: "Transcript contains N untranscribed audio gap(s) — portions of this encounter are not documented; review and amend before signing." Never paper over a gap by inferring what was likely discussed during missing audio.
+
 45. SENT PRESCRIPTIONS vs "CONTINUE" STATEMENTS: For every prescription the transcript shows was SENT during the visit, compare the sent dose to any "Continue [medication] [dose]" statement in the note. If the provider sent a different dose than the note says to continue (e.g., note says "Continue progesterone 50 mg" but the provider sent 100 mg), flag CRITICAL and rewrite to document the dose change, transition instructions, and any patient-feedback condition on the refill.
 
 46. PATIENT-REPORTED HOME MEDICATIONS MISSING: Verify every medication the patient reports currently taking in the transcript — including prescriptions managed by outside providers (GLP-1s, SSRIs, etc.), OTC items, and supplements — appears in Current Medications with the stated dose/frequency. A medication discussed substantively in the visit that is absent from Current Medications → flag CRITICAL and add it.
@@ -3080,6 +3099,22 @@ export async function runEnhancedSoapPipeline(input: PipelineInput): Promise<Pip
     } catch (detErr) {
       console.warn("[SOAP Pipeline] Deterministic validation error (non-fatal):", detErr);
     }
+  }
+
+  // Deterministic transcript-integrity backstop: if the transcript contains
+  // [AUDIO GAP …] markers (segments whose audio could not be transcribed),
+  // ALWAYS surface a standardized needs_clinician_review warning — even if
+  // the model-side QA check (rule 47) missed it. Never rely on the model
+  // alone to disclose that portions of the encounter are undocumented.
+  const gapCount = (transcriptText.match(/\[AUDIO GAP/g) || []).length;
+  if (gapCount > 0 && !(soapOutput.needs_clinician_review ?? []).some(item => /AUDIO GAP|audio gap/i.test(item))) {
+    soapOutput = {
+      ...soapOutput,
+      needs_clinician_review: [
+        ...(soapOutput.needs_clinician_review ?? []),
+        `TRANSCRIPT INCOMPLETE: ${gapCount} untranscribed audio gap${gapCount === 1 ? "" : "s"} in this encounter's recording — portions of the visit are not documented in this note. Review and amend before signing.`,
+      ],
+    };
   }
 
   console.log("[SOAP Pipeline] Pipeline complete.");
