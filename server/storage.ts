@@ -202,6 +202,7 @@ export interface IStorage {
   listPatientDocuments(patientId: number, clinicId: number): Promise<PatientDocumentSummary[]>;
   getPatientDocument(docId: number, clinicId: number): Promise<PatientDocument | undefined>;
   deletePatientDocument(docId: number, clinicId: number): Promise<boolean>;
+  getPatientLabDocuments(patientId: number, clinicId: number): Promise<PatientDocumentSummary[]>;
 
   // Health Maintenance / Screening Tracker
   listPatientScreenings(patientId: number, clinicId: number): Promise<PatientScreening[]>;
@@ -1756,6 +1757,31 @@ export class DbStorage implements IStorage {
       ))
       .limit(1);
     return rows[0];
+  }
+
+  async getPatientLabDocuments(patientId: number, clinicId: number): Promise<PatientDocumentSummary[]> {
+    const rows = await db.select({
+      id: schema.patientDocuments.id,
+      clinicId: schema.patientDocuments.clinicId,
+      patientId: schema.patientDocuments.patientId,
+      uploadedByUserId: schema.patientDocuments.uploadedByUserId,
+      uploadedByName: schema.patientDocuments.uploadedByName,
+      fileName: schema.patientDocuments.fileName,
+      mimeType: schema.patientDocuments.mimeType,
+      sizeBytes: schema.patientDocuments.sizeBytes,
+      category: schema.patientDocuments.category,
+      notes: schema.patientDocuments.notes,
+      source: schema.patientDocuments.source,
+      createdAt: schema.patientDocuments.createdAt,
+    })
+      .from(schema.patientDocuments)
+      .where(and(
+        eq(schema.patientDocuments.patientId, patientId),
+        eq(schema.patientDocuments.clinicId, clinicId),
+        eq(schema.patientDocuments.category, "pathology"),
+      ))
+      .orderBy(desc(schema.patientDocuments.createdAt));
+    return rows as PatientDocumentSummary[];
   }
 
   async deletePatientDocument(docId: number, clinicId: number): Promise<boolean> {

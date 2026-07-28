@@ -18,7 +18,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { FileText, Stethoscope, ChevronRight, Loader2 } from "lucide-react";
+import { FileText, Stethoscope, ChevronRight, Loader2, FlaskConical, Download } from "lucide-react";
 import { PharmacyLookup, pharmacyValueFromRecord, pharmacyValueToPatch, type PharmacyLookupValue } from "@/components/pharmacy-lookup";
 import { PharmacyDisplay } from "@/components/pharmacy-display";
 
@@ -47,6 +47,15 @@ interface PortalDocument {
   viewUrl: string;
 }
 
+interface PortalLabDocument {
+  id: number;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedByName: string | null;
+  createdAt: string;
+}
+
 const accountSchema = z.object({
   phone: z.string().trim().max(40, "Too long").optional().or(z.literal("")),
   email: z.string().trim().email("Enter a valid email").optional().or(z.literal("")),
@@ -64,6 +73,11 @@ export default function PortalAccount() {
 
   const { data: docsResp, isLoading: docsLoading } = useQuery<{ documents: PortalDocument[] }>({
     queryKey: ["/api/portal/account/documents"],
+    retry: false,
+  });
+
+  const { data: labDocsResp, isLoading: labDocsLoading } = useQuery<{ documents: PortalLabDocument[] }>({
+    queryKey: ["/api/portal/lab-documents"],
     retry: false,
   });
 
@@ -293,6 +307,73 @@ export default function PortalAccount() {
                     <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: "#a0a880" }} />
                   </a>
                 </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* Lab Reports */}
+      <section
+        className="rounded-2xl border p-5 sm:p-6"
+        style={{ borderColor: "#e8ddd0", backgroundColor: "#ffffff" }}
+        data-testid="card-account-lab-documents"
+      >
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold" style={{ color: "#1c2414" }}>My Lab Reports</h2>
+          <p className="text-xs mt-1" style={{ color: "#7a8a64" }}>
+            Original lab result PDFs uploaded by your care team. Download copies for your own records.
+          </p>
+        </div>
+
+        {labDocsLoading ? (
+          <div className="space-y-2">
+            <div className="h-14 rounded-xl animate-pulse" style={{ backgroundColor: "#f0ece2" }} />
+            <div className="h-14 rounded-xl animate-pulse" style={{ backgroundColor: "#f0ece2" }} />
+          </div>
+        ) : !labDocsResp?.documents?.length ? (
+          <div
+            className="rounded-xl border p-5 text-center"
+            style={{ borderColor: "#ede8df", borderStyle: "dashed", color: "#7a8a64" }}
+            data-testid="text-account-lab-documents-empty"
+          >
+            <FlaskConical className="w-5 h-5 mx-auto mb-2" style={{ color: "#a0a880" }} />
+            <p className="text-sm">No lab reports on file yet.</p>
+          </div>
+        ) : (
+          <ul className="space-y-2">
+            {labDocsResp.documents.map((doc) => (
+              <li key={doc.id}>
+                <a
+                  href={`/api/portal/lab-documents/${doc.id}/download`}
+                  download={doc.fileName}
+                  className="flex items-center gap-3 rounded-xl border p-3.5 hover-elevate"
+                  style={{ borderColor: "#ede8df", backgroundColor: "#fffbf3" }}
+                  data-testid={`link-lab-document-${doc.id}`}
+                >
+                  <div
+                    className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: "#edf0fa" }}
+                  >
+                    <FlaskConical className="w-4 h-4" style={{ color: "#3a4a8a" }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate" style={{ color: "#1c2414" }}>
+                      {doc.fileName}
+                    </p>
+                    <p className="text-xs mt-0.5" style={{ color: "#7a8a64" }}>
+                      {doc.createdAt
+                        ? new Date(doc.createdAt).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })
+                        : ""}
+                      {doc.sizeBytes ? ` · ${(doc.sizeBytes / 1024).toFixed(0)} KB` : ""}
+                    </p>
+                  </div>
+                  <Download className="w-4 h-4 flex-shrink-0" style={{ color: "#a0a880" }} />
+                </a>
               </li>
             ))}
           </ul>

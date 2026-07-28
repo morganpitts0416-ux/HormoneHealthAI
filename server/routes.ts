@@ -5436,6 +5436,56 @@ Return ONLY this JSON structure:
     }
   });
 
+  // ── Portal: Lab report documents (uploaded PDFs, category=pathology) ─────
+  app.get("/api/portal/lab-documents", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const patient = await storage.getPatientById(patientId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+      logPhiAccess({ actorType: "patient_portal", actorId: patientId, action: "portal_view_lab_documents", patientId, ipAddress: ipFromReq(req), userAgent: uaFromReq(req) });
+      const docs = await storage.getPatientLabDocuments(patientId, patient.clinicId);
+      res.json({ documents: docs.map((d) => ({
+        id: d.id,
+        fileName: d.fileName,
+        mimeType: d.mimeType,
+        sizeBytes: d.sizeBytes,
+        uploadedByName: d.uploadedByName,
+        createdAt: d.createdAt,
+      })) });
+    } catch (error) {
+      console.error("[PORTAL] Error fetching lab documents:", error);
+      res.status(500).json({ message: "Failed to load lab documents" });
+    }
+  });
+
+  app.get("/api/portal/lab-documents/:docId/download", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const patient = await storage.getPatientById(patientId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+      const docId = parseInt(req.params.docId, 10);
+      if (isNaN(docId)) return res.status(400).json({ message: "Invalid document id" });
+      // Fetch with file data; verify it belongs to this patient's clinic before streaming.
+      const doc = await storage.getPatientDocument(docId, patient.clinicId);
+      if (!doc || doc.patientId !== patientId) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+      // Only serve pathology documents through the portal.
+      if (doc.category !== "pathology") {
+        return res.status(403).json({ message: "Document not available in portal" });
+      }
+      logPhiAccess({ actorType: "patient_portal", actorId: patientId, action: "portal_download_lab_document", patientId, ipAddress: ipFromReq(req), userAgent: uaFromReq(req) });
+      const buffer = Buffer.from(doc.fileData, "base64");
+      res.setHeader("Content-Type", doc.mimeType || "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${doc.fileName.replace(/"/g, "")}"`);
+      res.setHeader("Content-Length", buffer.length);
+      res.send(buffer);
+    } catch (error) {
+      console.error("[PORTAL] Error downloading lab document:", error);
+      res.status(500).json({ message: "Failed to download document" });
+    }
+  });
+
   // ── Portal: HealthIQ weekly snapshot ─────────────────────────────────────
   app.get("/api/portal/healthiq/snapshot", requirePortalAuth, async (req, res) => {
     try {
