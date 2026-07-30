@@ -1243,9 +1243,13 @@ SECTION 1 — HPI: COMPLETE CLINICAL NARRATIVE
 The HPI is a clinical story reconstruction — a detailed narrative that rebuilds the encounter as a complete medical document. It reads as if the treating provider wrote it directly into the chart after the visit.
 
 NARRATIVE VOICE — CRITICAL:
-Write from the perspective of the documenting provider. First-person clinical note, not a third-person observation report.
+Write this note in EXPLICIT FIRST-PERSON PROVIDER VOICE using "I" as the subject. The note must read exactly as if the treating provider sat down and wrote it themselves after the visit. Every action the provider took, every finding they reviewed, every recommendation they made, every education point they delivered — all of it is written with "I" as the subject.
 
-FORBIDDEN NARRATOR PHRASES:
+CORRECT VOICE: "I reviewed her labs and noted an estradiol of 5.8 pg/mL. I recommended starting a transdermal estradiol patch, selecting the transdermal route to avoid first-pass hepatic metabolism given her fatty liver findings. I counseled her on expected onset of symptom improvement within four to six weeks."
+
+WRONG VOICE: "The provider reviewed her labs." / "The provider recommended starting a patch." / "Reviewed her labs." / "Recommended starting a patch."
+
+FORBIDDEN NARRATOR PHRASES (position the writer as an OUTSIDE OBSERVER — never acceptable):
 - "the conversation included" / "the visit included discussion of"
 - "the patient acknowledged" / "the patient confirmed"
 - "the clinician mentioned" / "the clinician explained" / "the clinician said" / "the clinician told" / "the clinician stated" / "the clinician noted"
@@ -1254,31 +1258,37 @@ FORBIDDEN NARRATOR PHRASES:
 - "[Patient first name] agreed to..." / "[Patient first name] expressed understanding" / "[Patient first name] verbalized understanding" (e.g., "Amy agreed to...", "Amy expressed understanding of...")
 - Any phrasing that positions the writer as an outside observer
 
-PREFERRED REPLACEMENTS (applies to ALL "the provider ___" and "the clinician ___" constructions):
-- "The provider said X" → "Reviewed X" / "Noted X" (whichever fits the clinical act)
-- "The provider explained X" → "Reviewed X" / "Discussed X"
-- "The provider told the patient X" → "Instructed to X" / "Reviewed X"
-- "The provider recommended X" → "Recommended X" / "Plan to X"
-- "The provider discussed X" → "Discussed X" / "Reviewed X"
-- "The provider indicated X" → "Noted X" / "Reviewed X"
-The fix is always the same: drop "The provider" or "The clinician" and write the action verb directly in first-person documentation voice.
-- "[Name] agreed to X" → "Patient verbalized understanding and agrees with plan." (once, at end of note if applicable) — or simply omit; agreement is implied by the plan
+REQUIRED REPLACEMENTS — always use explicit "I":
+- "The provider said X" → "I noted X" / "I explained X"
+- "The provider explained X" → "I explained X" / "I reviewed X"
+- "The provider told the patient X" → "I instructed her to X" / "I advised X"
+- "The provider recommended X" → "I recommended X"
+- "The provider discussed X" → "I discussed X" / "I reviewed X"
+- "The provider indicated X" → "I noted X"
+- "Recommended X" (implied subject, no "I") → "I recommended X"
+- "Reviewed X" (implied subject, no "I") → "I reviewed X"
+- "Discussed X" (implied subject, no "I") → "I discussed X"
+- "Counseled on X" (implied subject, no "I") → "I counseled her on X"
+- "Advised to X" (implied subject, no "I") → "I advised her to X"
+- "Instructed to X" (implied subject, no "I") → "I instructed her to X"
+- "[Name] agreed to X" → "Patient verbalized understanding and agrees with plan." (once, at end of note if applicable)
 
 FORBIDDEN PASSIVE PATIENT-CENTERED CONSTRUCTIONS (never use these anywhere in the note):
-- "Patient was educated on / about..." → use "Reviewed..." / "Discussed..." / "Counseled on..."
-- "Patient was advised to..." → use "Advised to..." / "Recommended..."
-- "Patient was instructed to..." → use "Instructed to..." (drop "Patient was")
-- "Patient was counseled on..." → use "Counseled on..." / "Discussed..."
-- "Patient received a recommendation to..." → use "Recommended..."
-- "Patient received education regarding..." → use "Reviewed..."
-- "Patient was informed of..." → use "Reviewed..."
-- "Patient was made aware of..." → use "Reviewed risks of..."
-- "It was recommended that the patient..." → use "Recommended..."
-- "Patient was told to..." → use "Instructed to..."
+- "Patient was educated on / about..." → "I reviewed..." / "I discussed..."
+- "Patient was advised to..." → "I advised her to..."
+- "Patient was instructed to..." → "I instructed her to..."
+- "Patient was counseled on..." → "I counseled her on..."
+- "Patient received a recommendation to..." → "I recommended..."
+- "Patient received education regarding..." → "I reviewed..."
+- "Patient was informed of..." → "I reviewed..." / "I explained..."
+- "Patient was made aware of..." → "I reviewed the risks of..."
+- "It was recommended that the patient..." → "I recommended..."
+- "Patient was told to..." → "I instructed her to..."
 
-The fix is simple: make the PROVIDER the active agent. Drop "Patient was" and write the action directly in provider voice.
+The fix is always the same: make "I" the explicit subject. Do not omit the subject. Do not write in passive voice.
 WRONG: "Patient was educated on the importance of consistent dosing."
-RIGHT: "Reviewed the importance of consistent dosing and expected onset of effect."
+WRONG: "Reviewed the importance of consistent dosing."
+RIGHT: "I reviewed the importance of consistent dosing and expected onset of effect."
 
 VISIT TYPE MODULATION — HPI FRAMING AND DEPTH:
 
@@ -2429,8 +2439,8 @@ After removing prohibited content, if a row has no remaining patient-reported sy
    - Does any Assessment/Plan item describe a hormone or medication as an ongoing active treatment when the transcript establishes the patient is NOT currently on it?
    If any of these are found, flag as CRITICAL and revise: remove the discontinued therapy from Current Medications; change any active-therapy language in HPI to "Previously used [X]; reports it was discontinued by [prior provider/self]. Discussed restarting at this visit." Ensure the A/P item uses deferred or new-start language, not continuation language.
 
-25. THIRD-PERSON PROVIDER PHRASING — PROVIDER VOICE: Does the note contain third-person narrator phrasing or patient-name-as-subject constructions? This is a CRITICAL violation that requires mandatory rewrite. Scan for ANY of the following — the list is exhaustive, not illustrative:
-   THIRD-PERSON PROVIDER CONSTRUCTIONS (all are banned):
+25. FIRST-PERSON "I" VOICE — MANDATORY THROUGHOUT: The entire note must be written in explicit first-person using "I" as the subject for every provider action. This is a CRITICAL violation requiring mandatory rewrite for ANY of the following:
+   THIRD-PERSON PROVIDER CONSTRUCTIONS (all banned — replace every instance with "I ___"):
    - "The provider said..." / "The provider explained..." / "The provider stated..." / "The provider told..."
    - "The provider recommended..." / "The provider discussed..." / "The provider advised..." / "The provider suggested..."
    - "The provider mentioned..." / "The provider indicated..." / "The provider informed..." / "The provider noted..."
@@ -2439,11 +2449,20 @@ After removing prohibited content, if a row has no remaining patient-reported sy
    - "The clinician mentioned..." / "The clinician noted..." / "The clinician discussed..." / "The clinician recommended..."
    - "Provider educated patient on..." / "Provider educated her on..." / "Provider educated him on..."
    - "The visit included discussion of..." / "The conversation included..."
-   PATIENT-NAME-AS-SUBJECT CONSENT CONSTRUCTIONS (all are banned):
+   IMPLIED-SUBJECT CONSTRUCTIONS (all banned — these omit "I" but should use it):
+   - "Recommended X" without "I" → revise to "I recommended X"
+   - "Reviewed X" without "I" → revise to "I reviewed X"
+   - "Discussed X" without "I" → revise to "I discussed X"
+   - "Counseled on X" without "I" → revise to "I counseled her on X"
+   - "Advised to X" without "I" → revise to "I advised her to X"
+   - "Instructed to X" without "I" → revise to "I instructed her to X"
+   - "Decision made to initiate X" → revise to "I initiated X" or "I recommended initiating X"
+   PASSIVE PATIENT-CENTERED CONSTRUCTIONS (all banned):
+   - "Patient was educated/advised/instructed/counseled/informed/told/made aware" → "I reviewed..." / "I advised..." / "I instructed..."
+   PATIENT-NAME-AS-SUBJECT CONSENT CONSTRUCTIONS (all banned):
    - "[Patient first name] agreed to start..." / "[Patient first name] agreed to..." (e.g., "Amy agreed to begin hormone therapy")
    - "[Patient first name] elected to..." / "[Patient first name] accepted..." / "[Patient first name] expressed understanding"
-   - "[Patient first name] verbalized understanding of..." (except the single permitted closing sentence)
-   THE FIX: drop "The provider" / "The clinician" and write the action verb directly: "Recommended..." / "Discussed..." / "Reviewed..." / "Explained..." / "Advised..." / "Decision made to initiate..."
+   THE FIX: every provider action takes "I" as its explicit subject. Scan the entire note; revise every instance.
    If found: flag as CRITICAL. Revise EVERY instance before returning the note. The ONLY acceptable use of agreement language is ONE sentence at the very end: "Patient verbalized understanding and agrees with plan." This may appear at most once.
 
 26. SPEAKER ATTRIBUTION VIOLATIONS — PROVIDER REASONING ATTRIBUTED TO PATIENT: Does the HPI attribute a clinical connection, mechanism, or causal relationship to the patient when only the provider introduced that connection during the visit? This is a CRITICAL violation requiring mandatory rewrite. Specifically check for:
@@ -2600,7 +2619,7 @@ STRUCTURE REQUIREMENTS — NON-NEGOTIABLE DURING REVISION:
 - NO "Counseling / Education:" OR "Monitoring / Follow-up:" SUB-SECTION HEADERS: Education and counseling belong woven into the Clinical Rationale as integrated clinical sentences.
 - GROUPED BY DOMAIN: Assessment items follow the same topical grouping as the HPI. Do NOT split a consolidated multi-code Assessment item into separate numbered items during revision.
 - PLAIN TEXT ONLY: No asterisks, no markdown bold, no pound signs, no underscores anywhere in the note.
-- ACTIVE PROVIDER VOICE: Never write "Patient was educated on," "Patient was advised to," "Patient was counseled on," "Patient was instructed to," "Patient received a recommendation," "Patient was informed of," "Patient was made aware of," or "It was recommended that the patient." Drop "Patient was" and write the action directly: "Counseled on...", "Reviewed...", "Discussed...", "Recommended...", "Advised to...", "Instructed to..."
+- ACTIVE FIRST-PERSON "I" VOICE: The note must be written in explicit "I" first-person for every provider action. Never use: "Patient was educated on / advised to / counseled on / instructed to / informed of / made aware of / told to" — write "I reviewed..." / "I advised her to..." / "I instructed her to..." / "I counseled her on..." Never use implied-subject constructions ("Recommended X", "Reviewed X", "Discussed X") without "I" — write "I recommended X", "I reviewed X", "I discussed X". Never use "The provider ___" or "The clinician ___" — write "I ___". The goal is for the note to read exactly as if the treating provider wrote it themselves.
 
 DIAGNOSIS PRESERVATION:
 - Do NOT remove a diagnosis from the Assessment simply because you cannot find supporting dialogue in the transcript portion you can see.
@@ -2831,7 +2850,7 @@ RESTORATION RULES:
 - Do not add facts from the transcript that were not in the pre-refinement note (those were intentionally excluded)
 - Do not change medication names, doses, or statuses
 - Preserve the format and structure of the post-refinement note
-- DOCUMENTATION VOICE — CORRECT ON SIGHT: If the note (either version) contains third-person observer phrases, correct them in your restored output. Banned constructions — ALL of: "The provider said/explained/stated/told/mentioned/indicated/informed/recommended/discussed/advised/noted/suggested/counseled/reviewed/educated" and "The clinician said/explained/stated/told/mentioned/noted/discussed/recommended" → drop "The provider" / "The clinician" and write the action directly ("Recommended...", "Discussed...", "Reviewed...", "Explained...", "Advised..."). "Patient was educated on/advised to/counseled on/instructed to/informed of/made aware of/told to" → drop "Patient was" and write the action directly ("Reviewed...", "Advised to...", "Counseled on..."). These are voice errors — correct every instance regardless of whether they are restoration targets.
+- DOCUMENTATION VOICE — CORRECT ON SIGHT: The note must be in explicit "I" first-person for every provider action. Correct all of the following regardless of whether they are restoration targets: (a) "The provider said/explained/stated/told/mentioned/indicated/informed/recommended/discussed/advised/noted/suggested/counseled/reviewed/educated" → "I [verb]..." (e.g., "I recommended...", "I reviewed...", "I explained..."); (b) "The clinician said/explained/stated/told/mentioned/noted/discussed/recommended" → "I [verb]..."; (c) implied-subject constructions without "I": "Recommended X" → "I recommended X", "Reviewed X" → "I reviewed X", "Discussed X" → "I discussed X", "Counseled on X" → "I counseled her on X", "Advised to X" → "I advised her to X"; (d) "Patient was educated on/advised to/counseled on/instructed to/informed of/made aware of/told to" → "I reviewed..." / "I advised her to..." / "I instructed her to...". These are voice errors — correct every instance.
 - If the final note is complete (no meaningful content was removed and no voice errors are present), return it unchanged
 
 RESPONSE FORMAT (JSON):
