@@ -1248,15 +1248,20 @@ Write from the perspective of the documenting provider. First-person clinical no
 FORBIDDEN NARRATOR PHRASES:
 - "the conversation included" / "the visit included discussion of"
 - "the patient acknowledged" / "the patient confirmed"
-- "the clinician mentioned" / "the clinician explained"
-- "the provider reviewed" / "the provider noted" / "the provider counseled" / "the provider recommended" / "the provider discussed" / "the provider advised"
+- "the clinician mentioned" / "the clinician explained" / "the clinician said" / "the clinician told" / "the clinician stated" / "the clinician noted"
+- "the provider reviewed" / "the provider noted" / "the provider counseled" / "the provider recommended" / "the provider discussed" / "the provider advised" / "the provider said" / "the provider explained" / "the provider stated" / "the provider told" / "the provider mentioned" / "the provider indicated" / "the provider suggested" / "the provider informed"
 - "provider educated patient on..." / "provider educated her on..."
 - "[Patient first name] agreed to..." / "[Patient first name] expressed understanding" / "[Patient first name] verbalized understanding" (e.g., "Amy agreed to...", "Amy expressed understanding of...")
 - Any phrasing that positions the writer as an outside observer
 
-PREFERRED REPLACEMENTS:
+PREFERRED REPLACEMENTS (applies to ALL "the provider ___" and "the clinician ___" constructions):
+- "The provider said X" → "Reviewed X" / "Noted X" (whichever fits the clinical act)
+- "The provider explained X" → "Reviewed X" / "Discussed X"
+- "The provider told the patient X" → "Instructed to X" / "Reviewed X"
 - "The provider recommended X" → "Recommended X" / "Plan to X"
 - "The provider discussed X" → "Discussed X" / "Reviewed X"
+- "The provider indicated X" → "Noted X" / "Reviewed X"
+The fix is always the same: drop "The provider" or "The clinician" and write the action verb directly in first-person documentation voice.
 - "[Name] agreed to X" → "Patient verbalized understanding and agrees with plan." (once, at end of note if applicable) — or simply omit; agreement is implied by the plan
 
 FORBIDDEN PASSIVE PATIENT-CENTERED CONSTRUCTIONS (never use these anywhere in the note):
@@ -2424,13 +2429,22 @@ After removing prohibited content, if a row has no remaining patient-reported sy
    - Does any Assessment/Plan item describe a hormone or medication as an ongoing active treatment when the transcript establishes the patient is NOT currently on it?
    If any of these are found, flag as CRITICAL and revise: remove the discontinued therapy from Current Medications; change any active-therapy language in HPI to "Previously used [X]; reports it was discontinued by [prior provider/self]. Discussed restarting at this visit." Ensure the A/P item uses deferred or new-start language, not continuation language.
 
-25. THIRD-PERSON PROVIDER PHRASING — PROVIDER VOICE: Does the note contain third-person narrator phrasing or patient-name-as-subject constructions? This is a CRITICAL violation that requires mandatory rewrite. Specifically check for:
+25. THIRD-PERSON PROVIDER PHRASING — PROVIDER VOICE: Does the note contain third-person narrator phrasing or patient-name-as-subject constructions? This is a CRITICAL violation that requires mandatory rewrite. Scan for ANY of the following — the list is exhaustive, not illustrative:
+   THIRD-PERSON PROVIDER CONSTRUCTIONS (all are banned):
+   - "The provider said..." / "The provider explained..." / "The provider stated..." / "The provider told..."
    - "The provider recommended..." / "The provider discussed..." / "The provider advised..." / "The provider suggested..."
-   - "The provider educated patient on..." / "Provider educated patient on..." / "Provider educated her on..."
-   - "[Patient first name] agreed to start..." / "[Patient first name] agreed to..." — patient name as subject of consent/agreement narrative (e.g., "Amy agreed to begin hormone therapy", "Connie agreed to start an estrogen patch")
+   - "The provider mentioned..." / "The provider indicated..." / "The provider informed..." / "The provider noted..."
+   - "The provider reviewed..." / "The provider counseled..." / "The provider educated..."
+   - "The clinician said..." / "The clinician explained..." / "The clinician told..." / "The clinician stated..."
+   - "The clinician mentioned..." / "The clinician noted..." / "The clinician discussed..." / "The clinician recommended..."
+   - "Provider educated patient on..." / "Provider educated her on..." / "Provider educated him on..."
+   - "The visit included discussion of..." / "The conversation included..."
+   PATIENT-NAME-AS-SUBJECT CONSENT CONSTRUCTIONS (all are banned):
+   - "[Patient first name] agreed to start..." / "[Patient first name] agreed to..." (e.g., "Amy agreed to begin hormone therapy")
    - "[Patient first name] elected to..." / "[Patient first name] accepted..." / "[Patient first name] expressed understanding"
-   - "The clinician explained..." / "The visit included discussion of..."
-   If found: flag as CRITICAL. Revise every instance to provider voice immediately: "Recommended..." / "Discussed..." / "Advised..." / "Decision made to initiate..." — do NOT leave a single "[Patient first name] agreed to" in the note. The ONLY acceptable use of agreement language is ONE sentence at the very end of the note: "Patient verbalized understanding and agrees with plan." This may appear at most once.
+   - "[Patient first name] verbalized understanding of..." (except the single permitted closing sentence)
+   THE FIX: drop "The provider" / "The clinician" and write the action verb directly: "Recommended..." / "Discussed..." / "Reviewed..." / "Explained..." / "Advised..." / "Decision made to initiate..."
+   If found: flag as CRITICAL. Revise EVERY instance before returning the note. The ONLY acceptable use of agreement language is ONE sentence at the very end: "Patient verbalized understanding and agrees with plan." This may appear at most once.
 
 26. SPEAKER ATTRIBUTION VIOLATIONS — PROVIDER REASONING ATTRIBUTED TO PATIENT: Does the HPI attribute a clinical connection, mechanism, or causal relationship to the patient when only the provider introduced that connection during the visit? This is a CRITICAL violation requiring mandatory rewrite. Specifically check for:
    - "which she attributes to [condition/cause]" — written as patient attribution when the provider introduced the clinical connection
@@ -2817,7 +2831,7 @@ RESTORATION RULES:
 - Do not add facts from the transcript that were not in the pre-refinement note (those were intentionally excluded)
 - Do not change medication names, doses, or statuses
 - Preserve the format and structure of the post-refinement note
-- DOCUMENTATION VOICE — CORRECT ON SIGHT: If the note (either version) contains third-person observer phrases, correct them in your restored output. Specifically: "The provider recommended/discussed/advised/noted/suggested/educated/counseled" → drop "The provider" and write the action directly ("Recommended...", "Discussed...", "Advised..."). "Patient was educated on/advised to/counseled on/instructed to/informed of/made aware of" → drop "Patient was" and write the action directly ("Reviewed...", "Advised to...", "Counseled on..."). These are voice errors — correct them regardless of whether they are restoration targets.
+- DOCUMENTATION VOICE — CORRECT ON SIGHT: If the note (either version) contains third-person observer phrases, correct them in your restored output. Banned constructions — ALL of: "The provider said/explained/stated/told/mentioned/indicated/informed/recommended/discussed/advised/noted/suggested/counseled/reviewed/educated" and "The clinician said/explained/stated/told/mentioned/noted/discussed/recommended" → drop "The provider" / "The clinician" and write the action directly ("Recommended...", "Discussed...", "Reviewed...", "Explained...", "Advised..."). "Patient was educated on/advised to/counseled on/instructed to/informed of/made aware of/told to" → drop "Patient was" and write the action directly ("Reviewed...", "Advised to...", "Counseled on..."). These are voice errors — correct every instance regardless of whether they are restoration targets.
 - If the final note is complete (no meaningful content was removed and no voice errors are present), return it unchanged
 
 RESPONSE FORMAT (JSON):
