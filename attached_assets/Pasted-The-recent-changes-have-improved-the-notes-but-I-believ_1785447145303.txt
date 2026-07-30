@@ -1,0 +1,120 @@
+The recent changes have improved the notes, but I believe we've reached the point where the remaining issues are no longer prompt problems—they are extraction and provenance problems.
+
+Please do **not** change the SOAP note layout, section order, formatting, headings, diagnosis numbering, Care Plan structure, Follow-Up structure, or overall writing style.
+
+Instead, I want to improve how the structured extraction classifies provider actions before the writer ever generates the note.
+
+The current extraction still promotes discussions into decisions and loses the provider's clinical reasoning.
+
+Going forward, every provider statement should be classified into **exactly one** of these categories:
+
+**1. Discussed**
+
+* Education provided.
+* Risks and benefits reviewed.
+* Options reviewed.
+* General counseling.
+* Pathophysiology explained.
+* Questions answered.
+* No treatment decision was made.
+
+Examples:
+
+* Discussed omega-3 fish oils.
+* Reviewed risks and benefits of statins.
+* Explained the role of estrogen in cardiovascular health.
+* Discussed testosterone injection versus topical therapy.
+
+These items should never appear as active treatment plans.
+
+**2. Recommended**
+
+* The provider recommends a treatment.
+* The patient has not yet agreed.
+* Shared decision-making is still occurring.
+* Multiple acceptable options remain.
+
+Examples:
+
+* Recommended considering a low-dose statin.
+* Recommended Mediterranean diet.
+* Recommended calcium score screening.
+
+These should remain documented as recommendations, not completed plans.
+
+**3. Decided / Initiated**
+
+* A mutual treatment decision was made.
+* Medication was prescribed.
+* A diagnostic test was ordered.
+* Follow-up was scheduled.
+* This is the actual agreed-upon plan.
+
+Only items in this category should populate:
+
+* Assessment & Plan
+* Care Plan
+* Follow-Up
+* Medication changes
+
+Nothing from another category should automatically appear there.
+
+**4. Future Consideration**
+
+* Conditional plans.
+* Contingency planning.
+* Possible future medication changes.
+* Escalation plans based on response.
+
+Examples:
+
+* Consider testosterone injections if topical absorption is inadequate.
+* Consider metformin if insulin resistance persists.
+* Increase progesterone if 100 mg is ineffective.
+* Transition back to an estrogen patch if compounded therapy is unsuccessful.
+
+These should remain future considerations and should never be rewritten as today's plan.
+
+Additionally, I want the extraction to preserve provider reasoning.
+
+For every treatment decision, capture:
+
+* Why the provider made the recommendation.
+* Which symptoms supported it.
+* Which laboratory findings supported it.
+* Which history supported it.
+* Which alternatives were discussed.
+* Why those alternatives were not selected.
+* Any contingency plan if treatment fails.
+
+The writer should generate the Assessment & Plan from this structured reasoning rather than trying to infer it from the transcript.
+
+For example:
+
+Incorrect:
+"Plan: Start a statin."
+
+Correct:
+"Discussed elevated triglycerides, borderline ApoB, ASCVD risk of 2.7%, and cardiovascular risk reduction strategies. Recommended Mediterranean diet and omega-3 supplementation. Discussed that a low-dose statin would also be reasonable; patient may elect either approach through shared decision-making."
+
+Another example:
+
+Incorrect:
+"Plan: Start metformin."
+
+Correct:
+"Discussed metformin as a future option for insulin resistance if lifestyle measures, GLP-1 therapy, and metabolic improvement are insufficient."
+
+Another example:
+
+Incorrect:
+"Plan: Start testosterone injections."
+
+Correct:
+"Reviewed topical versus injectable testosterone. Patient elected to begin compounded topical estrogen/testosterone therapy. Injectable testosterone may be considered if absorption or symptom response is inadequate."
+
+Finally, please stop generating ROS findings that were never documented.
+
+The ROS should be extraction-only. If the patient did not explicitly report or deny a symptom, it should not appear in the ROS.
+
+I believe the writer itself is now close. The next improvement should come from making the structured extraction preserve provider reasoning and decision provenance instead of flattening every discussion into a treatment plan.

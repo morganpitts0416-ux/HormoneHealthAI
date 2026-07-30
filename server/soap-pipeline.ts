@@ -719,6 +719,40 @@ NEVER use "Continue [old dose]" for an adjusted medication. The plan item must r
 
 SAFETY EXCLUSION — NON-NEGOTIABLE: This rule applies ONLY to medications classified as status = "current" or status = "adjusted". Medications classified as status = "discussed" are DISCUSSED_ONLY items — they must NEVER be added to "explicitly_decided_plan_items" regardless of how many times or how extensively they were mentioned in the transcript. Adding a discussed-only medication to explicitly_decided_plan_items is a patient safety error that causes hallucinated active medications in the clinical note. When a medication's status is "discussed", route it to "exploratory_discussions" (STATE C) or "discussed_but_not_decided" (STATE B) only — never to STATE A.
 
+═══════════════════════════════════════
+FOUR-CATEGORY PROVIDER ACTION ANTI-PROMOTION ENFORCEMENT
+═══════════════════════════════════════
+Every item in the incoming extraction must be verified against the four-category provenance taxonomy before routing:
+
+CATEGORY 1 — DISCUSSED (education, counseling, options review, Q&A, no decision made):
+  → stays in: HPI narrative context, exploratory_discussions (STATE C)
+  → NEVER in: explicitly_decided_plan_items, Care Plan, or any active treatment list
+  EXAMPLES TO KEEP AS DISCUSSED: "Discussed omega-3 fish oils" / "Reviewed statin risks and benefits" / "Explained estrogen's role in cardiovascular health" / "Reviewed topical vs injectable testosterone as options"
+
+CATEGORY 2 — RECOMMENDED (provider recommends, patient has not yet agreed, shared decision still in progress):
+  → stays in: discussed_but_not_decided (STATE B), future_considerations if deferred
+  → NEVER in: explicitly_decided_plan_items as an active prescription or initiated order
+  EXAMPLES TO KEEP AS RECOMMENDED: "Recommended considering a low-dose statin" / "Recommended Mediterranean diet" / "Recommended calcium score screening"
+  ANTI-PROMOTION TEST: If the patient has not explicitly agreed and no prescription was sent → it is RECOMMENDED, not DECIDED.
+
+CATEGORY 3 — DECIDED / INITIATED (mutual decision, prescription sent, test ordered, follow-up scheduled):
+  → correct destination: explicitly_decided_plan_items
+  → ONLY this category populates the active plan
+  Evidence required: "let's start", "I'm sending in", "initiated", "ordered", "scheduled", patient agreed or prescription confirmed
+
+CATEGORY 4 — FUTURE CONSIDERATION (conditional plan, contingency if treatment fails, escalation):
+  → correct destination: future_considerations
+  → NEVER promoted to today's active plan
+  EXAMPLES: "If topical absorption inadequate, consider injections" / "Consider metformin if GLP-1 insufficient"
+
+CRITICAL PROMOTION ERRORS TO DETECT AND CORRECT:
+  - "Discussed statin" appearing in explicitly_decided_plan_items → REMOVE, move to exploratory_discussions
+  - "Recommended Mediterranean diet" appearing as an active plan item → DOWNGRADE to recommendation language in discussed_but_not_decided
+  - "Might consider testosterone later" appearing as a confirmed plan item → MOVE to future_considerations
+  - Any item whose transcript evidence is "we talked about" / "reviewed" / "considered" / "might" / "could" → DOWNGRADE; it is not STATE A
+
+When you detect a promotion error from the incoming extraction, correct it silently by moving the item to the appropriate category. Do not pass incorrectly categorized items downstream.
+
 Return this exact JSON structure:
 {
   "medications_normalized": [...],
@@ -1076,6 +1110,35 @@ Document the provider's clinical interpretation and medical decision-making, inc
 - Risk assessment
 - Treatment rationale
 - Reasoning behind medication changes or recommendations
+
+FOUR-CATEGORY ROUTING — EVERY PLAN ITEM MUST FOLLOW THESE RULES:
+Use the provider_action_log and treatment_decision_rationale from the structured extraction to route each item correctly.
+
+DECIDED / INITIATED items (Category 3 — prescription sent, test ordered, mutual decision confirmed):
+  → Active Plan line under the Assessment item: "Initiate [drug] [dose] [route] [freq]." / "Increase [drug] to [dose]." / "Ordered [test]."
+  → Appears in Care Plan as a patient instruction.
+  These are the ONLY items that generate active plan orders.
+
+RECOMMENDED items (Category 2 — provider recommends, patient has not yet agreed):
+  → Document as a recommendation in the Clinical Rationale section: "Discussed [therapy] as a reasonable option; recommended considering [drug/intervention]."
+  → Must NOT be written as "Initiate", "Start", or any active prescription.
+  → Must NOT appear in the Care Plan as an active order.
+  EXAMPLE CORRECT: "Discussed elevated triglycerides, borderline ApoB, and ASCVD risk of 2.7%. Recommended Mediterranean diet and omega-3 supplementation. Discussed that a low-dose statin would also be reasonable; patient may elect either approach through shared decision-making."
+  EXAMPLE WRONG: "Plan: Start a statin."
+
+DISCUSSED items (Category 1 — education, counseling, options review, no decision):
+  → Document in the Clinical Rationale prose as context: "Reviewed [topic] with patient."
+  → NEVER appears as a Plan line, active prescription, or Care Plan item.
+  → The substantive discussion belongs in the HPI.
+  EXAMPLE CORRECT: "Discussed metformin as a future option for insulin resistance if lifestyle measures, GLP-1 therapy, and metabolic improvement are insufficient."
+  EXAMPLE WRONG: "Plan: Start metformin."
+
+FUTURE CONSIDERATION items (Category 4 — conditional / contingency):
+  → Document under "Future Considerations:" sub-section of the relevant Assessment item.
+  → Write the condition explicitly: "Consider [X] if [trigger condition]."
+  → NEVER written as today's active plan.
+  EXAMPLE CORRECT: "Future Considerations: Consider injectable testosterone if topical absorption or symptom response is inadequate."
+  EXAMPLE WRONG: "Plan: Start testosterone injections."
 
 Plan (within each Assessment item)
 Document exactly what was ordered, prescribed, changed, recommended, taught, or scheduled, including:
@@ -2989,6 +3052,45 @@ function buildExtractionSummary(extraction: any): string {
       if (t.monitoring_plan) parts.push(`monitoring: ${t.monitoring_plan}`);
       if (t.conditional_next_step) parts.push(`conditional next step: ${t.conditional_next_step}`);
       lines.push(`  • ${parts.join(" | ")}`);
+    }
+  }
+
+  // Provider action log — four-category classification from extraction stage
+  if (Array.isArray(extraction.provider_action_log) && extraction.provider_action_log.length) {
+    const byCategory: Record<string, string[]> = {
+      decided_initiated: [],
+      recommended: [],
+      discussed: [],
+      future_consideration: [],
+    };
+    for (const a of extraction.provider_action_log) {
+      const cat = (a.action_category ?? "discussed").toLowerCase();
+      const entry = (() => {
+        const parts: string[] = [a.description ?? a.topic ?? "unknown"];
+        if (a.supporting_rationale?.provider_stated_reason) parts.push(`reason: ${a.supporting_rationale.provider_stated_reason}`);
+        if (a.supporting_rationale?.symptoms?.length) parts.push(`symptoms: ${a.supporting_rationale.symptoms.join(", ")}`);
+        if (a.supporting_rationale?.labs?.length) parts.push(`labs: ${a.supporting_rationale.labs}`);
+        if (a.supporting_rationale?.alternatives_discussed) parts.push(`alternatives: ${a.supporting_rationale.alternatives_discussed}`);
+        if (a.supporting_rationale?.why_not_chosen) parts.push(`not chosen: ${a.supporting_rationale.why_not_chosen}`);
+        return parts.join(" | ");
+      })();
+      const key = cat === "decided_initiated" ? "decided_initiated"
+        : cat === "recommended" ? "recommended"
+        : cat === "future_consideration" ? "future_consideration"
+        : "discussed";
+      if (byCategory[key]) byCategory[key].push(entry);
+      else byCategory["discussed"].push(entry);
+    }
+    const routing: Record<string, string> = {
+      decided_initiated: "DECIDED/INITIATED — active Plan + Care Plan (prescription sent or mutual decision made)",
+      recommended: "RECOMMENDED — recommendation language only in Assessment prose; NOT an active prescription; NOT in Care Plan",
+      discussed: "DISCUSSED — HPI narrative only; NEVER in active Plan or Care Plan",
+      future_consideration: "FUTURE CONSIDERATION — 'Future Considerations:' sub-section only; NEVER as today's plan",
+    };
+    for (const [cat, items] of Object.entries(byCategory)) {
+      if (items.length) {
+        lines.push(`Provider actions [${routing[cat]}]:\n${items.map(i => `  • ${i}`).join("\n")}`);
+      }
     }
   }
 

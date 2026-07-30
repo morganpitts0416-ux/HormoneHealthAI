@@ -9902,6 +9902,34 @@ These five categories are frequently present in transcripts but are the most oft
 
 5. PATIENT GOALS FOR THIS VISIT (→ patient_goals_for_visit): Capture what the patient explicitly states they want from this visit or treatment. Examples: "Wants to feel like herself again" / "Goal is improving sleep and energy" / "Wants to optimize cardiovascular health before age 60."
 
+PROVIDER ACTION CLASSIFICATION — FOUR CATEGORIES (CRITICAL):
+Every provider statement, recommendation, or discussion must be classified into exactly one of these four categories. This classification determines which section of the note each item appears in. Misclassification — especially promoting DISCUSSED or RECOMMENDED items into the active plan — is the most common cause of clinical documentation errors.
+
+CATEGORY 1 — DISCUSSED:
+  What qualifies: Education provided; risks and benefits reviewed; options reviewed; general counseling; pathophysiology explained; questions answered; no treatment decision was made.
+  Destination: HPI narrative only. NEVER in Assessment active plan, Care Plan, or as a treatment order.
+  Examples: "Discussed omega-3 fish oils." / "Reviewed the risks and benefits of statins." / "Explained the role of estrogen in cardiovascular health." / "Discussed testosterone injection versus topical therapy as options."
+
+CATEGORY 2 — RECOMMENDED:
+  What qualifies: The provider recommends a treatment. The patient has not yet agreed. Shared decision-making is still in progress. Multiple acceptable options remain open.
+  Destination: Assessment & Plan with recommendation language only — documented as a recommendation, NOT as an active prescription or completed order.
+  Examples: "Recommended considering a low-dose statin." / "Recommended Mediterranean diet." / "Recommended calcium score screening."
+
+CATEGORY 3 — DECIDED / INITIATED:
+  What qualifies: A mutual treatment decision was made; medication was prescribed; a diagnostic test was ordered; follow-up was scheduled; this is the actual agreed-upon plan.
+  Destination: Assessment & Plan (active plan), Care Plan, Follow-Up, and Medication Changes. ONLY items in this category populate active plan sections.
+  Examples: "Initiated tirzepatide 5mg SQ weekly." / "Ordered comprehensive metabolic panel." / "Follow-up in 8 weeks."
+
+CATEGORY 4 — FUTURE CONSIDERATION:
+  What qualifies: Conditional plans; contingency planning; escalation plans based on treatment response; possible future changes if current approach fails.
+  Destination: "Future Considerations:" sub-section of the relevant Assessment item ONLY. NEVER as today's active plan.
+  Examples: "Consider testosterone injections if topical absorption is inadequate." / "Consider metformin if insulin resistance persists." / "Increase progesterone if 100mg is ineffective."
+
+ANTI-PROMOTION RULE — PATIENT SAFETY:
+A DISCUSSED item must NEVER appear in the active Plan or Care Plan. A RECOMMENDED item must NEVER be written as an active prescription. A FUTURE CONSIDERATION must NEVER be written as today's plan. When in doubt, classify conservatively — underpromoting is always safer than overpromoting.
+
+Populate provider_action_log with one entry for every substantive provider action, recommendation, discussion, or future plan in the transcript.
+
 CONTEXT CLUE REQUIREMENT:
 Use context clues to capture clinically relevant information, but do not hallucinate:
 - If something is strongly supported by transcript context, capture it in the appropriate field.
@@ -9941,6 +9969,7 @@ Return this exact JSON structure (all arrays, even if empty):
   "reproductive_history": [],
   "patient_concerns_and_fears": [],
   "patient_goals_for_visit": [],
+  "provider_action_log": [],
   "source_utterance_ids": []
 }`;
 
@@ -11634,6 +11663,34 @@ Required examples of provider-interpretation fidelity:
   - Lp(a) elevated — provider noted clinical importance because of family history → capture with the family history linkage, not as standalone hyperlipidemia
 When provider interpretation conflicts with standard lab flags, capture BOTH in lab_interpretations_stated: the raw value/flag AND the provider's stated interpretation.
 
+PROVIDER ACTION CLASSIFICATION — FOUR CATEGORIES (CRITICAL):
+Every provider statement, recommendation, or discussion must be classified into exactly one of these four categories. This classification determines which section of the note each item appears in. Misclassification — especially promoting DISCUSSED or RECOMMENDED items into the active plan — is the most common cause of clinical documentation errors.
+
+CATEGORY 1 — DISCUSSED:
+  What qualifies: Education provided; risks and benefits reviewed; options reviewed; general counseling; pathophysiology explained; questions answered; no treatment decision was made.
+  Destination: HPI narrative only. NEVER in Assessment active plan, Care Plan, or as a treatment order.
+  Examples: "Discussed omega-3 fish oils." / "Reviewed the risks and benefits of statins." / "Explained the role of estrogen in cardiovascular health." / "Discussed testosterone injection versus topical therapy as options."
+
+CATEGORY 2 — RECOMMENDED:
+  What qualifies: The provider recommends a treatment. The patient has not yet agreed. Shared decision-making is still in progress. Multiple acceptable options remain open.
+  Destination: Assessment & Plan with recommendation language only — documented as a recommendation, NOT as an active prescription or completed order.
+  Examples: "Recommended considering a low-dose statin." / "Recommended Mediterranean diet." / "Recommended calcium score screening."
+
+CATEGORY 3 — DECIDED / INITIATED:
+  What qualifies: A mutual treatment decision was made; medication was prescribed; a diagnostic test was ordered; follow-up was scheduled; this is the actual agreed-upon plan.
+  Destination: Assessment & Plan (active plan), Care Plan, Follow-Up, and Medication Changes. ONLY items in this category populate active plan sections.
+  Examples: "Initiated tirzepatide 5mg SQ weekly." / "Ordered comprehensive metabolic panel." / "Follow-up in 8 weeks."
+
+CATEGORY 4 — FUTURE CONSIDERATION:
+  What qualifies: Conditional plans; contingency planning; escalation plans based on treatment response; possible future changes if current approach fails.
+  Destination: "Future Considerations:" sub-section of the relevant Assessment item ONLY. NEVER as today's active plan.
+  Examples: "Consider testosterone injections if topical absorption is inadequate." / "Consider metformin if insulin resistance persists." / "Increase progesterone if 100mg is ineffective."
+
+ANTI-PROMOTION RULE — PATIENT SAFETY:
+A DISCUSSED item must NEVER appear in the active Plan or Care Plan. A RECOMMENDED item must NEVER be written as an active prescription. A FUTURE CONSIDERATION must NEVER be written as today's plan. When in doubt, classify conservatively — underpromoting is always safer than overpromoting.
+
+Populate provider_action_log with one entry for every substantive provider action, recommendation, discussion, or future plan in the transcript.
+
 TREATMENT DECISION RATIONALE — MANDATORY STRUCTURED CAPTURE:
 For EVERY treatment decision made at this visit (new starts, dose changes, discontinuations, deferrals), populate one entry in treatment_decision_rationale with ALL of the following fields that are present in the transcript:
   decision              — What was decided (e.g., "Start transdermal estradiol patch 0.05mg")
@@ -11710,6 +11767,7 @@ Return this exact JSON structure (all arrays, even if empty):
   "treatment_decision_rationale": [],
   "lab_interpretations_stated": [],
   "medication_status_detail": [],
+  "provider_action_log": [],
   "source_utterance_ids": []${useStructuredV2 ? `,
   "treatment_actions": [],
   "staged_treatment_plan": [],
