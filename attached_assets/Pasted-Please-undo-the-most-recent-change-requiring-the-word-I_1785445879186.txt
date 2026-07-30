@@ -1,0 +1,90 @@
+Please undo the most recent change requiring the word “I” as the explicit subject of every provider action.
+
+The intended note voice is provider-authored clinical voice with an implied first-person subject. It should sound as though the treating provider wrote the note, but it should not repeatedly say “I.”
+
+Correct style:
+
+* Reviewed laboratory results with the patient.
+* Discussed the risks, benefits, and alternatives of hormone therapy.
+* Recommended starting transdermal estradiol.
+* Counseled regarding smoking cessation.
+* Will repeat labs in eight weeks.
+* Consider progesterone later if sleep disturbance or agitation persists.
+* Testosterone was deferred because of elevated hemoglobin and hematocrit in the setting of current tobacco use.
+
+Incorrect third-person narrator style:
+
+* The provider reviewed laboratory results.
+* The clinician recommended estrogen.
+* Morgan explained the treatment options.
+* It was discussed that the patient should stop smoking.
+
+Incorrect repetitive explicit first-person style:
+
+* I reviewed her laboratory results.
+* I discussed estrogen therapy.
+* I recommended starting a patch.
+* I counseled her regarding smoking cessation.
+* I instructed her to return in eight weeks.
+
+The governing rule should be:
+
+“Write from the treating provider’s perspective using standard provider-authored clinical documentation. Use concise active clinical verbs with an implied first-person subject. Do not refer to the treating provider in the third person, and do not require or repeatedly insert the pronoun ‘I.’”
+
+Please update all enforcement layers consistently:
+
+1. Generation prompt
+2. Voice and narrator rules
+3. QA check 25
+4. Fidelity audit
+5. Any post-processing or rewrite logic
+
+Remove any rule stating:
+
+* “Write with ‘I’ as the subject for every provider action.”
+* “Explicit first-person ‘I’ voice is mandatory.”
+* Implied-subject constructions such as “Reviewed,” “Recommended,” “Discussed,” or “Counseled” are prohibited.
+
+Those implied-subject constructions are the preferred clinical style and must be allowed.
+
+The QA logic should flag:
+
+* “The provider said…”
+* “The provider explained…”
+* “The clinician recommended…”
+* “Morgan discussed…”
+* “It was explained by the provider…”
+
+The QA logic should not flag:
+
+* “Reviewed…”
+* “Discussed…”
+* “Recommended…”
+* “Counseled…”
+* “Advised…”
+* “Will monitor…”
+* “Plan to repeat…”
+* “Consider adding…”
+
+When correcting third-person narration, rewrite it into concise implied-first-person clinical voice:
+
+* “The provider explained the risks” → “Discussed the risks.”
+* “The provider recommended an estradiol patch” → “Recommended an estradiol patch.”
+* “The clinician advised smoking cessation” → “Counseled regarding smoking cessation.”
+* “The provider stated that labs would be repeated” → “Will repeat labs in eight weeks.”
+
+Do not automatically convert those sentences to:
+
+* “I discussed…”
+* “I recommended…”
+* “I counseled…”
+* “I will repeat…”
+
+Occasional use of “I” may be preserved only when it is clinically meaningful or directly reflects a documented provider judgment, such as:
+
+* “I suspect the elevated hemoglobin and hematocrit are related to smoking.”
+* “I do not recommend oral estrogen given her hepatic and cardiovascular risk factors.”
+
+Even in those cases, explicit “I” should be used sparingly and should never become the default sentence structure.
+
+Do not change the SOAP note layout, headings, section order, formatting, diagnosis numbering, Care Plan structure, or Follow-Up structure. This change applies only to narrative voice.
