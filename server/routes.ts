@@ -11588,6 +11588,66 @@ Treat the encounter as a TOTAL WELLNESS VISIT, not a narrow single-issue visit. 
 - Capture prior treatments and medication trials: medications tried and stopped, treatments that failed, reasons for discontinuation, side effects experienced.
 - Capture allergies, surgical history, family history, and social history when mentioned.
 
+CHRONOLOGY PRESERVATION — MANDATORY:
+The extraction MUST separately identify each of the following — never merge or flatten separate clinical timelines:
+  (a) Symptoms and WHEN each symptom began (record in symptom_onset_data with onset timing preserved)
+  (b) Prior treatments and when they were stopped
+  (c) Treatments active at the START of this encounter (before any changes made today)
+  (d) Treatment changes DECIDED at this encounter
+  (e) Future or conditional treatment considerations
+  (f) Follow-up timing
+
+PROHIBITED TIMELINE MERGING — NEVER DO THESE:
+- A hysterectomy 16 years ago, longstanding vasomotor symptoms, and weight gain beginning around age 50 are THREE SEPARATE FACTS with different timelines and different clinical significance. Do NOT rewrite as "all symptoms began after hysterectomy."
+- A provider who defers testosterone because of elevated hematocrit must be captured as explicitly deferred — not merged with an estrogen start into a single "hormone therapy plan."
+- A patient on tirzepatide 2.5mg being increased to 5mg today: the current pre-visit dose (2.5mg) and the new dose (5mg) must be separately captured with their respective statuses.
+- Each temporal anchor in the transcript (X years ago, since age Y, for Z months, after [event]) must be preserved exactly as stated — never replaced with a generalized phrase.
+
+ROS — EXTRACTION ONLY — NO INFERENCE, NO FABRICATION:
+The symptoms_reported and symptoms_denied arrays feed the ROS section of the final note. Apply the strictest possible standard:
+- ONLY include a symptom in symptoms_reported when the patient EXPLICITLY reported it during this encounter.
+- ONLY include a denial in symptoms_denied when the patient EXPLICITLY denied a symptom during this encounter.
+- DO NOT generate, infer, complete, or embellish ROS findings for any reason.
+- Silence is NOT a denial. If the patient did not address a system, leave it out of both arrays.
+PROHIBITED fabrication examples:
+  - Do NOT add "denies depression" unless the patient literally said they don't have depression.
+  - Do NOT add "denies chest pain" simply because cardiovascular risk was discussed.
+  - Do NOT infer system findings from diagnoses, medications, labs, or counseling topics.
+  - Do NOT convert a symptom the patient mentioned into a denial for a related symptom they never addressed.
+
+MEDICAL / SURGICAL / SOCIAL / FAMILY HISTORY — FACTUAL ONLY:
+Do NOT generate placeholder text for history fields. Prohibited examples: "None reported," "None of these," "No significant history," "Non-contributory," "Reviewed and unremarkable."
+Only three approaches are permitted:
+  1. Include only history EXPLICITLY stated in this visit's transcript.
+  2. Write "Not fully reviewed during this encounter" if the topic came up but was incomplete.
+  3. Leave the array empty if the topic was not addressed at all.
+Do NOT infer that no history exists simply because a full history was not taken. A condition not mentioned in this transcript cannot be documented as absent.
+
+LAB INTERPRETATION — PRESERVE PROVIDER'S ACTUAL CLINICAL JUDGMENT:
+Do NOT automatically convert a laboratory abnormality into a diagnosis unless the provider made that connection explicitly.
+The provider's interpretation is the authoritative clinical fact — not the lab's own flagging, not standard reference ranges.
+Required examples of provider-interpretation fidelity:
+  - Elevated ferritin with normal circulating iron discussed as inflammation/metabolic, NOT iron overload → capture: "provider interpretation: ferritin elevation attributed to systemic inflammation and metabolic liver dysfunction, not iron overload"
+  - A1C 5.5% interpreted as insulin resistance/metabolic dysfunction despite not meeting prediabetes threshold → capture the provider's interpretation exactly; do NOT override with "normal A1C"
+  - Elevated hemoglobin and hematocrit considered smoking-related → do NOT auto-code as polycythemia vera
+  - FIB-4 noted as low risk → do NOT reclassify as advanced fibrosis
+  - Lp(a) elevated — provider noted clinical importance because of family history → capture with the family history linkage, not as standalone hyperlipidemia
+When provider interpretation conflicts with standard lab flags, capture BOTH in lab_interpretations_stated: the raw value/flag AND the provider's stated interpretation.
+
+TREATMENT DECISION RATIONALE — MANDATORY STRUCTURED CAPTURE:
+For EVERY treatment decision made at this visit (new starts, dose changes, discontinuations, deferrals), populate one entry in treatment_decision_rationale with ALL of the following fields that are present in the transcript:
+  decision              — What was decided (e.g., "Start transdermal estradiol patch 0.05mg")
+  supporting_symptoms   — Specific symptoms driving the decision
+  supporting_labs       — Specific lab findings with values
+  relevant_history      — Relevant history factors
+  provider_rationale    — Provider's stated WHY (mechanism, route preference, risk rationale)
+  alternatives_discussed — Other treatments the provider named as options
+  alternative_not_chosen_reason — Why the alternative was not selected at this visit
+  counseling_provided   — What the provider explained to the patient
+  monitoring_plan       — How and when the treatment will be assessed
+  conditional_next_step — Future or conditional action tied to this treatment
+This field captures the complete clinical reasoning thread for each decision, which must be preserved through all downstream pipeline stages and appear in the final note's Assessment.
+
 FIVE CATEGORIES THAT ARE CONSISTENTLY MISSED — EACH HAS A DEDICATED FIELD — MANDATORY:
 These five categories are frequently present in transcripts but are the most often lost. Do not bury them in context_inferred_items. Each has its own dedicated array. Populate whichever are present.
 
@@ -11646,6 +11706,10 @@ Return this exact JSON structure (all arrays, even if empty):
   "reproductive_history": [],
   "patient_concerns_and_fears": [],
   "patient_goals_for_visit": [],
+  "symptom_onset_data": [],
+  "treatment_decision_rationale": [],
+  "lab_interpretations_stated": [],
+  "medication_status_detail": [],
   "source_utterance_ids": []${useStructuredV2 ? `,
   "treatment_actions": [],
   "staged_treatment_plan": [],

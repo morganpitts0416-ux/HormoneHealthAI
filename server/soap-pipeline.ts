@@ -248,6 +248,28 @@ For every medication mentioned in the extraction or transcript:
 - Classify confidence: explicit (directly stated), strongly_implied (clear from context), requires_confirmation (uncertain)
 - Identify the likely indication when inferable from context
 
+DRUG NAME FIDELITY — DO NOT SUBSTITUTE:
+When the exact drug identity is uncertain from the transcript, PRESERVE the patient's stated name — do not substitute a different drug, even one from the same therapeutic class.
+  - Patient says "Nexium" → normalize to "esomeprazole (Nexium)." Do NOT change to "pantoprazole." Pantoprazole is not Nexium.
+  - Patient says "I think it was Nexium or something like that" → document as: name: "patient-reported 'Nexium or something'", confidence: "requires_confirmation", indication: "likely PPI; exact agent unconfirmed." Do NOT substitute a specific drug.
+  - NEVER pair two different medications as interchangeable: "pantoprazole (Nexium)" is incorrect because they are distinct drugs in the same class.
+  - Same-class ≠ same drug: esomeprazole ≠ pantoprazole ≠ omeprazole; progesterone ≠ medroxyprogesterone; testosterone cypionate ≠ testosterone enanthate; levothyroxine ≠ liothyronine.
+  - When drug identity is genuinely uncertain, always set confidence = "requires_confirmation" and preserve the patient's exact wording in the name field.
+
+MEDICATION TIMING SEPARATION — PRE-VISIT VS AT-VISIT:
+Maintain strict separation between medications the patient was on at the START of this encounter (status: "current") and medications prescribed or changed AT this visit (status: "new", "adjusted", "discontinued"):
+  - The dose appearing in the Plan/Care Plan is the NEW going-forward dose. The dose the patient walked in on is the CURRENT pre-visit dose.
+  - For adjusted medications, always capture BOTH: previous_dose (what they arrived taking) and new_dose (what was prescribed today).
+  - Example: Patient on tirzepatide 2.5mg, increased to 5mg today → status: "adjusted", previous_dose: "2.5mg weekly", new_dose: "5mg weekly." Never merge these into a single "current: tirzepatide 5mg" entry.
+  - A newly started medication is NOT a current medication. Never populate the "current medications" list with drugs prescribed for the first time at this visit.
+
+CONFLICT FLAGGING — SURFACE DISCREPANCIES RATHER THAN SILENTLY RESOLVING THEM:
+When the transcript and structured extraction conflict on a clinical fact, do NOT silently resolve the conflict by picking one source. Instead:
+  - Set confidence = "requires_confirmation" on the conflicting item
+  - Add a note to enhanced_extraction.hpi_chronological_elements: "[CONFLICT: extraction says X, transcript suggests Y — clinician should verify before signing]"
+  - Never invent a synthesis that is not explicitly supported by at least one of the sources
+  - Examples of conflicts that must be flagged: extraction shows medication as current but transcript indicates it was stopped; extraction shows a dose that differs from the dose the provider said in the transcript; extraction identifies a medication that the transcript wording makes uncertain.
+
 MEDICATION STATE SAFETY GATE — CLASSIFY CAREFULLY: MISCLASSIFICATION IS A PATIENT SAFETY ERROR
 These five states are mutually exclusive and strictly defined. When in doubt, default to "discussed" — never upgrade to "current" without clear evidence the patient is actively taking it today.
 
@@ -2527,6 +2549,32 @@ When a generalized phrase has replaced specific clinical content from the transc
 
 47. UNDOCUMENTED PROVIDER RECOMMENDATIONS (LEGAL RECORD): Scan the transcript for every provider recommendation (medication, supplement, test, referral, lifestyle). Verify each is documented in the note with the education given — even when the patient made no decision. If the note says "no definitive decisions were made" (or similar) about an item the provider explicitly recommended — or a recommendation is missing entirely — flag CRITICAL and document the recommendation, the education provided, and the patient's response (or lack of one). When hormone or other lab values drove a recommendation and were cited in the visit, the Clinical Rationale must cite them numerically (e.g., "estradiol 71 pg/mL, FSH 6.7").
 
+48. UNIT ERRORS — MEDICATION AND SUPPLEMENT DOSING: Scan every dose in the note against what the transcript states. Flag as CRITICAL any unit error where the correct unit class is clearly different from what was said — for example, a vitamin prescribed in IU written as mg (e.g., "vitamin D 5,000 mg" when the transcript said "5,000 IU"), or a weight-based dose written in the wrong scale. Common unit pairs to verify: IU vs mg (vitamins A, D, E), mcg vs mg (thyroid medications, B12, folate), mL vs mg (injectable testosterone), mg vs g. If a unit error is found, flag CRITICAL and correct to the unit stated in the transcript. If the transcript is ambiguous about units, flag important and add to needs_clinician_review.
+
+49. ASSESSMENT / CARE PLAN CONTRADICTION: Scan for items that appear in BOTH the Assessment/Plan AND the Care Plan with contradictory instructions. Both sections should agree on dose, route, frequency, timing, and whether a medication is being started, continued, changed, or stopped. Specific contradictions to catch:
+   - Assessment says "increase X to Y mg" but Care Plan says "continue X at Z mg" (the old dose)
+   - Assessment says "defer testosterone pending hematocrit normalization" but Care Plan says "start testosterone"
+   - Assessment says "discontinue supplement A" but Care Plan lists supplement A as a current medication to take
+   - Assessment lists a medication as newly initiated but Care Plan omits it entirely
+   - Care Plan instructs the patient to do something the Assessment says was deferred
+   Any such contradiction → flag CRITICAL, determine the transcript-correct instruction, and make both sections agree.
+
+50. TIMELINE COMPRESSION — SEPARATE CLINICAL HISTORIES MUST STAY SEPARATE: Scan the HPI for merged or flattened clinical timelines. Specifically:
+   - A hysterectomy that occurred years before symptom onset must NOT be described as the cause of symptoms that pre-date it, post-date it significantly, or have a different documented etiology.
+   - Symptoms with separately stated onset dates must NOT be collapsed into a single onset attributed to one event (e.g., "all symptoms began after hysterectomy" when the transcript gives different onset timings for each symptom).
+   - A "discontinued prior to this visit" medication must NOT be described as part of the current treatment plan.
+   - Provider reasoning stated for ONE treatment decision must NOT be attributed to a different treatment decision.
+   If the HPI compresses separate clinical timelines into a single causal narrative not supported by the transcript, flag as important and rewrite to preserve each timeline's separate onset, context, and clinical significance.
+
+51. MISSING ROUTE / DOSE / FREQUENCY WHEN TRANSCRIPT PROVIDES THEM: For every medication, supplement, or treatment appearing in the Plan, Current Medications, or Care Plan — verify the note includes the route, dose, and frequency when the transcript stated them. Missing specifics include:
+   - Dose omitted when provider stated a specific dose (e.g., "estradiol patch" without stating 0.05mg)
+   - Route omitted when provider stated a specific route (e.g., "testosterone" without stating IM/SQ/topical)
+   - Frequency omitted when provider stated a specific frequency (e.g., "testosterone" without stating "weekly")
+   - Administration instructions omitted when counseling was given (e.g., injection site rotation instructions not in Care Plan)
+   Flag each omission as important and add the missing specifics from the transcript. A plan entry that says only "Start tirzepatide" when the transcript specified "tirzepatide 5mg subcutaneously weekly" is inadequate.
+
+52. MAJOR TREATMENT TOPIC MISSING FROM ASSESSMENT: Compare the structured extraction's treatment_decision_rationale (if present) against the numbered Assessment items. For each decision documented in treatment_decision_rationale, verify a corresponding numbered Assessment item exists. If a major treatment decision is present in the extraction (estrogen route selection rationale, testosterone deferral reasoning, GLP-1 dose escalation, smoking cessation counseling) but has no corresponding Assessment entry → flag CRITICAL and add the Assessment item with the full Clinical Rationale drawn from the extraction's treatment_decision_rationale.
+
 STYLE PRESERVATION — MANDATORY WHEN REVISING:
 If you are writing a revised_fullNote, the ClinIQ Core Principles and all documentation rules from the generation system prompt apply without exception. The QA pass fixes issues — it must NEVER reduce documentation fidelity.
 
@@ -2865,6 +2913,64 @@ function buildExtractionSummary(extraction: any): string {
   if (extraction.uncertain_items?.length)             lines.push(`Uncertain/unresolved: ${extraction.uncertain_items.join("; ")}`);
   if (extraction.context_inferred_items?.length)      lines.push(`Context-inferred (confirm with patient): ${extraction.context_inferred_items.join("; ")}`);
   if (extraction.patient_questions?.length)           lines.push(`Patient questions: ${extraction.patient_questions.join("; ")}`);
+
+  // New always-on fields: symptom onset data, lab interpretations, medication status detail, treatment decision rationale
+  if (Array.isArray(extraction.symptom_onset_data) && extraction.symptom_onset_data.length) {
+    lines.push(`Symptom onset data (preserve separate timelines): ${extraction.symptom_onset_data.map((s: any) => {
+      const parts = [s.symptom ?? "unknown symptom"];
+      if (s.onset_when) parts.push(`onset: ${s.onset_when}`);
+      if (s.duration) parts.push(`duration: ${s.duration}`);
+      if (s.trajectory) parts.push(`trajectory: ${s.trajectory}`);
+      return parts.join(" — ");
+    }).join("; ")}`);
+  }
+  if (Array.isArray(extraction.lab_interpretations_stated) && extraction.lab_interpretations_stated.length) {
+    lines.push(`Provider lab interpretations (authoritative — do not override with standard-range reading): ${extraction.lab_interpretations_stated.map((l: any) =>
+      `${l.lab ?? l.subject ?? "unknown"}: raw="${l.raw_value ?? l.value ?? ""}" — provider interpretation: "${l.provider_interpretation ?? l.interpretation ?? ""}"`
+    ).join("; ")}`);
+  }
+  if (Array.isArray(extraction.medication_status_detail) && extraction.medication_status_detail.length) {
+    const byStatus: Record<string, string[]> = {};
+    for (const m of extraction.medication_status_detail) {
+      const s = m.status ?? "unknown";
+      if (!byStatus[s]) byStatus[s] = [];
+      let entry = m.name ?? "unknown";
+      if (m.dose) entry += ` ${m.dose}`;
+      if (m.previous_dose && m.new_dose) entry += ` (was ${m.previous_dose} → now ${m.new_dose})`;
+      if (m.note) entry += ` [${m.note}]`;
+      byStatus[s].push(entry);
+    }
+    for (const [status, items] of Object.entries(byStatus)) {
+      const label = {
+        current_at_encounter_start: "Current at encounter start (do NOT document as newly started)",
+        newly_started_today: "Newly started TODAY (do NOT list as pre-existing current)",
+        dose_increased_today: "Dose INCREASED today (old dose was before visit; use new dose in Plan)",
+        dose_decreased_today: "Dose DECREASED today (old dose was before visit; use new dose in Plan)",
+        discontinued_today: "DISCONTINUED (must not appear as continued or active)",
+        discussed_only: "Discussed only — NOT an active prescription",
+        future_consideration: "Future consideration ONLY — not decided at this visit",
+        uncertain_dose_or_identity: "UNCERTAIN identity or dose — flag for clinician verification",
+      }[status] ?? status;
+      lines.push(`Medication status [${label}]: ${items.join("; ")}`);
+    }
+  }
+  if (Array.isArray(extraction.treatment_decision_rationale) && extraction.treatment_decision_rationale.length) {
+    lines.push(`Treatment decision rationale (MUST appear in Assessment/Plan for each item):`);
+    for (const t of extraction.treatment_decision_rationale) {
+      const parts: string[] = [];
+      parts.push(`DECISION: ${t.decision ?? "unknown"}`);
+      if (Array.isArray(t.supporting_symptoms) && t.supporting_symptoms.length) parts.push(`symptoms: ${t.supporting_symptoms.join(", ")}`);
+      if (Array.isArray(t.supporting_labs) && t.supporting_labs.length) parts.push(`labs: ${t.supporting_labs.join(", ")}`);
+      if (t.relevant_history) parts.push(`history: ${t.relevant_history}`);
+      if (t.provider_rationale) parts.push(`rationale: ${t.provider_rationale}`);
+      if (t.alternatives_discussed) parts.push(`alternatives: ${t.alternatives_discussed}`);
+      if (t.alternative_not_chosen_reason) parts.push(`not chosen because: ${t.alternative_not_chosen_reason}`);
+      if (t.counseling_provided) parts.push(`counseling: ${t.counseling_provided}`);
+      if (t.monitoring_plan) parts.push(`monitoring: ${t.monitoring_plan}`);
+      if (t.conditional_next_step) parts.push(`conditional next step: ${t.conditional_next_step}`);
+      lines.push(`  • ${parts.join(" | ")}`);
+    }
+  }
 
   // V2 structured fields — include when present
   if (Array.isArray(extraction.treatment_actions) && extraction.treatment_actions.length) {

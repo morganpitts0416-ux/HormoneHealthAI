@@ -1,0 +1,239 @@
+Do not change any part of the current SOAP note layout, section order, headings, formatting, diagnosis numbering, Care Plan format, or Follow-Up format. This request is only to improve the accuracy and completeness of the clinical content generated within the existing layout.
+
+The current failure appears to be upstream in structured extraction and normalization, not primarily in the final note-writing prompt. The extraction process is flattening the encounter, losing chronology and clinical reasoning, and confusing current medications with treatment decisions.
+
+Please update the extraction and normalization stages as follows:
+
+1. Preserve chronology exactly.
+
+The extraction must separately identify:
+
+* symptoms and when each symptom began
+* prior treatments and when they were stopped
+* current treatments at the start of the encounter
+* treatment changes decided during the encounter
+* future or conditional treatment considerations
+* follow-up timing
+
+Do not combine separate timelines into one generalized statement.
+
+For example, a hysterectomy 16 years ago, longstanding hot flashes, and weight gain beginning around age 50 must remain separate facts. Do not rewrite this as “all symptoms began after hysterectomy.”
+
+2. Strictly separate medication status.
+
+Every medication must be assigned one status:
+
+* Current at encounter start
+* Newly started today
+* Dose increased today
+* Dose decreased today
+* Discontinued today
+* Discussed only
+* Future consideration
+* Patient unsure of medication or dose
+
+Never place a newly prescribed dose in the Current Medications section as though the patient was already taking it.
+
+Example:
+
+* Current tirzepatide: patient reports a low starter dose, exact dose uncertain
+* Plan: increase tirzepatide to 5 mg weekly
+
+Do not convert those into “Current medication: tirzepatide 5 mg.”
+
+3. Do not normalize uncertain medications into a different drug.
+
+Preserve the patient’s actual wording when medication identity is uncertain.
+
+Example:
+
+* If the patient says Nexium, document esomeprazole/Nexium.
+* Do not change Nexium to pantoprazole.
+* If the exact medication cannot be confirmed, mark it as patient-reported or uncertain.
+* Never pair two different medications as though they are interchangeable, such as “pantoprazole (Nexium).”
+
+4. Extract provider clinical reasoning as structured data.
+
+For every treatment decision, extract:
+
+* Decision made
+* Supporting symptoms
+* Supporting laboratory findings
+* Relevant history
+* Provider rationale
+* Alternatives discussed
+* Why an alternative was not selected
+* Counseling provided
+* Monitoring plan
+* Future or conditional next step
+
+Example:
+
+Decision:
+Start transdermal estradiol patch.
+
+Supporting evidence:
+Surgical menopause after hysterectomy, estradiol 5.8, persistent vasomotor symptoms, fatigue, low libido, agitation, and prolonged absence of hormone therapy.
+
+Route rationale:
+Transdermal estrogen was selected to avoid first-pass hepatic metabolism because of fatty liver findings, dyslipidemia, inflammation, and cardiovascular risk factors.
+
+Alternatives discussed:
+Estrogen injection and oral estrogen.
+
+Alternative not preferred:
+Oral estrogen was not preferred because of hepatic first-pass effects.
+
+Future consideration:
+Consider progesterone later for persistent sleep disturbance or agitation. Do not add it automatically because the patient does not have a uterus.
+
+5. Preserve provider sequencing and conditional plans.
+
+The note must distinguish between:
+
+* treatment started now
+* treatment intentionally deferred
+* treatment that may be added only if certain symptoms persist
+
+Example:
+
+* Start estrogen now.
+* Do not start progesterone simultaneously.
+* Consider progesterone later if sleep disturbance or agitation remains after assessing estrogen response.
+* Defer testosterone because hemoglobin and hematocrit are elevated in a current smoker.
+* Reconsider testosterone after smoking cessation and improvement in erythrocytosis risk.
+
+Do not collapse these into a vague statement such as “consider adding progesterone.”
+
+6. ROS must be extraction-only.
+
+Do not generate, infer, complete, or embellish ROS findings.
+
+Only include a symptom or denial in ROS when the patient explicitly reported or denied it during the encounter.
+
+Prohibited examples:
+
+* “Denies depression” unless the patient explicitly denied depression.
+* “Denies abdominal pain” unless the patient explicitly denied abdominal pain.
+* Adding system findings based on diagnoses, medications, laboratory findings, family history, or provider counseling.
+
+A symptom mentioned by the patient may be included, but it must not be transformed into a denial or broader review that was never performed.
+
+7. Medical, surgical, social, and family history must remain factual.
+
+Do not generate placeholder text such as “None of these.”
+
+Do not infer that no medical history exists simply because a complete history was not discussed.
+
+Use:
+
+* “Not fully reviewed during this encounter,”
+* omit unsupported items,
+* or preserve only the history explicitly stated.
+
+8. Do not treat laboratory interpretation as a diagnosis unless the provider did.
+
+Preserve the provider’s actual interpretation.
+
+Examples:
+
+* Elevated ferritin with normal circulating iron was discussed as potentially related to inflammation and metabolic liver dysfunction, not automatically iron overload.
+* A1C of 5.5 was interpreted by the provider as evidence of metabolic dysfunction/insulin resistance despite not meeting the laboratory threshold for prediabetes.
+* Elevated hemoglobin and hematocrit were considered likely smoking-related.
+* FIB-4 was low risk.
+* Lp(a) was elevated and clinically important because of the family history.
+* hs-CRP was markedly elevated and interpreted as systemic inflammation.
+
+9. The assessment must use all relevant supporting evidence.
+
+For each diagnosis, the extraction should provide the writer with:
+
+* symptoms
+* objective laboratory evidence
+* relevant history
+* risk factors
+* prior treatment
+* treatment rationale
+* counseling
+* monitoring plan
+
+Do not reduce a diagnosis to one symptom and one lab when the transcript contains substantially more supporting evidence.
+
+10. Preserve clinically meaningful discussions that affect treatment.
+
+The extraction must not discard major topics simply because they were lengthy counseling discussions.
+
+For this encounter, clinically meaningful topics included:
+
+* surgical menopause and severe hypoestrogenism
+* transdermal versus oral versus injectable estrogen
+* why oral estrogen was not preferred
+* progesterone not required for endometrial protection because she has no uterus
+* possible later progesterone use for sleep or agitation
+* testosterone deferred because of elevated hemoglobin/hematocrit and smoking
+* tirzepatide starter-dose failure and dose escalation
+* smoking cessation with bupropion
+* elevated Lp(a)
+* family history of premature cardiovascular disease
+* ASCVD risk
+* coronary calcium screening
+* elevated hs-CRP
+* fatty liver and low-risk FIB-4
+* low folate
+* vitamin D optimization
+* omega-3 and CoQ10 recommendations
+* staged supplement plan
+* protein goal
+* four-week medication follow-up
+* eight-week laboratory follow-up
+
+The final note does not have to reproduce every educational analogy or casual conversation, but it must preserve the clinical conclusion, rationale, decision, and follow-up associated with each meaningful topic.
+
+11. Improve normalization without overwriting source truth.
+
+The structured extraction must remain the source of truth.
+
+Normalization may classify and organize extracted information, but it must not:
+
+* invent facts
+* replace uncertain facts with confident ones
+* change medications
+* merge timelines
+* convert recommendations into current medications
+* convert discussed options into completed decisions
+* generate diagnoses unsupported by the encounter
+
+When the transcript, extraction, and normalized data conflict, the system should flag the conflict for QA rather than allowing the writer to guess.
+
+12. Strengthen QA verification.
+
+The QA stage should compare the finished note directly against the transcript and structured extraction and reject or revise the note when it finds:
+
+* a medication listed as current that was started or increased during the visit
+* an incorrect medication name
+* a fabricated ROS denial
+* a fabricated medical-history statement
+* merged or altered timelines
+* missing major treatment decisions
+* a future consideration presented as a current plan
+* a deferred treatment presented as started
+* an unsupported diagnosis
+* incorrect units, such as vitamin D written as 5,000 mg instead of 5,000 IU
+* missing route, dose, frequency, or follow-up when explicitly stated
+* duplication between the Assessment and Care Plan that introduces contradictory instructions
+
+Please make these changes only to the extraction, normalization, provenance handling, and QA logic needed to improve content accuracy.
+
+Do not redesign the SOAP note.
+
+Do not change the visual layout.
+
+Do not change the section names.
+
+Do not change the order of the sections.
+
+Do not remove the existing HPI, Allergies, Current Medications, Medical History, Surgical History, Social History, Family History, ROS, Vital Signs, Physical Examination, Assessment & Plan, Care Plan, or Follow-Up sections.
+
+Do not change the current diagnosis numbering or the way the final note is displayed.
+
+Before completing the change, test the updated pipeline against the Tammy Ladner transcript and compare the output line-by-line with the transcript for medication status, chronology, explicit ROS findings, clinical reasoning, treatment sequencing, and follow-up.
