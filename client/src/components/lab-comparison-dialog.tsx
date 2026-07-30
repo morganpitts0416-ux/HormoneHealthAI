@@ -50,6 +50,61 @@ function fmtDate(dateStr: string): { year: string; day: string } {
   }
 }
 
+// Maps common quick-entry name variants to the canonical category name used
+// by full-eval AI interpretations so both appear in the same comparison row.
+const QUICK_NAME_CANONICAL: Record<string, string> = {
+  "testosterone free":           "Free Testosterone",
+  "free testosterone":           "Free Testosterone",
+  "testosterone (free)":         "Free Testosterone",
+  "testosterone total":          "Total Testosterone",
+  "total testosterone":          "Total Testosterone",
+  "testosterone (total)":        "Total Testosterone",
+  "testosterone bioavailable":   "Bioavailable Testosterone",
+  "bioavailable testosterone":   "Bioavailable Testosterone",
+  "testosterone, free":          "Free Testosterone",
+  "testosterone, total":         "Total Testosterone",
+  "dhea-s":                      "DHEA-S",
+  "dhea sulfate":                "DHEA-S",
+  "dhea":                        "DHEA-S",
+  "tsh":                         "TSH",
+  "free t4":                     "Free T4",
+  "free t3":                     "Free T3",
+  "reverse t3":                  "Reverse T3",
+  "vitamin d":                   "Vitamin D (25-OH)",
+  "vitamin d (25-oh)":           "Vitamin D (25-OH)",
+  "25-oh vitamin d":             "Vitamin D (25-OH)",
+  "vitamin b12":                 "Vitamin B12",
+  "b12":                         "Vitamin B12",
+  "hemoglobin a1c":              "Hemoglobin A1c",
+  "hba1c":                       "Hemoglobin A1c",
+  "a1c":                         "Hemoglobin A1c",
+  "hs-crp":                      "hs-CRP",
+  "hs crp":                      "hs-CRP",
+  "crp":                         "hs-CRP",
+  "cortisol (am)":               "Cortisol (AM)",
+  "cortisol am":                 "Cortisol (AM)",
+  "cortisol":                    "Cortisol (AM)",
+  "igf-1":                       "IGF-1",
+  "igf1":                        "IGF-1",
+  "iron saturation":             "Iron Saturation",
+  "iron sat":                    "Iron Saturation",
+  "% saturation":                "Iron Saturation",
+  "tibc":                        "TIBC",
+  "total iron binding":          "TIBC",
+  "fasting glucose":             "Fasting Glucose",
+  "fasting insulin":             "Fasting Insulin",
+  "total cholesterol":           "Total Cholesterol",
+  "ldl cholesterol":             "LDL Cholesterol",
+  "hdl cholesterol":             "HDL Cholesterol",
+  "ldl":                         "LDL Cholesterol",
+  "hdl":                         "HDL Cholesterol",
+};
+
+function canonicalTestName(raw: string): string {
+  const lower = raw.toLowerCase().trim();
+  return QUICK_NAME_CANONICAL[lower] ?? raw.trim();
+}
+
 function buildMatrix(labs: LabResult[], simpleUploads: SimpleLabUpload[]) {
   type NEntry = { testName: string; value: string; unit: string; status?: CellStatus };
   type NDraw = { dateStr: string; dateMs: number; isQuick: boolean; entries: NEntry[] };
@@ -76,7 +131,12 @@ function buildMatrix(labs: LabResult[], simpleUploads: SimpleLabUpload[]) {
     const raw = (u.entries as Array<{ name: string; value: string; unit?: string }>) || [];
     const entries: NEntry[] = raw
       .filter(e => e.name && String(e.value ?? "").trim() !== "")
-      .map(e => ({ testName: e.name.trim(), value: String(e.value), unit: e.unit ?? "", status: "quick" as CellStatus }));
+      .map(e => ({
+        testName: canonicalTestName(e.name),
+        value: String(e.value),
+        unit: e.unit ?? "",
+        status: "quick" as CellStatus,
+      }));
     if (entries.length) {
       draws.push({ dateStr: u.labDate, dateMs: new Date(u.labDate).getTime(), isQuick: true, entries });
     }

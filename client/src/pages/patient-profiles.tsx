@@ -532,8 +532,47 @@ function getQuickValueStatus(value: string, refRange?: string): "high" | "low" |
   return "none";
 }
 
-function QuickLabDetailModal({ upload, onClose, patientName }: { upload: SimpleLabUpload; onClose: () => void; patientName: string }) {
+function QuickLabDetailModal({ upload, onClose, patientName, patientGender }: {
+  upload: SimpleLabUpload;
+  onClose: () => void;
+  patientName: string;
+  patientGender?: string;
+}) {
   const entries = (upload.entries as Array<{ name: string; value: string; unit: string; referenceRange?: string }>) ?? [];
+
+  // Fetch clinic lab-range preferences so we can show the correct reference
+  // range even when the quick-entry didn't capture one explicitly.
+  const { data: labPrefsData } = useQuery<{
+    preferences: Array<{ markerKey: string; gender: string; displayName: string | null; normalMin: number | null; normalMax: number | null }>;
+    defaults: Array<{ key: string; displayName: string; gender: string; normalMin?: number; normalMax?: number }>;
+  }>({
+    queryKey: ['/api/preferences/lab-ranges'],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  function fmtRange(lo?: number | null, hi?: number | null): string {
+    if (lo != null && hi != null) return `${lo}–${hi}`;
+    if (hi != null) return `<${hi}`;
+    if (lo != null) return `>${lo}`;
+    return '';
+  }
+
+  // Returns the best available reference range string for a given entry.
+  // Priority: stored value > clinic custom preference > system default.
+  function getEffectiveRef(entryName: string, stored?: string): string {
+    if (stored && stored.trim()) return stored;
+    if (!labPrefsData) return '';
+    const lower = entryName.toLowerCase().trim();
+    const genderOk = (g: string) => g === 'both' || !patientGender || g === patientGender;
+    const pref = labPrefsData.preferences.find(p =>
+      genderOk(p.gender) &&
+      ((p.displayName ?? '').toLowerCase() === lower || p.markerKey.toLowerCase() === lower)
+    );
+    if (pref && (pref.normalMin != null || pref.normalMax != null)) return fmtRange(pref.normalMin, pref.normalMax);
+    const def = labPrefsData.defaults.find(d => genderOk(d.gender) && d.displayName.toLowerCase() === lower);
+    if (def && (def.normalMin != null || def.normalMax != null)) return fmtRange(def.normalMin, def.normalMax);
+    return '';
+  }
 
   const panelMap: Record<string, typeof entries> = {};
   for (const entry of entries) {
@@ -550,74 +589,74 @@ function QuickLabDetailModal({ upload, onClose, patientName }: { upload: SimpleL
     } catch { return upload.labDate; }
   })();
 
-  const highCount = entries.filter(e => getQuickValueStatus(e.value, e.referenceRange) === "high").length;
-  const lowCount  = entries.filter(e => getQuickValueStatus(e.value, e.referenceRange) === "low").length;
+  const highCount = entries.filter(e => getQuickValueStatus(e.value, getEffectiveRef(e.name, e.referenceRange)) === "high").length;
+  const lowCount  = entries.filter(e => getQuickValueStatus(e.value, getEffectiveRef(e.name, e.referenceRange)) === "low").length;
 
   return (
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[88vh] flex flex-col p-0 gap-0" data-testid="dialog-quick-lab-detail">
-        <DialogHeader className="px-5 pt-5 pb-3 border-b flex-shrink-0">
+        <DialogHeader className="px-5 pt-5 pb-3 border-b flex-shrink-0" style={{ backgroundColor: "#f5f2ed", borderColor: "#d4c9b5" }}>
           <div className="flex items-start gap-3 flex-wrap">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap mb-1">
-                <Badge variant="outline" className="text-xs gap-1">
+                <Badge variant="outline" className="text-xs gap-1" style={{ borderColor: "#c4b9a5", color: "#4a5e32" }}>
                   <FlaskConical className="w-3 h-3" />Quick Lab Entry
                 </Badge>
                 <Badge variant="secondary" className="text-xs">{entries.length} value{entries.length !== 1 ? 's' : ''}</Badge>
-                {highCount > 0 && <Badge className="text-xs bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border border-red-200">{highCount} H</Badge>}
-                {lowCount > 0  && <Badge className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-200">{lowCount} L</Badge>}
+                {highCount > 0 && <Badge className="text-xs bg-red-100 text-red-700 border border-red-200 no-default-hover-elevate">{highCount} H</Badge>}
+                {lowCount > 0  && <Badge className="text-xs bg-blue-100 text-blue-700 border border-blue-200 no-default-hover-elevate">{lowCount} L</Badge>}
               </div>
-              <DialogTitle className="text-base">{patientName}</DialogTitle>
-              <p className="text-sm text-muted-foreground mt-0.5">{labDate}</p>
+              <DialogTitle className="text-base" style={{ color: "#1c2414" }}>{patientName}</DialogTitle>
+              <p className="text-sm mt-0.5" style={{ color: "#7a8a64" }}>{labDate}</p>
             </div>
           </div>
           {upload.aiInsight && (
-            <div className="flex gap-2 mt-3 p-3 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
-              <Sparkles className="w-3.5 h-3.5 text-blue-500 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-blue-800 dark:text-blue-200 leading-relaxed">{upload.aiInsight}</p>
+            <div className="flex gap-2 mt-3 p-3 rounded-lg border" style={{ backgroundColor: "#edf4e4", borderColor: "#c4d9b0" }}>
+              <Sparkles className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: "#4a5e32" }} />
+              <p className="text-xs leading-relaxed" style={{ color: "#2e3a20" }}>{upload.aiInsight}</p>
             </div>
           )}
         </DialogHeader>
 
         <ScrollArea className="flex-1 px-5 py-4">
           {upload.notes && (
-            <div className="mb-4 p-3 rounded-md bg-muted/50 border">
-              <p className="text-xs text-muted-foreground italic">{upload.notes}</p>
+            <div className="mb-4 p-3 rounded-lg border" style={{ borderColor: "#e8ddd0", backgroundColor: "#fffbf5" }}>
+              <p className="text-xs italic" style={{ color: "#7a8a64" }}>{upload.notes}</p>
             </div>
           )}
           {orderedPanels.map(panel => (
             <div key={panel} className="mb-5 last:mb-0">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 px-1">{panel}</h3>
-              <div className="rounded-md border overflow-hidden">
+              <h3 className="text-xs font-semibold uppercase tracking-wide mb-2 px-1" style={{ color: "#4a5e32", letterSpacing: "0.08em" }}>{panel}</h3>
+              <div className="rounded-lg border overflow-hidden" style={{ borderColor: "#e8ddd0" }}>
                 <table className="w-full">
                   <thead>
-                    <tr className="bg-muted/40 border-b">
-                      <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Test</th>
-                      <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground">Value</th>
-                      <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground hidden sm:table-cell">Unit</th>
-                      <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground hidden sm:table-cell">Reference Range</th>
-                      <th className="text-center px-3 py-2 text-xs font-medium text-muted-foreground w-14">Status</th>
+                    <tr className="border-b" style={{ backgroundColor: "#f5f2ed", borderColor: "#e8ddd0" }}>
+                      <th className="text-left px-3 py-2 text-xs font-medium" style={{ color: "#7a8a64" }}>Test</th>
+                      <th className="text-right px-3 py-2 text-xs font-medium" style={{ color: "#7a8a64" }}>Value</th>
+                      <th className="text-left px-3 py-2 text-xs font-medium hidden sm:table-cell" style={{ color: "#7a8a64" }}>Unit</th>
+                      <th className="text-left px-3 py-2 text-xs font-medium hidden sm:table-cell" style={{ color: "#7a8a64" }}>Reference Range</th>
+                      <th className="text-center px-3 py-2 text-xs font-medium w-14" style={{ color: "#7a8a64" }}>Status</th>
                     </tr>
                   </thead>
                   <tbody>
                     {panelMap[panel].map((entry, i) => {
-                      const status = getQuickValueStatus(entry.value, entry.referenceRange);
+                      const effectiveRef = getEffectiveRef(entry.name, entry.referenceRange);
+                      const status = getQuickValueStatus(entry.value, effectiveRef);
                       return (
-                        <tr key={i} className={cn("border-b last:border-b-0", i % 2 !== 0 && "bg-muted/20")}>
-                          <td className="px-3 py-2 text-xs font-medium text-foreground">{entry.name}</td>
+                        <tr key={i} className="border-b last:border-b-0" style={{ borderColor: "#f0ece2", ...(i % 2 !== 0 ? { backgroundColor: "#fffbf5" } : {}) }}>
+                          <td className="px-3 py-2 text-xs font-medium" style={{ color: "#1c2414" }}>{entry.name}</td>
                           <td className={cn(
                             "px-3 py-2 text-right font-mono font-semibold text-sm tabular-nums",
-                            status === "high"   ? "text-red-600 dark:text-red-400" :
-                            status === "low"    ? "text-blue-600 dark:text-blue-400" :
-                            status === "normal" ? "text-green-700 dark:text-green-400" :
-                            "text-foreground"
-                          )}>{entry.value}</td>
-                          <td className="px-3 py-2 text-xs text-muted-foreground font-mono hidden sm:table-cell">{entry.unit || "—"}</td>
-                          <td className="px-3 py-2 text-xs text-muted-foreground font-mono hidden sm:table-cell">{entry.referenceRange || "—"}</td>
+                            status === "high"   ? "text-red-600" :
+                            status === "low"    ? "text-blue-600" :
+                            status === "normal" ? "text-green-700" : ""
+                          )} style={status === "none" ? { color: "#1c2414" } : undefined}>{entry.value}</td>
+                          <td className="px-3 py-2 text-xs font-mono hidden sm:table-cell" style={{ color: "#7a8a64" }}>{entry.unit || "—"}</td>
+                          <td className="px-3 py-2 text-xs font-mono hidden sm:table-cell" style={{ color: "#7a8a64" }}>{effectiveRef || "—"}</td>
                           <td className="px-3 py-2 text-center">
-                            {status === "high"   && <Badge className="text-[10px] px-1.5 py-0 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-red-200 no-default-hover-elevate">H</Badge>}
-                            {status === "low"    && <Badge className="text-[10px] px-1.5 py-0 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200 no-default-hover-elevate">L</Badge>}
-                            {status === "normal" && <Badge className="text-[10px] px-1.5 py-0 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-200 no-default-hover-elevate">N</Badge>}
+                            {status === "high"   && <Badge className="text-[10px] px-1.5 py-0 bg-red-100 text-red-700 border-red-200 no-default-hover-elevate">H</Badge>}
+                            {status === "low"    && <Badge className="text-[10px] px-1.5 py-0 bg-blue-100 text-blue-700 border-blue-200 no-default-hover-elevate">L</Badge>}
+                            {status === "normal" && <Badge className="text-[10px] px-1.5 py-0 bg-green-100 text-green-700 border-green-200 no-default-hover-elevate">N</Badge>}
                           </td>
                         </tr>
                       );
@@ -6561,6 +6600,7 @@ export default function PatientProfiles() {
           upload={viewingSimpleLab}
           onClose={() => setViewingSimpleLab(null)}
           patientName={`${selectedPatient.firstName} ${selectedPatient.lastName}`.trim()}
+          patientGender={selectedPatient.gender ?? undefined}
         />
       )}
 
