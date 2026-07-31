@@ -9930,6 +9930,57 @@ A DISCUSSED item must NEVER appear in the active Plan or Care Plan. A RECOMMENDE
 
 Populate provider_action_log with one entry for every substantive provider action, recommendation, discussion, or future plan in the transcript.
 
+SPEAKER ATTRIBUTION & SUBJECT OWNERSHIP — PATIENT SAFETY GATE:
+Before allowing any fact into a patient history field, classify the statement by source and verify the patient is the subject.
+
+STATEMENT CLASSIFICATION — apply to every transcript statement:
+- "patient_statement": patient spoke about themselves → eligible for all patient chart fields
+- "companion_statement_about_patient": companion or family member spoke about the patient → eligible (with noted sourcing)
+- "provider_question": provider asked a question → NOT a fact about the patient
+- "provider_clinical_reasoning": provider's own clinical interpretation → documents provider judgment, NOT patient history
+- "provider_education": provider explaining a concept, mechanism, or example → NOT patient history
+- "provider_anecdote": provider's story about their own life, family, friends, or personal experiences → NEVER patient history
+- "provider_statement_about_another_person": provider's statement about another patient, staff member, or third party → NEVER patient history
+- "treatment_discussion": mutual discussion of options → classify outcomes by the four-category taxonomy
+- "administrative": scheduling, billing, greetings → exclude
+
+PROVIDER ANECDOTE TRIGGERS — when a statement begins with or contains any of the following, classify it as provider_anecdote or provider_statement_about_another_person and exclude ALL contained facts from patient chart fields:
+  "My mom…" / "My husband…" / "My wife…" / "My boyfriend…" / "My partner…" / "My sister…" / "My dad…"
+  "I had a patient…" / "One of my patients…" / "A woman I treated…" / "A patient of mine…"
+  "I had this happen…" / "When I was…" / "When I had…" / "I went through…"
+  General population statements: "Patients often…" / "Men on testosterone sometimes…" / "Women in menopause usually…" / "Most patients find…"
+
+PATIENT HISTORY FIELDS — EXCLUSION RULE:
+The following fields must be populated ONLY from patient_statement, companion_statement_about_patient, or explicit provider clinical reasoning about this specific patient's own documented history:
+  surgical_history, past_medical_history, family_history, social_history, reproductive_history,
+  symptoms_reported, symptoms_denied, allergies, medications_current
+Provider anecdotes, general medical education, population-level statements, and stories about other people must NEVER populate these fields.
+
+EXPLICIT PATIENT CORRECTIONS — HIGHEST PRIORITY SOURCE OF TRUTH:
+When a patient directly contradicts an inferred or incidentally mentioned fact, the patient's direct answer overrides everything else in the transcript.
+  Examples of override patterns:
+  - Provider: "You haven't had a hysterectomy, right?" / Patient: "I've had all my parts." → surgical_history must NOT include hysterectomy; reproductive_history must document intact uterus
+  - Provider asks about a surgery / Patient denies it → the denial is the definitive fact
+  - Patient says "No, I never had that" → removes any prior inference; the direct denial wins
+  When a patient's direct answer conflicts with a nearby provider statement, anecdote, or third-party mention → the patient answer is the authoritative fact for this patient's chart.
+
+SURGICAL HISTORY — THREE PERMITTED SOURCES ONLY:
+A surgery may appear in surgical_history ONLY when:
+  1. The patient explicitly reports the surgery ("I had a hysterectomy in 2005")
+  2. A companion explicitly reports that the patient had the surgery
+  3. The provider explicitly confirms a surgery as part of this patient's known, verified chart history ("You had your appendix out, right?" followed by patient confirmation)
+  Any surgery mentioned in a provider anecdote, educational example, or story about another person must be EXCLUDED from surgical_history entirely.
+  Do NOT infer a surgery belongs to the patient because it appears near a discussion of that patient's condition or body system.
+
+ROS — SILENCE IS NOT A DENIAL:
+Do NOT add a symptom denial to symptoms_denied unless the patient explicitly stated the denial in their own words during this encounter. Provider questions without a clear patient answer do not support a denial. A topic being discussed does not create a denial.
+
+HISTORY FIELD PLACEHOLDERS — PROHIBITED:
+Do NOT write "None of these," "None reported," "No significant history," "Non-contributory," or any similar placeholder.
+If a history field was not addressed in this encounter, leave the array empty.
+If the topic arose but was incomplete, write "Not fully reviewed during this encounter" as the sole array entry.
+A condition not mentioned in this transcript cannot be documented as absent.
+
 CONTEXT CLUE REQUIREMENT:
 Use context clues to capture clinically relevant information, but do not hallucinate:
 - If something is strongly supported by transcript context, capture it in the appropriate field.
@@ -11690,6 +11741,57 @@ ANTI-PROMOTION RULE — PATIENT SAFETY:
 A DISCUSSED item must NEVER appear in the active Plan or Care Plan. A RECOMMENDED item must NEVER be written as an active prescription. A FUTURE CONSIDERATION must NEVER be written as today's plan. When in doubt, classify conservatively — underpromoting is always safer than overpromoting.
 
 Populate provider_action_log with one entry for every substantive provider action, recommendation, discussion, or future plan in the transcript.
+
+SPEAKER ATTRIBUTION & SUBJECT OWNERSHIP — PATIENT SAFETY GATE:
+Before allowing any fact into a patient history field, classify the statement by source and verify the patient is the subject.
+
+STATEMENT CLASSIFICATION — apply to every transcript statement:
+- "patient_statement": patient spoke about themselves → eligible for all patient chart fields
+- "companion_statement_about_patient": companion or family member spoke about the patient → eligible (with noted sourcing)
+- "provider_question": provider asked a question → NOT a fact about the patient
+- "provider_clinical_reasoning": provider's own clinical interpretation → documents provider judgment, NOT patient history
+- "provider_education": provider explaining a concept, mechanism, or example → NOT patient history
+- "provider_anecdote": provider's story about their own life, family, friends, or personal experiences → NEVER patient history
+- "provider_statement_about_another_person": provider's statement about another patient, staff member, or third party → NEVER patient history
+- "treatment_discussion": mutual discussion of options → classify outcomes by the four-category taxonomy
+- "administrative": scheduling, billing, greetings → exclude
+
+PROVIDER ANECDOTE TRIGGERS — when a statement begins with or contains any of the following, classify it as provider_anecdote or provider_statement_about_another_person and exclude ALL contained facts from patient chart fields:
+  "My mom…" / "My husband…" / "My wife…" / "My boyfriend…" / "My partner…" / "My sister…" / "My dad…"
+  "I had a patient…" / "One of my patients…" / "A woman I treated…" / "A patient of mine…"
+  "I had this happen…" / "When I was…" / "When I had…" / "I went through…"
+  General population statements: "Patients often…" / "Men on testosterone sometimes…" / "Women in menopause usually…" / "Most patients find…"
+
+PATIENT HISTORY FIELDS — EXCLUSION RULE:
+The following fields must be populated ONLY from patient_statement, companion_statement_about_patient, or explicit provider clinical reasoning about this specific patient's own documented history:
+  surgical_history, past_medical_history, family_history, social_history, reproductive_history,
+  symptoms_reported, symptoms_denied, allergies, medications_current
+Provider anecdotes, general medical education, population-level statements, and stories about other people must NEVER populate these fields.
+
+EXPLICIT PATIENT CORRECTIONS — HIGHEST PRIORITY SOURCE OF TRUTH:
+When a patient directly contradicts an inferred or incidentally mentioned fact, the patient's direct answer overrides everything else in the transcript.
+  Examples of override patterns:
+  - Provider: "You haven't had a hysterectomy, right?" / Patient: "I've had all my parts." → surgical_history must NOT include hysterectomy; reproductive_history must document intact uterus
+  - Provider asks about a surgery / Patient denies it → the denial is the definitive fact
+  - Patient says "No, I never had that" → removes any prior inference; the direct denial wins
+  When a patient's direct answer conflicts with a nearby provider statement, anecdote, or third-party mention → the patient answer is the authoritative fact for this patient's chart.
+
+SURGICAL HISTORY — THREE PERMITTED SOURCES ONLY:
+A surgery may appear in surgical_history ONLY when:
+  1. The patient explicitly reports the surgery ("I had a hysterectomy in 2005")
+  2. A companion explicitly reports that the patient had the surgery
+  3. The provider explicitly confirms a surgery as part of this patient's known, verified chart history ("You had your appendix out, right?" followed by patient confirmation)
+  Any surgery mentioned in a provider anecdote, educational example, or story about another person must be EXCLUDED from surgical_history entirely.
+  Do NOT infer a surgery belongs to the patient because it appears near a discussion of that patient's condition or body system.
+
+ROS — SILENCE IS NOT A DENIAL:
+Do NOT add a symptom denial to symptoms_denied unless the patient explicitly stated the denial in their own words during this encounter. Provider questions without a clear patient answer do not support a denial. A topic being discussed does not create a denial.
+
+HISTORY FIELD PLACEHOLDERS — PROHIBITED:
+Do NOT write "None of these," "None reported," "No significant history," "Non-contributory," or any similar placeholder.
+If a history field was not addressed in this encounter, leave the array empty.
+If the topic arose but was incomplete, write "Not fully reviewed during this encounter" as the sole array entry.
+A condition not mentioned in this transcript cannot be documented as absent.
 
 TREATMENT DECISION RATIONALE — MANDATORY STRUCTURED CAPTURE:
 For EVERY treatment decision made at this visit (new starts, dose changes, discontinuations, deferrals), populate one entry in treatment_decision_rationale with ALL of the following fields that are present in the transcript:

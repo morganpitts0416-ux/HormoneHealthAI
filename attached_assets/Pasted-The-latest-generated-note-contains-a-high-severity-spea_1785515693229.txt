@@ -1,0 +1,240 @@
+The latest generated note contains a high-severity speaker-attribution error: it states that the patient underwent a hysterectomy in her early 40s, but she explicitly stated that she has never had a hysterectomy and still has all reproductive organs.
+
+The hysterectomy statement came from a provider anecdote about another person and was incorrectly assigned to the patient.
+
+This is not primarily a note-writing issue. It is a speaker attribution and fact-ownership failure in the extraction layer.
+
+Do not change the current SOAP note layout, headings, section order, formatting, diagnosis numbering, Care Plan structure, Follow-Up structure, or visual presentation.
+
+Please correct the structured extraction, normalization, QA, and fidelity-audit layers so that every fact is assigned to the correct speaker and subject before it is allowed into the patient chart.
+
+## 1. Classify every transcript statement by source
+
+Before extracting any clinical fact, classify each statement as exactly one of the following:
+
+* Patient statement
+* Companion or family-member statement
+* Provider question
+* Provider clinical reasoning
+* Provider education
+* Provider anecdote or personal example
+* Provider statement about another patient or person
+* Treatment discussion
+* Confirmed treatment decision
+* Administrative or casual conversation
+
+Only verified patient statements, verified companion statements about the patient, and provider-confirmed conclusions about the patient may populate the patient’s chart.
+
+## 2. Provider anecdotes must never become patient history
+
+Any statement involving the provider’s personal experiences, family, partner, friends, staff, or other patients must be excluded from patient-specific extraction.
+
+Examples of phrases that should trigger provider-anecdote classification include:
+
+* “My mom…”
+* “My husband…”
+* “My boyfriend…”
+* “Todd…”
+* “I had a patient…”
+* “One of my patients…”
+* “I had this happen…”
+* “When I was…”
+* “A woman I treated…”
+* “Men on testosterone sometimes…”
+* “Patients often…”
+
+Facts contained in these examples must never populate:
+
+* HPI
+* Medical History
+* Surgical History
+* Family History
+* Social History
+* ROS
+* Diagnoses
+* Current Medications
+* Assessment
+* Care Plan
+
+Provider anecdotes may be retained only as counseling context when clinically relevant, but they must not be charted as facts about the patient.
+
+## 3. Explicit patient corrections override all inferred facts
+
+The system must recognize direct confirmations and corrections as high-priority source-of-truth statements.
+
+In this encounter, the provider asked:
+
+“You have not had a hysterectomy, right?”
+
+The patient replied:
+
+“I’ve had all my parts.”
+
+That establishes:
+
+* No hysterectomy
+* Uterus present
+* Progesterone is required if systemic estrogen is prescribed for endometrial protection
+
+Any conflicting hysterectomy statement elsewhere in the transcript must be rejected as belonging to another person or anecdote.
+
+When a direct patient answer conflicts with an inferred or indirectly mentioned fact, the direct patient answer must always win.
+
+## 4. Add subject ownership to every extracted fact
+
+Every extracted fact should include:
+
+* Speaker
+* Subject of the statement
+* Fact type
+* Confidence
+* Exact supporting transcript span
+* Whether the fact was directly stated, inferred, or provider-confirmed
+
+Example:
+
+{
+"fact": "hysterectomy",
+"speaker": "provider",
+"subject": "provider's mother or another person",
+"fact_type": "provider anecdote",
+"patient_chart_eligible": false
+}
+
+Correct patient fact:
+
+{
+"fact": "uterus present",
+"speaker": "patient",
+"subject": "patient",
+"fact_type": "surgical history confirmation",
+"patient_chart_eligible": true,
+"confidence": "high"
+}
+
+No fact should enter the patient chart unless `patient_chart_eligible` is true.
+
+## 5. Do not infer surgical history from nearby conversation
+
+The extraction must not assume that a surgery belongs to the patient simply because it appears near a discussion about the patient’s hormones.
+
+Surgical history should be populated only when:
+
+* The patient explicitly reports the surgery
+* A companion explicitly reports the patient had the surgery
+* The provider confirms the surgery as part of the patient’s known chart history
+
+Provider education about hysterectomy, another patient’s hysterectomy, or the provider’s family history must not be used.
+
+## 6. Add a contradiction check for anatomy and surgical history
+
+Before generating the note, QA must compare all extracted anatomy and surgical-history facts.
+
+The note should be rejected and regenerated if it contains contradictions such as:
+
+* “History of hysterectomy” and “uterus present”
+* “No uterus” and a statement that the patient has all reproductive organs
+* Progesterone described as optional for systemic estrogen despite a confirmed intact uterus
+* A surgery listed without a direct patient-specific source
+
+For this encounter, the correct surgical history is limited to the explicitly documented procedures:
+
+* C-section in 2000
+* C-section in 2004
+* Breast augmentation in 2018
+
+Do not add hysterectomy.
+
+## 7. Protect patient history sections from non-patient content
+
+The following sections must be populated only from patient-specific facts:
+
+* HPI
+* Allergies
+* Current Medications
+* Medical History
+* Surgical History
+* Social History
+* Family History
+* ROS
+
+Provider anecdotes, educational examples, general medical statements, and stories about other people must be prohibited from these sections.
+
+## 8. ROS remains extraction-only
+
+The latest note also contains unsupported ROS denials.
+
+Do not generate or infer ROS findings.
+
+Only include symptoms or denials the patient explicitly stated.
+
+Do not add:
+
+* Denies fever
+* Denies chills
+* Denies palpitations
+* Any other denial that was not directly documented
+
+Provider questions without a clear patient answer do not support a denial.
+
+## 9. Do not use placeholder history such as “None of these”
+
+“Medical History: None of these” is not acceptable.
+
+If medical history was not fully reviewed, either:
+
+* Include only the conditions explicitly reported
+* State “Medical history not fully reviewed”
+* Leave unsupported fields blank according to the current application rules
+
+Do not imply that the patient has no medical history.
+
+For this encounter, relevant patient-specific history includes at least:
+
+* HELLP syndrome during pregnancy
+* Hypertension treated with Norvasc
+* Prior episodes thought to be cardiac but attributed to anxiety
+* Chronic constipation
+
+Only include these if supported by the final structured extraction and existing chart data.
+
+## 10. Preserve the actual hormone-treatment rationale
+
+Because the patient has an intact uterus, the note should reflect that progesterone is required when systemic estrogen is used for endometrial protection.
+
+The correct sequencing from this encounter was:
+
+* Start progesterone 100 mg nightly
+* Assess initial tolerance
+* Start the already-prescribed transdermal estrogen approximately one to two weeks later if progesterone is tolerated
+* Discuss testosterone later, after evaluating the response to estrogen and progesterone
+* Testosterone was not started today
+
+Do not describe progesterone merely as “sleep and hormonal support.” Include endometrial protection as a primary clinical reason because the uterus is present.
+
+## 11. Add a final provenance audit
+
+Before returning a note, the fidelity audit must ask of every patient-specific statement:
+
+* Who said this?
+* Who was the statement about?
+* Is it directly supported by the transcript or chart?
+* Did a later patient statement correct or contradict it?
+* Is this a patient fact, provider reasoning, education, anecdote, discussion, or confirmed decision?
+
+If the system cannot confidently identify the patient as the subject, the fact must not be included.
+
+## 12. Test this correction against the Elise McCormick encounter
+
+After making the changes, regenerate the Elise McCormick note and verify specifically that:
+
+* No hysterectomy is documented
+* The patient is documented as having an intact uterus
+* Progesterone is documented as required with systemic estrogen for endometrial protection
+* Only C-sections and breast augmentation appear in Surgical History
+* Provider anecdotes do not appear as patient history
+* Unsupported ROS denials are removed
+* Testosterone remains a future consideration
+* Progesterone, estrogen sequencing, and GLP-1 initiation match the confirmed treatment decisions
+
+Do not make broad new changes to the writer prompt. Make this a targeted correction to speaker attribution, subject ownership, contradiction handling, provenance enforcement, and QA.

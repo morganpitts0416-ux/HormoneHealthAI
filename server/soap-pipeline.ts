@@ -753,6 +753,25 @@ CRITICAL PROMOTION ERRORS TO DETECT AND CORRECT:
 
 When you detect a promotion error from the incoming extraction, correct it silently by moving the item to the appropriate category. Do not pass incorrectly categorized items downstream.
 
+═══════════════════════════════════════
+ANATOMY & SURGICAL HISTORY INTEGRITY — RUN BEFORE ROUTING
+═══════════════════════════════════════
+Before routing any item downstream, perform the following surgical and anatomy contradiction checks on the incoming extraction. Correct silently; log every correction in enhanced_extraction.hpi_chronological_elements.
+
+CONTRADICTION DETECTION — detect and correct each of the following:
+
+1. HYSTERECTOMY vs INTACT UTERUS CONFLICT:
+   If surgical_history contains "hysterectomy" AND (reproductive_history OR transcript) contains any of: "intact uterus," "has all reproductive organs," "all my parts," "uterus present," "did not have a hysterectomy" → the hysterectomy entry is a misattribution (likely a provider anecdote or third-party mention). REMOVE it from surgical_history. Add to enhanced_extraction.hpi_chronological_elements: "[CONFLICT CORRECTED: hysterectomy appeared in extraction but patient confirmed intact uterus — removed as provider anecdote misattribution. Verify before signing.]"
+
+2. PROGESTERONE MISCLASSIFICATION WITH INTACT UTERUS:
+   If reproductive_history documents intact uterus AND any plan item describes progesterone as "optional" or lists only "sleep support" or "hormonal support" as its indication → add note: "[CLINICAL NOTE: Intact uterus confirmed — progesterone is required with systemic estrogen for endometrial protection. 'Optional' or sleep-only framing understates the indication.]"
+
+3. UNSOURCED SURGICAL HISTORY ITEMS:
+   For each item in surgical_history, verify it can be traced to: (a) an explicit patient statement, (b) a companion statement about the patient, or (c) an explicit provider confirmation of documented chart history. If the only plausible source is a provider anecdote or third-party story → remove from surgical_history and add to context_inferred_items: "[Surgery name] — source uncertain, may originate from provider anecdote; verify with patient before charting."
+
+PROVIDER ANECDOTE CONTAMINATION CHECK:
+Scan the incoming extraction for any item in surgical_history, past_medical_history, family_history, social_history, or symptoms_reported that may have originated from a provider anecdote or statement about another person. Trigger phrases to look for in source context: "my mom," "my husband," "my partner," "I had a patient," "another patient," "I went through," "when I was." Any fact traceable to these triggers must be removed from all patient history fields.
+
 Return this exact JSON structure:
 {
   "medications_normalized": [...],
@@ -2658,6 +2677,20 @@ When a generalized phrase has replaced specific clinical content from the transc
 
 52. MAJOR TREATMENT TOPIC MISSING FROM ASSESSMENT: Compare the structured extraction's treatment_decision_rationale (if present) against the numbered Assessment items. For each decision documented in treatment_decision_rationale, verify a corresponding numbered Assessment item exists. If a major treatment decision is present in the extraction (estrogen route selection rationale, testosterone deferral reasoning, GLP-1 dose escalation, smoking cessation counseling) but has no corresponding Assessment entry → flag CRITICAL and add the Assessment item with the full Clinical Rationale drawn from the extraction's treatment_decision_rationale.
 
+53. ANATOMY & SURGICAL HISTORY CONTRADICTION — PATIENT SAFETY: Scan the note for mutually contradictory anatomy or surgical history statements. Flag as CRITICAL for each of the following if found:
+   a) "History of hysterectomy" or "post-hysterectomy" AND "intact uterus" / "uterus present" / "has all reproductive organs" appearing in the same note. The patient's explicit direct confirmation of anatomy overrides any other statement — remove the surgical history entry that the patient denied and correct the note throughout.
+   b) Progesterone described as "optional" or for "sleep support" or "hormonal support" only, when the note simultaneously documents an intact uterus. The correct indication when a uterus is present and systemic estrogen is used is endometrial protection — add this as a primary indication alongside any secondary indications.
+   c) Any surgery listed in Surgical History that the transcript shows the patient explicitly denied ("No, I never had that" / "I've had all my parts" / "I haven't had a hysterectomy"). Flag CRITICAL, remove the denied surgery from Surgical History, and add to needs_clinician_review: "[Surgery] appeared in draft Surgical History but patient explicitly denied it during this encounter — removed pending clinician verification."
+   d) A surgery in Surgical History whose only transcript source is a provider anecdote about another person (provider said "my mom had X" or "I had a patient who had X"). Flag CRITICAL and remove it.
+
+54. PROVIDER ANECDOTE CONTAMINATION IN PATIENT HISTORY: Scan the Medical History, Surgical History, Family History, Social History, and HPI for any content that originated from a provider anecdote or provider statement about another person. Provider statements about their own family members, personal experiences, or other patients are NOT patient facts.
+   Detection pattern: look for surgeries, conditions, or experiences that the patient never personally reported, that appear only because the provider mentioned them in a teaching context, a personal story, or a story about a third party.
+   Specific trigger phrases that mark anecdote-sourced content: "my mom," "my husband," "my wife," "my partner," "my sister," "I had a patient," "one of my patients," "a woman I treated," "I went through," "when I was," "I had this happen."
+   For each contaminated item found: flag CRITICAL, remove it from the relevant history section, and add to needs_clinician_review: "[Item] appeared in draft history but may originate from a provider anecdote about another person rather than from this patient's reported history — verify source before signing."
+
+55. PLACEHOLDER HISTORY TEXT: Scan the Medical History, Surgical History, Family History, Social History, and Allergies sections for prohibited placeholder text. Prohibited patterns: "None of these," "None reported," "No significant history," "Non-contributory," "Reviewed and unremarkable," "Denied all." These phrases imply a complete history review occurred when it may not have.
+   If found: flag as important. Replace with either (a) the explicitly documented history items from this visit's transcript, (b) "Not fully reviewed during this encounter" if the topic arose but was incomplete, or (c) an empty field / section omission if the topic was not addressed at all. A blank field is always preferable to a placeholder that implies completeness.
+
 STYLE PRESERVATION — MANDATORY WHEN REVISING:
 If you are writing a revised_fullNote, the ClinIQ Core Principles and all documentation rules from the generation system prompt apply without exception. The QA pass fixes issues — it must NEVER reduce documentation fidelity.
 
@@ -2902,6 +2935,20 @@ RESTORATION RULES:
 - Preserve the format and structure of the post-refinement note
 - DOCUMENTATION VOICE — CORRECT ON SIGHT: If the note (either version) contains third-person observer phrases, correct them in your restored output using concise implied-subject clinical voice. Banned constructions — ALL of: "The provider said/explained/stated/told/mentioned/indicated/informed/recommended/discussed/advised/noted/suggested/counseled/reviewed/educated" and "The clinician said/explained/stated/told/mentioned/noted/discussed/recommended" → rewrite into implied-subject clinical voice ("Recommended...", "Discussed...", "Reviewed...", "Explained...", "Advised...", "Counseled on..."). Do NOT convert these to repetitive explicit "I" sentences — "Recommended X" is correct; "I recommended X" on every line is not. "Patient was educated on/advised to/counseled on/instructed to/informed of/made aware of/told to" → drop "Patient was" and write the action directly ("Reviewed...", "Advised to...", "Counseled on..."). These are voice errors — correct every instance regardless of whether they are restoration targets.
 - If the final note is complete (no meaningful content was removed and no voice errors are present), return it unchanged
+
+PROVENANCE AUDIT — run on the final note regardless of whether content was removed:
+For every patient-specific statement in Medical History, Surgical History, Family History, Social History, HPI, and ROS, ask:
+  (1) Who said this — patient, companion, or provider?
+  (2) Who was the statement about — this patient, or someone else (provider's family, another patient, third party)?
+  (3) Is it directly supported by the transcript or confirmed chart data?
+  (4) Did a later patient statement correct or contradict it?
+  (5) Is this a patient fact, provider reasoning, provider education, a provider anecdote, or general medical knowledge?
+If any history item in the final note fails these questions — specifically, if the subject of the statement is anyone other than this patient, or if the patient explicitly denied it — flag as CRITICAL and remove it.
+Highest-risk items to check:
+  - Surgical history entries (especially procedures the patient never mentioned, or procedures that appear in provider anecdote context)
+  - ROS denials for symptoms the patient never addressed
+  - Medical history items that are not in the chart data and were not stated by the patient in this visit
+  - Any fact introduced into the note after a provider said "my mom," "I had a patient," "when I was," or similar third-party framing
 
 RESPONSE FORMAT (JSON):
 {
