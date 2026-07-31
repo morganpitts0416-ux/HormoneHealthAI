@@ -102,6 +102,17 @@ function safeDate(dateStr: string | Date, opts: Intl.DateTimeFormatOptions = { m
   return d.toLocaleDateString('en-US', { timeZone: 'UTC', ...opts });
 }
 
+/** Returns the patient's current age in whole years from a UTC-midnight DOB string. */
+function calcAge(dateStr: string | Date): number | null {
+  const d = new Date(dateStr as string);
+  if (isNaN(d.getTime()) || d.getFullYear() < 1910) return null;
+  const today = new Date();
+  let age = today.getFullYear() - d.getUTCFullYear();
+  const monthDiff = today.getMonth() - d.getUTCMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < d.getUTCDate())) age--;
+  return age;
+}
+
 function ClinicalSnapshot({ labs, patient }: { labs: LabResult[]; patient: Patient }) {
   const [collapsed, setCollapsed] = useState(false);
   const insights = generateTrendInsights(labs, patient.gender as 'male' | 'female');
@@ -4067,6 +4078,9 @@ export default function PatientProfiles() {
                       {selectedPatient.dateOfBirth && (
                         <span className="text-xs text-muted-foreground">
                           DOB: <span className="font-medium text-foreground">{safeDate(selectedPatient.dateOfBirth as unknown as string)}</span>
+                          {calcAge(selectedPatient.dateOfBirth as unknown as string) !== null && (
+                            <span className="ml-1 text-muted-foreground">({calcAge(selectedPatient.dateOfBirth as unknown as string)} y/o)</span>
+                          )}
                         </span>
                       )}
                       {(selectedPatient as any).phone && (
