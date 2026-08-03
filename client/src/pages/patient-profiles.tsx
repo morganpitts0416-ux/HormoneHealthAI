@@ -3294,6 +3294,8 @@ export default function PatientProfiles() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/patients', selectedPatient?.id, 'supplement-orders'] });
       queryClient.invalidateQueries({ queryKey: ['/api/clinician/notifications'] });
+      // Refresh medications list — fulfilled items are auto-documented there
+      queryClient.invalidateQueries({ queryKey: ['/api/patients', selectedPatient?.id, 'medications'] });
     },
   });
 
@@ -4583,6 +4585,53 @@ export default function PatientProfiles() {
                       </div>
                     )}
                   </div>
+
+                  {/* ── Supplement Orders Summary ────────────────────── */}
+                  {patientOrders && patientOrders.length > 0 && (
+                    <div className="border-t px-4 py-3" style={{ borderColor: "#d4c9b5" }}>
+                      <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "#a0a880" }}>
+                        Supplement Orders via Portal
+                      </p>
+                      <div className="space-y-2">
+                        {patientOrders.slice(0, 3).map((order) => (
+                          <div key={order.id} className="flex items-center justify-between gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: order.status === 'pending' ? "#fdfaf3" : "#f5f5f0", border: "1px solid #e8e0d0" }}>
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium truncate" style={{ color: "#1c2414" }}>
+                                Order #{order.id} — {order.items.length} item{order.items.length !== 1 ? "s" : ""} · ${parseFloat(order.subtotal).toFixed(2)}
+                              </p>
+                              <p className="text-xs" style={{ color: "#9a8a64" }}>
+                                Requested {new Date(order.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                {order.fulfilledAt ? ` · Fulfilled ${new Date(order.fulfilledAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              {order.status === 'pending' ? (
+                                <>
+                                  <Badge className="text-xs" style={{ backgroundColor: "#7a5c20", color: "#fdf8ee" }}>Pending</Badge>
+                                  <Button size="sm" variant="ghost" className="text-xs h-6 px-2 gap-1"
+                                    onClick={() => fulfillOrderMutation.mutate(order.id)}
+                                    disabled={fulfillOrderMutation.isPending}
+                                    data-testid={`button-portal-fulfill-${order.id}`}>
+                                    <CheckCircle className="w-3 h-3" /> Ready
+                                  </Button>
+                                </>
+                              ) : order.status === 'fulfilled' ? (
+                                <Badge variant="secondary" className="text-xs">Fulfilled</Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-xs">Cancelled</Badge>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                        {patientOrders.length > 3 && (
+                          <button className="text-xs underline-offset-2 hover:underline" style={{ color: "#7a8a64" }}
+                            onClick={() => { setProfileSection("documents"); setShowOrders(true); }}>
+                            View all {patientOrders.length} orders →
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {/* ── Unified Communication Timeline ───────────────── */}
                   {showMessages && (

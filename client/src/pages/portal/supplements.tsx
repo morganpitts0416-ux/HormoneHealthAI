@@ -518,9 +518,17 @@ function PastOrders({ orders }: { orders: SupplementOrder[] }) {
                   <div className="text-right">
                     <p className="text-sm font-bold" style={{ color: "#2e3a20" }}>{formatPrice(parseFloat(order.subtotal))}</p>
                     <span className="text-xs px-2 py-0.5 rounded-full" style={{
-                      backgroundColor: order.status === 'pending' ? "#fef9ec" : "#edf2e6",
-                      color: order.status === 'pending' ? "#7a6a20" : "#2e3a20",
-                    }}>{order.status}</span>
+                      backgroundColor: order.status === 'fulfilled' ? "#edf2e6"
+                        : order.status === 'cancelled' ? "#f5f5f5"
+                        : "#fef9ec",
+                      color: order.status === 'fulfilled' ? "#2e3a20"
+                        : order.status === 'cancelled' ? "#9a9a8a"
+                        : "#7a6a20",
+                    }}>
+                      {order.status === 'pending' ? 'Pending review'
+                        : order.status === 'fulfilled' ? '✓ Fulfilled'
+                        : 'Cancelled'}
+                    </span>
                   </div>
                 </div>
                 <div className="space-y-0.5">

@@ -812,7 +812,12 @@ export default function Dashboard() {
                             <ShoppingBag className="w-3 h-3 flex-shrink-0" style={{ color: "#7a5c20" }} />
                             <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>{order.patientFirstName} {order.patientLastName}</p>
                           </div>
-                          <p className="text-xs" style={{ color: "#7a8a64" }}>{order.items.length} item{order.items.length !== 1 ? "s" : ""} · ${parseFloat(order.subtotal).toFixed(2)}</p>
+                          <p className="text-xs" style={{ color: "#7a8a64" }}>
+                            {order.items.length} item{order.items.length !== 1 ? "s" : ""} · ${parseFloat(order.subtotal).toFixed(2)}
+                            {order.createdAt && (
+                              <span style={{ color: "#c4b9a5" }}> · Requested {new Date(order.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })} at {new Date(order.createdAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</span>
+                            )}
+                          </p>
                         </div>
                         <ChevronRight className="w-3.5 h-3.5 flex-shrink-0 transition-transform" style={{ color: "#c4b9a5", transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }} />
                       </button>
@@ -830,10 +835,15 @@ export default function Dashboard() {
                             </div>
                           ))}
                           <div className="flex items-center justify-between pt-1">
-                            <p className="text-xs font-semibold" style={{ color: "#1c2414" }}>Total: ${parseFloat(order.subtotal).toFixed(2)}</p>
+                            <div>
+                              <p className="text-xs font-semibold" style={{ color: "#1c2414" }}>Total: ${parseFloat(order.subtotal).toFixed(2)}</p>
+                              {order.patientNotes && (
+                                <p className="text-xs mt-0.5 italic" style={{ color: "#9a8a64" }}>"{order.patientNotes}"</p>
+                              )}
+                            </div>
                             <Button size="sm" data-testid={`button-fulfill-order-${order.id}`} className="h-7 px-2 text-xs gap-1" style={{ backgroundColor: "#2e3a20", color: "#ffffff" }}
                               onClick={(e) => { e.stopPropagation(); fulfillOrderMutation.mutate(order.id); }} disabled={fulfillOrderMutation.isPending}>
-                              <CheckCircle2 className="w-3 h-3" /> Fulfill
+                              <CheckCircle2 className="w-3 h-3" /> Order Ready
                             </Button>
                           </div>
                         </div>

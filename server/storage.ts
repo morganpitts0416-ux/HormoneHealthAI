@@ -1700,7 +1700,7 @@ export class DbStorage implements IStorage {
 
   async updateSupplementOrderStatus(orderId: number, clinicianId: number, status: string): Promise<SupplementOrder | undefined> {
     const result = await db.update(schema.supplementOrders)
-      .set({ status })
+      .set({ status, ...(status === 'fulfilled' ? { fulfilledAt: new Date() } : {}) })
       .where(and(eq(schema.supplementOrders.id, orderId), eq(schema.supplementOrders.clinicianId, clinicianId)))
       .returning();
     return result[0];

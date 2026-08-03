@@ -1008,9 +1008,10 @@ export const supplementOrders = pgTable("supplement_orders", {
   status: varchar("status", { length: 30 }).notNull().default('pending'),
   patientNotes: text("patient_notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  fulfilledAt: timestamp("fulfilled_at"),
 });
 
-export const insertSupplementOrderSchema = createInsertSchema(supplementOrders).omit({ id: true, createdAt: true });
+export const insertSupplementOrderSchema = createInsertSchema(supplementOrders).omit({ id: true, createdAt: true, fulfilledAt: true });
 export type InsertSupplementOrder = z.infer<typeof insertSupplementOrderSchema>;
 export type SupplementOrder = typeof supplementOrders.$inferSelect;
 

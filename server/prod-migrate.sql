@@ -2218,3 +2218,7 @@ END $$;
 
 CREATE INDEX IF NOT EXISTS patient_screening_events_patient_key_idx
   ON patient_screening_events (patient_id, screening_key);
+
+-- supplement_orders: add fulfilled_at timestamp for order completion tracking
+ALTER TABLE supplement_orders
+  ADD COLUMN IF NOT EXISTS fulfilled_at TIMESTAMPTZ;

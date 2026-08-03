@@ -6997,6 +6997,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
   });
 
   // PATCH /api/supplement-orders/:id/status — clinician marks order fulfilled/cancelled
+  // On fulfillment: sends patient a portal message + email, auto-documents each item in medications
   app.patch("/api/supplement-orders/:id/status", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
@@ -7008,6 +7009,105 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       }
       const updated = await storage.updateSupplementOrderStatus(orderId, clinicianId, status);
       if (!updated) return res.status(404).json({ message: "Order not found" });
+
+      // ── Fulfillment side-effects ─────────────────────────────────────────
+      if (status === 'fulfilled') {
+        // Run asynchronously — do not block the response
+        (async () => {
+          try {
+            const patient = await storage.getPatientById(updated.patientId);
+            if (!patient) return;
+
+            const clinician = await storage.getUser(clinicianId);
+            const clinicName = clinician?.clinicName || "Your Care Team";
+            const orderItems = updated.items as Array<{ name: string; dose?: string; quantity: number; lineTotal?: number; supplyDays?: number }>;
+
+            // 1. Portal inbox message — patient sees this immediately on login
+            const itemLines = orderItems.map(it =>
+              `• ${it.name}${it.dose ? ` (${it.dose})` : ''} × ${it.quantity}`
+            ).join('\n');
+            const portalBody = [
+              `Great news — your supplement order #${orderId} is ready!`,
+              `\nItems in this order:\n${itemLines}`,
+              `\nTotal: $${parseFloat(updated.subtotal).toFixed(2)}`,
+              `\nPlease contact us if you have any questions about pickup or delivery.`,
+            ].join('\n');
+            await storage.createPortalMessage({
+              patientId: updated.patientId,
+              senderType: 'clinician',
+              body: portalBody,
+              readAt: null,
+              externalMessageId: null,
+            });
+
+            // 2. Email notification via Resend
+            const apiKey = process.env.RESEND_API_KEY;
+            if (apiKey && patient.email) {
+              const fromEmail = process.env.RESEND_FROM_EMAIL || "noreply@cliniqapp.ai";
+              const itemHtml = orderItems.map(it =>
+                `<p style="margin:4px 0;color:#4a5568;">• ${it.name}${it.dose ? ` (${it.dose})` : ''} × ${it.quantity}${it.lineTotal != null ? ` — $${Number(it.lineTotal).toFixed(2)}` : ''}</p>`
+              ).join('');
+              const emailHtml = `
+                <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#1c2414;">
+                  <h2 style="color:#2e3a20;margin-bottom:8px;">Your supplement order is ready!</h2>
+                  <p style="color:#4a5568;">Hi ${patient.firstName},</p>
+                  <p style="color:#4a5568;">Your supplement order #${orderId} from <strong>${clinicName}</strong> has been fulfilled and is ready for you.</p>
+                  <div style="background:#faf8f3;border:1px solid #e8e0d0;border-radius:8px;padding:16px;margin:16px 0;">
+                    <p style="font-weight:600;color:#2e3a20;margin:0 0 8px;">Order Summary</p>
+                    ${itemHtml}
+                    <p style="font-weight:600;color:#1c2414;margin:12px 0 0;border-top:1px solid #e8e0d0;padding-top:8px;">Total: $${parseFloat(updated.subtotal).toFixed(2)}</p>
+                  </div>
+                  <p style="color:#4a5568;">Please contact us if you have any questions about pickup or delivery.</p>
+                  <p style="color:#9a9a8a;font-size:12px;margin-top:24px;">${clinicName}</p>
+                </div>`;
+              try {
+                await fetch("https://api.resend.com/emails", {
+                  method: "POST",
+                  headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    from: `"${clinicName}" <${fromEmail}>`,
+                    to: [patient.email],
+                    subject: `Your supplement order from ${clinicName} is ready`,
+                    html: emailHtml,
+                  }),
+                });
+              } catch (emailErr) {
+                console.warn("[Supplement Fulfill] Email send failed:", emailErr);
+              }
+            }
+
+            // 3. Auto-document each fulfilled item in patient medications
+            for (const item of orderItems) {
+              try {
+                await storage.createPatientMedication({
+                  patientId: updated.patientId,
+                  clinicId,
+                  drugName: item.name,
+                  genericName: item.name,
+                  strength: item.dose ?? null,
+                  form: 'supplement',
+                  route: 'oral',
+                  sig: item.dose ? `${item.dose} as directed` : 'As directed',
+                  quantity: String(item.quantity),
+                  daysSupply: item.supplyDays ?? null,
+                  indication: `Supplement order #${orderId} via patient portal`,
+                  status: 'active',
+                  source: 'staff',
+                  reviewedByProvider: true,
+                  lastReviewedAt: new Date(),
+                  startDate: new Date(),
+                  createdByUserId: clinicianId,
+                });
+              } catch (medErr) {
+                console.warn(`[Supplement Fulfill] Could not auto-document ${item.name}:`, medErr);
+              }
+            }
+          } catch (sideEffectErr) {
+            console.warn("[Supplement Fulfill] Side-effects step failed:", sideEffectErr);
+          }
+        })();
+      }
+
       res.json(updated);
     } catch (error) {
       res.status(500).json({ message: "Failed to update order status" });
