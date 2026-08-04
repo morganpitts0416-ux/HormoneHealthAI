@@ -1113,8 +1113,19 @@ Do not include:
 - Statements that a patient "needs" optimization or treatment
 - Medical decision-making rationale
 - Plan details
+- Chart PMH conditions that were not discussed during this visit (see CHART PMH BOUNDARY below)
 
 Laboratory findings may be mentioned factually only when they are directly relevant to the presenting concern or were a major reason for the visit. Do not interpret those findings in the HPI.
+
+CHART PMH BOUNDARY — NON-NEGOTIABLE: The patient's documented Past Medical History from the chart is provided as context so the note's Medical History section can be populated verbatim. It is NOT a source of HPI content. A chart PMH condition must NOT be woven into HPI narrative to frame or explain the presenting complaint unless that condition was explicitly mentioned or discussed during this encounter's transcript.
+
+The violation pattern: chart shows condition X → patient presents with a related symptom Y → HPI writes "Patient has a history of X and presents with Y." This falsely implies X was discussed as relevant to today's visit when it was not.
+
+Correct behavior:
+- Chart shows "Migraines" + patient presents with headaches not discussed in transcript → "Migraines" appears ONLY in Medical History. HPI describes what was actually said about the headaches.
+- Chart shows "Migraines" + provider or patient discussed migraines during the visit → migraines may appear in the HPI in that documented context.
+
+When in doubt: if the condition was not in the transcript, it does not belong in the HPI.
 
 The HPI should tell the clinical story and naturally lead into the Assessment. It must not contain the Assessment or Plan.
 
@@ -2690,6 +2701,12 @@ When a generalized phrase has replaced specific clinical content from the transc
 
 55. PLACEHOLDER HISTORY TEXT: Scan the Medical History, Surgical History, Family History, Social History, and Allergies sections for prohibited placeholder text. Prohibited patterns: "None of these," "None reported," "No significant history," "Non-contributory," "Reviewed and unremarkable," "Denied all." These phrases imply a complete history review occurred when it may not have.
    If found: flag as important. Replace with either (a) the explicitly documented history items from this visit's transcript, (b) "Not fully reviewed during this encounter" if the topic arose but was incomplete, or (c) an empty field / section omission if the topic was not addressed at all. A blank field is always preferable to a placeholder that implies completeness.
+
+56. CHART PMH INTRUSION INTO HPI: Scan the HPI for any condition, diagnosis, or "history of [X]" phrase whose source is the PATIENT CHART DATA "Past Medical History" block rather than this visit's transcript. The test: would this condition appear in the HPI if it were NOT in the chart data? If not, and if the patient and provider never mentioned it during this visit, it does not belong in the HPI.
+   The violation pattern to detect: "Patient has a history of [chart PMH condition] and presents with [current symptom]" — or any HPI sentence that imports a chart PMH condition to frame, contextualize, or explain the presenting complaint without that condition appearing in the transcript.
+   When found: flag as CRITICAL. Remove the chart PMH condition from the HPI. Rewrite the HPI sentence to describe only what was discussed in the transcript. The condition remains in Medical History (its correct location).
+   Exception: if the condition appears in both the chart AND this visit's transcript (patient or provider mentioned it), it may remain in the HPI in that documented context.
+   Why this matters: connecting a chart PMH condition to the current complaint without transcript support implies clinical reasoning that did not occur — it can mislead future providers, influence billing, and create a false picture of what was discussed.
 
 STYLE PRESERVATION — MANDATORY WHEN REVISING:
 If you are writing a revised_fullNote, the ClinIQ Core Principles and all documentation rules from the generation system prompt apply without exception. The QA pass fixes issues — it must NEVER reduce documentation fidelity.

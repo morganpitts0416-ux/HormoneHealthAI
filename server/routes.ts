@@ -11467,7 +11467,13 @@ DRIFT — flag only concrete, verifiable problems (not stylistic issues):
         if ((chart.familyHistory as any[])?.length)
           chartLines.push(`Family History: ${(chart.familyHistory as string[]).join(" | ")}`);
         if (chartLines.length)
-          sections.push(`PATIENT CHART DATA — USE THESE VERBATIM in the Medical History section of the note. Do NOT write "not reported" or "not mentioned" for any item listed here — these are the patient's documented chart items and must appear in the note exactly as listed:\n${chartLines.join("\n")}`);
+          sections.push(`PATIENT CHART DATA — Populate the Medical History, Surgical History, Current Medications, Social History, and Family History NOTE SECTIONS verbatim from these items. Do NOT write "not reported" or "not mentioned" for any item listed here.
+
+CRITICAL BOUNDARY — READ CAREFULLY: Chart PMH and Surgical History items are valid ONLY for the Medical History / Surgical History note sections. They must NOT be used to construct HPI sentences, frame the presenting complaint, or generate Assessment items unless the condition was explicitly discussed during THIS visit's transcript. The rule: if a chart condition was not mentioned by the patient or provider during this encounter, it belongs only in Medical History — never in the HPI or Assessment.
+
+VIOLATION EXAMPLE (forbidden): Chart shows "Migraines" → patient presents with headaches → HPI writes "Patient has a history of migraines and presents with headaches for 3 days." This is wrong. Migraines belong in Medical History. The HPI must describe only what was said and discussed during this visit.
+
+ALLOWED: If a chart PMH condition was explicitly brought up during this visit (patient mentioned it, or provider discussed it), it may appear in the HPI in that context.\n${chartLines.join("\n")}`);
       }
 
       // 3. Recent lab results (last 3 panels)
