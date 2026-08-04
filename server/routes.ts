@@ -13025,7 +13025,9 @@ Return JSON: { "fields": { "<field_id>": "<value or comma-separated checklist it
       }
 
       const fieldsBlock = fieldLines.length > 0
-        ? `\n\nTEMPLATE GUIDE (use these extracted values as your foundation — weave them naturally into the note and expand with clinical context from the transcript):\n${fieldLines.join('\n')}`
+        ? hasCustomStructure
+          ? `\n\nTEMPLATE STRUCTURE — REQUIRED: Generate the note with EXACTLY these section headings in this exact order. Do not add, remove, rename, or reorder any heading. Do not insert standard SOAP/nursing/non-visit sections that are not listed here. The headings below ARE the note's complete structure:\n${fieldLines.join('\n')}`
+          : `\n\nTEMPLATE GUIDE (use these extracted values as your foundation — weave them naturally into the note and expand with clinical context from the transcript):\n${fieldLines.join('\n')}`
         : '';
 
       // Instruction blocks: clinical defaults the AI uses as a starting point, not verbatim scripts
@@ -13097,7 +13099,7 @@ This note is authored by the treating provider. Write in provider voice througho
             },
             {
               role: "user",
-              content: `${patientContext}\nVisit Type: ${encounter.visitType ?? "follow-up"}\nChief Complaint: ${encounter.chiefComplaint ?? "See template"}\n\nTRANSCRIPT:\n${transcriptText.slice(0, 100000)}${fieldsBlock}${instructionBlock}${vitalsPromptBlock}${standingBlock}\n\nGenerate the complete SOAP note now.`,
+              content: `${patientContext}\nVisit Type: ${encounter.visitType ?? "follow-up"}\nChief Complaint: ${encounter.chiefComplaint ?? "See template"}\n\nTRANSCRIPT:\n${transcriptText.slice(0, 100000)}${fieldsBlock}${instructionBlock}${vitalsPromptBlock}${standingBlock}\n\n${hasCustomStructure ? `Generate the complete clinical note now. Use ONLY the section headings listed in the TEMPLATE STRUCTURE block above — in that exact order. Do NOT use standard SOAP format (Subjective / Objective / Assessment / Plan). The template headings are the complete structure of this note.` : 'Generate the complete SOAP note now.'}`,
             },
           ],
         });
@@ -13126,7 +13128,7 @@ HOW TO USE THE TEMPLATE:
             },
             {
               role: "user",
-              content: `${patientContext}\nVisit: ${encounter.visitType ?? "clinical visit"}\n\nTRANSCRIPT:\n${transcriptText.slice(0, 100000)}${fieldsBlock}${instructionBlock}${vitalsPromptBlock}${standingBlock}\n\nGenerate the complete nursing note now.`,
+              content: `${patientContext}\nVisit: ${encounter.visitType ?? "clinical visit"}\n\nTRANSCRIPT:\n${transcriptText.slice(0, 100000)}${fieldsBlock}${instructionBlock}${vitalsPromptBlock}${standingBlock}\n\n${hasCustomStructure ? `Generate the complete clinical note now. Use ONLY the section headings listed in the TEMPLATE STRUCTURE block above — in that exact order. Do NOT use standard nursing note sections. The template headings are the complete structure of this note.` : 'Generate the complete nursing note now.'}`,
             },
           ],
         });
@@ -13161,7 +13163,7 @@ This note is authored by the treating provider. Write in provider voice througho
             },
             {
               role: "user",
-              content: `${patientContext}\nContact Type: ${encounter.visitType ?? "non-visit contact"}\n\nNOTES / TRANSCRIPT:\n${transcriptText.slice(0, 100000)}${fieldsBlock}${instructionBlock}${vitalsPromptBlock}${standingBlock}\n\nGenerate the complete non-visit note now.`,
+              content: `${patientContext}\nContact Type: ${encounter.visitType ?? "non-visit contact"}\n\nNOTES / TRANSCRIPT:\n${transcriptText.slice(0, 100000)}${fieldsBlock}${instructionBlock}${vitalsPromptBlock}${standingBlock}\n\n${hasCustomStructure ? `Generate the complete clinical note now. Use ONLY the section headings listed in the TEMPLATE STRUCTURE block above — in that exact order. Do NOT use standard non-visit sections. The template headings are the complete structure of this note.` : 'Generate the complete non-visit note now.'}`,
             },
           ],
         });
