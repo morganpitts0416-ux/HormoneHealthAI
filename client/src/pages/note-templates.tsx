@@ -294,45 +294,59 @@ function TemplateEditorDialog({ template, onClose }: { template: NoteTemplate | 
     onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
   });
 
+  // All state mutations use the functional setState form (prev => next) so they
+  // always operate on the current state rather than a potentially stale closure
+  // reference to `blocks`. Capturing `blocks` directly caused blocks to be
+  // overwritten when multiple adds/edits happened before a re-render completed.
   const addBlock = (type: string) => {
-    const b: TemplateBlock = { uid: uid(), type, label: "" };
-    if (type === "dropdown" || type === "radio" || type === "checkbox") b.options = ["Option 1", "Option 2"];
-    if (type === "vitals") b.label = "Vital Signs";
-    setBlocks([...blocks, b]);
+    setBlocks(prev => {
+      const b: TemplateBlock = { uid: uid(), type, label: "" };
+      if (type === "dropdown" || type === "radio" || type === "checkbox") b.options = ["Option 1", "Option 2"];
+      if (type === "vitals") b.label = "Vital Signs";
+      return [...prev, b];
+    });
   };
 
   const addClinicalBlock = (opt: typeof CLINICAL_BLOCK_OPTIONS[number]) => {
-    const block: TemplateBlock = {
-      uid: uid(),
-      type: opt.id,
-      builtinId: opt.builtinId,
-      label: opt.label,
-      // History list blocks default to bullets; HPI defaults to free text
-      // (narrative) but providers can flip it to bullets (OPQRST etc.).
-      bulletMode: opt.list ? true : (opt.builtinId === "hpi" ? false : undefined),
-    };
-    if (opt.chart) {
-      // Default ROS/PE charts ship with every canonical system selected.
-      // When the clinician has saved overrides, use those system names so
-      // their custom labels become the picker's defaults.
-      block.systems = resolveSystemList(
-        opt.builtinId === "ros" ? "ros" : "physical_exam",
-        blockDefaults,
-      );
-    }
-    setBlocks([...blocks, block]);
+    setBlocks(prev => {
+      const block: TemplateBlock = {
+        uid: uid(),
+        type: opt.id,
+        builtinId: opt.builtinId,
+        label: opt.label,
+        // History list blocks default to bullets; HPI defaults to free text
+        // (narrative) but providers can flip it to bullets (OPQRST etc.).
+        bulletMode: opt.list ? true : (opt.builtinId === "hpi" ? false : undefined),
+      };
+      if (opt.chart) {
+        // Default ROS/PE charts ship with every canonical system selected.
+        // When the clinician has saved overrides, use those system names so
+        // their custom labels become the picker's defaults.
+        block.systems = resolveSystemList(
+          opt.builtinId === "ros" ? "ros" : "physical_exam",
+          blockDefaults,
+        );
+      }
+      return [...prev, block];
+    });
   };
 
   const updateBlock = (i: number, patch: Partial<TemplateBlock>) => {
-    setBlocks(blocks.map((b, idx) => idx === i ? { ...b, ...patch } : b));
+    setBlocks(prev => prev.map((b, idx) => idx === i ? { ...b, ...patch } : b));
   };
 
-  const removeBlock = (i: number) => setBlocks(blocks.filter((_, idx) => idx !== i));
+  const removeBlock = (i: number) => {
+    setBlocks(prev => prev.filter((_, idx) => idx !== i));
+  };
 
   const moveBlock = (i: number, dir: -1 | 1) => {
-    const j = i + dir;
-    if (j < 0 || j >= blocks.length) return;
-    const next = [...blocks]; [next[i], next[j]] = [next[j], next[i]]; setBlocks(next);
+    setBlocks(prev => {
+      const j = i + dir;
+      if (j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
   };
 
   return (
