@@ -1132,6 +1132,12 @@ The HPI should tell the clinical story and naturally lead into the Assessment. I
 Objective Sections (Vital Signs, Physical Examination, Laboratory Results)
 Document measurable or directly observed information only. Do not interpret findings in these sections.
 
+VITAL SIGNS — ENCOUNTER BOUNDARY (NON-NEGOTIABLE): The Vital Signs section documents ONLY measurements physically obtained at THIS encounter — values stated in the transcript for today's visit, or values provided in the VITAL SIGNS SECTION REQUIRED block.
+
+The prompt context includes a "PRIOR VISIT VITALS — TREND CONTEXT ONLY" block containing historical readings from past encounters. Those historical values exist so clinical reasoning in the Assessment can reference trends (e.g., "BP has improved from 148/92 last visit to 138/86 today"). They must NEVER be written into the Vital Signs section of this note.
+
+If no vitals were taken today: write "Not obtained at this encounter." Do not substitute prior readings. Do not write any vital value that did not come from this encounter's transcript or the explicit VITAL SIGNS SECTION REQUIRED block.
+
 Assessment & Plan
 Document the provider's clinical interpretation and medical decision-making, including:
 - Diagnoses and differential diagnoses
@@ -2701,6 +2707,11 @@ When a generalized phrase has replaced specific clinical content from the transc
 
 55. PLACEHOLDER HISTORY TEXT: Scan the Medical History, Surgical History, Family History, Social History, and Allergies sections for prohibited placeholder text. Prohibited patterns: "None of these," "None reported," "No significant history," "Non-contributory," "Reviewed and unremarkable," "Denied all." These phrases imply a complete history review occurred when it may not have.
    If found: flag as important. Replace with either (a) the explicitly documented history items from this visit's transcript, (b) "Not fully reviewed during this encounter" if the topic arose but was incomplete, or (c) an empty field / section omission if the topic was not addressed at all. A blank field is always preferable to a placeholder that implies completeness.
+
+57. HISTORICAL VITALS IN TODAY'S VITAL SIGNS SECTION: Verify that every value written in the Vital Signs section came from THIS encounter's transcript or the VITAL SIGNS SECTION REQUIRED block. The prompt contains a "PRIOR VISIT VITALS — TREND CONTEXT ONLY" block with historical readings — those values must never appear in the Vital Signs section.
+   Detection: if the Vital Signs section contains a reading and that same reading appears in the PRIOR VISIT VITALS block but NOT in the transcript or the VITAL SIGNS SECTION REQUIRED block, it is a historical value that was incorrectly placed here.
+   When found: flag CRITICAL. Remove the historical value from the Vital Signs section. If no vitals were obtained today, replace the entire Vital Signs section with "Not obtained at this encounter." Historical vitals may remain in Assessment clinical reasoning as trend references only (e.g., "BP has trended down from 148/92 at last visit").
+   Why this matters: historical vitals written into today's note are then extracted and saved as new measurements in the patient's vitals trend record, creating false data points that corrupt the longitudinal trend.
 
 56. CHART PMH INTRUSION INTO HPI: Scan the HPI for any condition, diagnosis, or "history of [X]" phrase whose source is the PATIENT CHART DATA "Past Medical History" block rather than this visit's transcript. The test: would this condition appear in the HPI if it were NOT in the chart data? If not, and if the patient and provider never mentioned it during this visit, it does not belong in the HPI.
    The violation pattern to detect: "Patient has a history of [chart PMH condition] and presents with [current symptom]" — or any HPI sentence that imports a chart PMH condition to frame, contextualize, or explain the presenting complaint without that condition appearing in the transcript.

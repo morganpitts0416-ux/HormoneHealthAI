@@ -11511,7 +11511,7 @@ ALLOWED: If a chart PMH condition was explicitly brought up during this visit (p
           return parts.length ? `  ${date}: ${parts.join(" | ")}` : null;
         }).filter(Boolean);
         if (vitalLines.length)
-          sections.push(`RECENT VITALS (most recent first):\n${vitalLines.join("\n")}`);
+          sections.push(`PRIOR VISIT VITALS — TREND CONTEXT ONLY (most recent first). CRITICAL: These are historical readings from past encounters. They must NEVER be written into the Vital Signs section of today's note. Use them only for trend awareness in clinical reasoning (e.g., "BP has been improving" in the Assessment). The Vital Signs section documents ONLY measurements taken at THIS encounter — from the transcript or the VITAL SIGNS SECTION REQUIRED block. If no vitals were obtained today, write "Not obtained at this encounter.":\n${vitalLines.join("\n")}`);
       }
     } catch (err) {
       console.warn("[HistoricalContext] Failed to build historical context:", err);
