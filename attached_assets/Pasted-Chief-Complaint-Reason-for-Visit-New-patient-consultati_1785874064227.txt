@@ -1,0 +1,82 @@
+Chief Complaint / Reason for Visit — New patient consultation for hormonal evaluation and management.
+HPI: Tierney Quick, a female bodybuilder, presented for evaluation of hormonal imbalances and related symptoms. She reported experiencing persistent low energy and fatigue, which she described as a daily occurrence. She noted that her symptoms have been ongoing since she ceased consistent testosterone injections in April. Her menstrual cycles are generally regular, ranging from 28 to 32 days, but she has noticed increased symptoms such as hot flashes, joint aches, and mood swings over the past few weeks.
+
+Tierney has a history of a bifurcated uterus with a double cervix, and she previously underwent septum removal. Her recent lab results indicated low estrogen levels (36), low progesterone (<1), and a free testosterone level of 4. Her vitamin D level was 31.8, which is below the optimal range. She expressed a desire to feel normal and improve her hormonal balance.
+
+During the consultation, we discussed starting progesterone 100mg at bedtime to address her sleep disturbances and mood swings, as natural progesterone can help balance cortisol levels. We also reviewed the benefits of initiating a transdermal estrogen patch to manage her low energy, frequent hot flashes, and joint aches. The estrogen patch provides stable hormone levels and supports cardiac and cognitive function. Additionally, we recommended starting testosterone injections to address her low energy and libido.
+
+We also discussed increasing her vitamin D intake to 10,000 IU daily with K2 to enhance cognitive function, energy, and hormonal balance. Other supplements such as Estrovera for vasomotor symptoms, CoQ10 for muscle recovery and cardiac protection, and omega-3 fish oils for general health were explored, but no definitive decisions were made regarding these.
+
+Allergies: Not reported at this visit.
+
+Current Medications: 
+
+Vitamin D with K2 10,000 IU PO daily
+
+Medical History: Vitamin D Deficiency | Ovarian Cyst
+
+Surgical History: Implant exchange 2025 | Implant exchange 2019 | Breast Augmentation 2005 | C-section 2014 | C-section 2010 | C-section 2008 | Gallbladder removal 2003 | Appendectomy 2001
+
+Social History: 3 | Tubal ligation | Never smoked or vaped | 2-4 times per month
+
+Family History: Mother: Anxiety | Father: Diabetes, heart and kidney disease, cirrhosis of the liver | Maternal Grandmother: Schogren's | Maternal Grandfather: Stroke | Paternal Grandmother: Blood pressure | Paternal Grandfather: Bladder cancer, heart failure | Siblings: Obesity
+
+ROS
+
+Constitutional
+Reports low energy and fatigue; denies fever or weight changes.
+Cardiovascular
+Denies chest pain or palpitations.
+Genitourinary
+Reports regular menstrual cycles; denies dysuria.
+Musculoskeletal
+Reports joint aches; denies muscle weakness.
+Neurological
+Reports cognitive fog; denies headaches.
+Psychiatric
+Reports mood swings; denies anxiety or depression.
+Endocrine
+Reports frequent hot flashes; denies thyroid issues.
+Vital Signs: BP 98/63 | HR 63 | BMI 23.1
+
+Physical Examination: Physical examination not performed at this encounter.
+
+ASSESSMENT & PLAN
+
+Overall Clinical Impression: Tierney presents with symptoms consistent with perimenopausal hormonal transition, characterized by low energy, frequent hot flashes, mood swings, and joint aches. Her lab results indicate low estrogen and progesterone levels, contributing to her symptoms. The treatment plan focuses on hormonal optimization to alleviate these symptoms and improve her quality of life.
+
+1. Perimenopausal Transition with Symptom Complex (R53.83, N95.9)
+
+Clinical Rationale: Tierney's symptoms of low energy, frequent hot flashes, and joint aches align with low estrogen levels (36) and perimenopausal status (FSH 13.2). Progesterone deficiency (<1) contributes to sleep disturbances and mood swings. Initiating hormone therapy aims to stabilize these levels and alleviate symptoms.
+
+Plan: Initiate transdermal estrogen patch twice a week. Start progesterone 100mg PO at bedtime. Begin testosterone injection 10mg IM weekly.
+
+Future Considerations: Consider increasing estrogen dose if symptoms persist.
+
+2. Vitamin D Deficiency (E55.9)
+
+Clinical Rationale: Vitamin D level at 31.8 is suboptimal, contributing to cognitive fog and fatigue. Increasing intake aims to enhance cognitive function and energy.
+
+Plan: Increase vitamin D with K2 to 10,000 IU daily.
+
+3. Consideration of Ablation for Cycle Control
+
+Clinical Rationale: Discussed potential benefits of ablation for cycle control due to anatomical challenges. Deferred pending specialist evaluation.
+
+Plan: Reassess after specialist consultation.
+
+CARE PLAN
+Start transdermal estrogen patch twice a week for low estrogen symptoms.
+
+Take progesterone 100mg by mouth at bedtime for sleep and mood stabilization.
+
+Begin testosterone injection 10mg IM weekly for low energy and libido.
+
+Increase vitamin D with K2 to 10,000 IU daily for cognitive function and energy.
+
+Follow up with specialist regarding ablation for cycle control.
+
+Schedule follow-up in 6-8 weeks to reassess hormone levels and symptom improvement.
+
+FOLLOW-UP
+Follow up in 6-8 weeks to assess hormone absorption and symptom improvement. Monitor for any adverse effects or changes in symptoms. Return if experiencing any significant side effects or concerns.
