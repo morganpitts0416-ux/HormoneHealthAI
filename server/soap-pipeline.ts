@@ -338,6 +338,15 @@ These five states are mutually exclusive and strictly defined. When in doubt, de
 
     COMMITTED_FUTURE IS NOT DISCUSSED: If the provider made a firm, unconditional future commitment — "we will start this in two weeks" — that is "committed_future", not "discussed". Only classify as "discussed" when the decision is genuinely unresolved or contingent on an uncertain outcome.
 
+PLAN EVOLUTION — FINAL DECISION TRACKING (CRITICAL):
+When the same medication appears in more than one form, route, or delivery method within a single encounter (e.g., estrogen patch discussed first, then the patient opts for estrogen injection instead; or progesterone capsule discussed first, then switched to cream), apply this rule:
+  THE LAST MUTUALLY CONFIRMED FORM/ROUTE IS THE ACTIVE PLAN (State A). All prior forms that were considered but not ultimately chosen must be classified as State B (formally deferred with shared decision) if a deliberate switch was made, or State C if they were floated as options only.
+  SIGNALS THAT CONFIRM A FINAL SWITCH (any one is sufficient):
+    1. The patient explicitly chooses an alternative mid-conversation: "I'd rather do the injection," "Let's just do that," "Can we do the shot instead?"
+    2. The provider explicitly confirms the switch: "Okay, we'll do the injection then," "Let's go back to the original plan."
+    3. The patient or provider recaps the final plan at the end of the visit ("So we're getting cream twice a week, testosterone once a week, estrogen once a week, and progesterone every night") — treat the end-of-visit recap as the authoritative record of what was decided. It overrides any earlier-in-visit option that was not included in the recap.
+  ANTI-DUPLICATION: Never enter the same medication twice in explicitly_decided_plan_items — once as a patch and once as an injection. Determine the final form and enter only that one as State A.
+
 MEDICATION ACTION TAXONOMY — FINER-GRAINED CLASSIFICATION FOR GENERATION:
 Beyond the five status gates above, each medication action at this visit falls into one of these specific action types. When writing explicitly_decided_plan_items, prefix each entry with the appropriate verb so the generation model uses precise Plan language — never just "medication adjusted":
 
@@ -407,6 +416,13 @@ ENDOCRINE / METABOLIC
 
 HORMONE THERAPY
 - Estradiol (oral, patch, gel, spray, vaginal, pellet), conjugated estrogens (Premarin), Estring, Vagifem → menopause (N95.1) or perimenopause (N95.0); GU symptoms only → GSM (N95.2)
+
+VAGINAL vs. SYSTEMIC ESTROGEN — ALWAYS TWO SEPARATE MEDICATION ENTRIES:
+Systemic estrogen (transdermal patch, IM or SC injection, oral tablet, topical gel, spray) and vaginal/local estrogen (cream, ring, tablet, suppository — e.g., Estrace cream, Vagifem, Estring, compounded vaginal estrogen) are clinically distinct medications with separate indications, separate routes, separate dosing schedules, and separate prescriptions. They must NEVER be collapsed into a single medication entry.
+  RULE: When both systemic estrogen AND vaginal estrogen are prescribed at the same visit, extract each as a fully independent medication entry with its own route, dose, and frequency. Both must appear independently in explicitly_decided_plan_items and the Care Plan.
+  SIGNAL PHRASES for vaginal estrogen: "vaginal cream," "vaginal estrogen," "put it in before bed," "cream twice a week" (in the context of vaginal application), "little tablets," "applicator," "restore vaginal tissue."
+  Do NOT infer vaginal estrogen from systemic estrogen or vice versa — a prescription for a transdermal patch is not a vaginal prescription, and a vaginal cream is not systemic therapy.
+
 - Progesterone (Prometrium, micronized), medroxyprogesterone, norethindrone → menopause/HRT, AUB, or contraception per context
 - Testosterone in women (compounded cream, pellet, low-dose injection) → HSDD (R37) or female testosterone deficiency
 - Testosterone in men (cypionate/enanthate IM, gel/Androgel, pellet, Jatenzo) → male hypogonadism (E29.1) — specify primary (high LH/FSH) vs secondary (low/normal LH/FSH) when labs available
@@ -534,6 +550,17 @@ FEMALE REPRODUCTIVE LIFE STAGE — three distinct entities
 - ≥12 months amenorrhea (typically 45–55+) → menopause (N95.1)
 - Surgical menopause (post-bilateral oophorectomy) → N95.1 with surgical context
 - GU symptoms only (vaginal dryness, dyspareunia, recurrent UTI) → genitourinary syndrome of menopause / GSM (N95.2)
+
+GSM PATTERN RECOGNITION — REQUIRED SEPARATE A/P ENTRY:
+Genitourinary Syndrome of Menopause (GSM, N95.2) is a diagnosable, billable, and treatable condition that must appear as a SEPARATE numbered A/P item — never subsumed into the general perimenopause or menopause entry — when TWO or more of the following are present in the transcript:
+  (a) Recurrent UTIs or UTI history in the context of declining estrogen
+  (b) Vaginal dryness, atrophy, tissue thinning, or vulvar sensitivity
+  (c) Dyspareunia or pelvic discomfort
+  (d) Altered vaginal pH, microbiome changes, or increased susceptibility to infection
+  (e) A committed vaginal estrogen prescription (cream, ring, tablet, suppository)
+  (f) Provider explicitly naming the syndrome during the encounter (even educationally)
+This applies even when the provider uses the term educationally or explains the mechanism to the patient rather than announcing it as a formal diagnosis. A prescription for vaginal estrogen in the setting of genitourinary symptoms IS documentation of GSM regardless of explicit diagnostic labeling. When GSM is identified, the vaginal estrogen prescription goes in the GSM Plan line — not the perimenopause entry.
+
 - PCOS — irregular cycles + clinical/biochemical hyperandrogenism + polycystic morphology (Rotterdam) → E28.2. Common pitfall: do NOT call irregular cycles in a young woman "perimenopause" — PCOS first.
 
 THYROID — see thyroid-specific rules above. Do not default to hypothyroidism.
@@ -621,6 +648,16 @@ ALTERNATE DELIVERY TRIALS: When the patient reports trying an alternate formulat
 IN-OFFICE ACTIONS PERFORMED TODAY: When something is done or dispensed at THIS visit — an injection administered in-office (including by staff), supplements pulled/dispensed, a procedure performed — capture each in "hpi_chronological_elements" AND add to "explicitly_decided_plan_items" (e.g., "Testosterone injection administered in office today"). These are performed encounter events and must be documented.
 
 REFILLS SENT AND MEDICATION-DELIVERY FOLLOW-UPS: When the provider states they are sending in a prescription or refill ("I'm going to send in a refill", "I'll send in the one milligram"), capture WHICH medications were sent, to which pharmacy if stated, as REFILL/INCREASE actions. When there is an open logistics question about a medication shipment or delivery ("check if the testosterone arrived; if not, I'll call the pharmacy"), capture it as a follow-up task in "hpi_chronological_elements" AND add it to "explicitly_decided_plan_items" (e.g., "Patient to confirm testosterone shipment arrived; provider to contact pharmacy if not") so the note writer places it in the Care Plan and flags it for clinician review if unresolved.
+
+PERIMENSTRUAL AND CYCLE-LINKED SYMPTOM CAPTURE (FREQUENTLY MISSED): When a patient describes symptoms that occur in a predictable pattern relative to her menstrual cycle — including but not limited to: nausea, bloating, breast tenderness, mood instability, headache, fatigue spikes, cramping, spotting, or increased sensitivity — extract each symptom with its cycle-relative timing explicitly documented (e.g., "7–10 days before onset," "during flow," "first 2 days," "after cycle ends"). These are distinct clinical data points from symptoms reported continuously. They belong in the HPI with cycle-relative timing stated and in the relevant ROS rows (Gastrointestinal, Psychiatric, Genitourinary as appropriate). Do NOT collapse perimenstrual symptoms into generic "PMS" without documenting the specific symptoms named.
+
+REFERRAL SPECIFICITY — REQUIRED (FREQUENTLY LOST): When a referral is made during the encounter, capture ALL of the following that are stated and document them in explicitly_decided_plan_items:
+  1. NAMED PROVIDER — the specific physician or provider name if stated (e.g., "Dr. Mildred Ridgway," "Carrie Golston")
+  2. INSTITUTION OR LOCATION — practice name, hospital, or location if stated (e.g., "Jackson Psych," "Township behind Silver Shine," "UMC")
+  3. SPECIFIC CLINICAL REASON — why this referral is being made (e.g., "evaluation for potential ablation given bifurcated anatomy," "ADHD evaluation and diagnostic testing")
+  4. PROVIDER'S POST-REFERRAL INTENTION — what this provider plans to do after the referral (e.g., "will manage medication once diagnosis and prescription are established by outside provider")
+  Generic entries such as "Referral placed" or "Follow up with specialist" without named provider and specific clinical purpose are incomplete referral documentation. In the Care Plan, write referrals as patient-actionable instructions: "Schedule appointment with [Named Provider], [Location], for [specific reason]."
+  BEHAVIORAL HEALTH REFERRAL RULE: A referral to psychiatry, psychology, or behavioral health for evaluation and diagnosis — where this provider will manage the medication after the external diagnosis is established — is a committed State A plan item (REFER action), not State B or C. Both the external evaluation AND the planned medication management belong in explicitly_decided_plan_items.
 
 STOP ORDERS — VERBAL DISCONTINUATION LISTS (CRITICAL, FREQUENTLY LOST): When the provider tells the patient to stop taking any medication or supplement — especially rapid-fire verbal lists while reviewing a med list ("I would stop that one... let's stop the vitamin B1 and the Fungi 5 and the milk thistle and the black cohosh") — capture EVERY named item as a STOP action in the medication data AND add each to "explicitly_decided_plan_items" (e.g., "Discontinue black cohosh"). Scan the entire transcript for stop language ("stop", "quit taking", "come off", "I would stop", "discontinue") and enumerate every item individually. Missing even one stop order is a critical extraction failure.
 
@@ -1498,6 +1535,7 @@ FF-5. DISCUSSED ≠ STARTED: When a treatment was discussed but not started, doc
 FF-6. COMPLETENESS IS FACTUAL: Complete because it captures all clinically relevant facts that were actually discussed — not because it adds inferred context. When source data is sparse, a shorter accurate note is preferred over a longer embellished one.
 FF-7. VERBATIM SYMPTOM MINIMUM: Use only the patient's actual words or minimal clinical paraphrase. Never attach anatomical detail, mechanism, sensory description, cause, or location to a symptom the patient did not explicitly state.
 FF-8. SYMPTOM DETAIL EMBARGO: Any qualifier attached to a patient-reported symptom — cause, location, timing, frequency, mechanism — MUST be traceable to a direct patient utterance. Plausibility is not a source.
+FF-9. ANATOMICAL SPECIFICITY — REQUIRED: When a patient names a specific anatomical site for a symptom (hip, right shoulder, left knee, lower back, jaw, tooth, tailbone, wrist), document that exact site in the HPI and the corresponding ROS row. Never substitute a system-level generalization ("joint aches," "musculoskeletal discomfort," "pain") when the patient provided a named location. If the provider references the same specific site in clinical reasoning, preserve the named site in the A/P rationale as well. This rule applies equally to side-of-body specificity (left vs. right) when stated.
 
 ANTI-DRIFT RULES:
 AD-1. TIGHT GROUNDING: Note must remain grounded to the transcript, extracted facts, documented lab values, provider statements, and clearly discussed plan.
@@ -1560,6 +1598,14 @@ DO NOT INFER OR FABRICATE ROS ENTRIES:
 - Do NOT write "denies" statements unless the patient explicitly denied the symptom in this encounter, or the provider directly reviewed it with the patient.
 - Do NOT infer normal findings from the absence of complaint. Silence is not a denial.
 - Do NOT populate a system row with diagnoses or chart data simply because that system is clinically relevant. If the patient did not report symptoms and the provider did not review it, the system was not addressed.
+
+SLEEP DISTURBANCE — REQUIRED CAPTURE WHEN DISCUSSED:
+Sleep symptoms are a clinically distinct category and must never be silently absorbed into Constitutional (fatigue) or Psychiatric (mood) rows. When the transcript contains any of the following, document the specific sleep pattern in the ROS (under the system most applicable — often Constitutional or Endocrine — and in the HPI narrative):
+- Difficulty falling asleep or a wired-but-tired state at bedtime despite exhaustion
+- Waking during the night, especially at a predictable time (e.g., "I wake up at 3 a.m. every night")
+- Early morning awakening with inability to return to sleep
+- Unrefreshing sleep or sleep that does not restore energy
+Document the specific pattern the patient described — not a generic "sleep disturbance." Physiologic explanations the provider gives (e.g., progesterone's role as a cortisol buffer) belong in the HPI narrative and A/P clinical rationale — not in the ROS. The ROS row documents only the patient-reported experience.
 
 FORMAT RULES:
 1. Output exactly these 13 system rows, in this exact order, each on its own line: Constitutional, HEENT, Cardiovascular, Respiratory, Gastrointestinal, Genitourinary, Musculoskeletal, Skin, Neurological, Psychiatric, Endocrine, Hematologic/Lymphatic, Allergic/Immunologic.
