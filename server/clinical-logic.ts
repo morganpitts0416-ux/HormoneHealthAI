@@ -1700,31 +1700,37 @@ export class ClinicalLogicEngine {
       let interpretation = '';
       let recommendation = '';
 
-      if (labs.totalT3 > 200) {
+      // Unit normalization: some labs report Total T3 in ng/mL (range ~0.8–2.0)
+      // rather than ng/dL (range ~80–200). Any raw value < 5 is unambiguously
+      // ng/mL — even severe hypothyroidism never produces ng/dL values that low
+      // in a living patient. Convert to ng/dL before all comparisons and display.
+      const totalT3NgDl = labs.totalT3 < 5 ? Math.round(labs.totalT3 * 100) : labs.totalT3;
+
+      if (totalT3NgDl > 200) {
         status = 'abnormal';
-        interpretation = `Total T3 elevated (${labs.totalT3} ng/dL). Possible hyperthyroidism or T3 supplementation effect.`;
+        interpretation = `Total T3 elevated (${totalT3NgDl} ng/dL). Possible hyperthyroidism or T3 supplementation effect.`;
         recommendation = 'Correlate with TSH and Free T3. Evaluate for thyrotoxicosis. If on T3 medication, consider dose reduction.';
-      } else if (labs.totalT3 >= 100 && labs.totalT3 <= 200) {
+      } else if (totalT3NgDl >= 100 && totalT3NgDl <= 200) {
         status = 'normal';
-        interpretation = `Total T3 optimal (${labs.totalT3} ng/dL). Adequate total circulating T3 pool.`;
+        interpretation = `Total T3 optimal (${totalT3NgDl} ng/dL). Adequate total circulating T3 pool.`;
         recommendation = 'Normal T3 production and transport. Routine monitoring.';
-      } else if (labs.totalT3 >= 80 && labs.totalT3 < 100) {
+      } else if (totalT3NgDl >= 80 && totalT3NgDl < 100) {
         status = 'borderline';
-        interpretation = `Total T3 borderline low (${labs.totalT3} ng/dL). Suboptimal circulating T3 — correlate with Free T3 for clinical significance.`;
+        interpretation = `Total T3 borderline low (${totalT3NgDl} ng/dL). Suboptimal circulating T3 — correlate with Free T3 for clinical significance.`;
         recommendation = 'Evaluate Free T3 for active hormone level. Address conversion impairment if Free T3 also low: selenium supplementation, reduce cortisol burden, optimize iron status.';
-      } else if (labs.totalT3 >= 60 && labs.totalT3 < 80) {
+      } else if (totalT3NgDl >= 60 && totalT3NgDl < 80) {
         status = 'abnormal';
-        interpretation = `Total T3 low (${labs.totalT3} ng/dL). Consistent with hypothyroid state — reduced T3 production or conversion.`;
+        interpretation = `Total T3 low (${totalT3NgDl} ng/dL). Consistent with hypothyroid state — reduced T3 production or conversion.`;
         recommendation = 'Optimize thyroid replacement. Consider combination T4/T3 therapy if on levothyroxine alone and symptomatic. Supplement selenium 200 mcg/day to support T4→T3 conversion.';
       } else {
         status = 'critical';
-        interpretation = `Total T3 critically low (<60 ng/dL). Severe hypothyroid state.`;
+        interpretation = `Total T3 critically low (${totalT3NgDl} ng/dL). Severe hypothyroid state.`;
         recommendation = 'Immediate thyroid replacement optimization. Consider T3 therapy alongside T4. Evaluate for pituitary dysfunction.';
       }
 
       interpretations.push({
         category: 'Total T3',
-        value: labs.totalT3,
+        value: totalT3NgDl,
         unit: 'ng/dL',
         status,
         referenceRange: '80-200 ng/dL (optimal 100-180)',
