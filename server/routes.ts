@@ -5782,7 +5782,6 @@ Return ONLY this JSON structure:
         ? Math.floor((Date.now() - new Date(patient.dateOfBirth).getTime()) / (365.25 * 24 * 3600 * 1000))
         : undefined;
 
-      const { AIService } = await import('./ai-service');
       const soapNote = await AIService.generateSOAPNoteFromEdited({
         patientName: `${patient.firstName} ${patient.lastName}`.trim(),
         age,
