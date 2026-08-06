@@ -5720,6 +5720,93 @@ Return ONLY this JSON structure:
     }
   });
 
+  // ── Clinician: Regenerate SOAP note from the provider's curated lab eval ────
+  // Called AFTER the provider has finished editing: patient summary, hidden
+  // sections, and supplement list are all applied before generation so the note
+  // reflects exactly what was communicated to the patient.
+  app.post("/api/patients/:id/labs/:labId/regenerate-soap", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const patientId = parseInt(req.params.id);
+      const labId = parseInt(req.params.labId);
+
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+
+      const labResult = await storage.getLabResult(labId);
+      if (!labResult || labResult.patientId !== patientId) {
+        return res.status(404).json({ message: "Lab result not found" });
+      }
+
+      const interp = labResult.interpretationResult as any;
+      if (!interp) return res.status(400).json({ message: "No interpretation data for this lab result" });
+
+      const overrides = (labResult.providerOverrides as any) || {};
+
+      // Effective patient summary: use the edited draft if present, otherwise the original
+      const effectivePatientSummary: string =
+        typeof overrides.patientSummaryDraft === 'string'
+          ? overrides.patientSummaryDraft
+          : (interp.patientSummary || '');
+
+      // Effective interpretations: filter out provider-hidden categories
+      const hiddenInterpCats: string[] = overrides.hiddenInterpretationCategories || [];
+      const allInterpretations = (interp.interpretations || []) as any[];
+      const effectiveInterpretations = allInterpretations.filter(
+        (i: any) => !hiddenInterpCats.includes(i.category)
+      );
+
+      // Effective supplements: filter hidden, add provider-added ones
+      const autoSupps = (interp.supplements || []) as any[];
+      const hiddenSuppNames: string[] = overrides.hiddenSupplementNames || [];
+      const addedSupps = (overrides.addedSupplements || []) as any[];
+      const effectiveSupplements = [
+        ...autoSupps.filter((s: any) => !hiddenSuppNames.includes(s.name)),
+        ...addedSupps,
+      ];
+
+      // Risk summary string (if available)
+      let riskSummary: string | undefined;
+      const pr = interp.preventRisk;
+      const ar = interp.ascvdRisk;
+      if (pr?.tenYearCVDPercentage) {
+        riskSummary = `AHA PREVENT 2023 — 10-yr Total CVD: ${pr.tenYearCVDPercentage}, 10-yr ASCVD: ${pr.tenYearASCVDPercentage}, Category: ${pr.riskCategory}`;
+      } else if (ar?.riskPercentage) {
+        riskSummary = `10-yr ASCVD: ${ar.riskPercentage}, Category: ${ar.riskCategory}`;
+      }
+
+      const rawLabValues = (labResult.labValues as Record<string, unknown>) || {};
+      const gender: 'male' | 'female' = patient.gender === 'female' ? 'female' : 'male';
+      const age = patient.dateOfBirth
+        ? Math.floor((Date.now() - new Date(patient.dateOfBirth).getTime()) / (365.25 * 24 * 3600 * 1000))
+        : undefined;
+
+      const { AIService } = await import('./ai-service');
+      const soapNote = await AIService.generateSOAPNoteFromEdited({
+        patientName: `${patient.firstName} ${patient.lastName}`.trim(),
+        age,
+        gender,
+        effectivePatientSummary,
+        effectiveInterpretations,
+        effectiveSupplements,
+        rawLabValues,
+        recheckWindow: interp.recheckWindow || '3–6 months',
+        riskSummary,
+        trendContext: undefined,
+      });
+
+      // Persist the newly generated note back into the interpretation result
+      const updatedInterp = { ...interp, soapNote };
+      await storage.updateLabResult(labId, { interpretationResult: updatedInterp });
+
+      res.json({ soapNote });
+    } catch (error) {
+      console.error("Error regenerating lab SOAP note:", error);
+      res.status(500).json({ message: "Failed to generate SOAP note" });
+    }
+  });
+
   // ── Clinician: Update patient summary for a saved lab result ──────────────
   // This keeps the portal "Your Health Assessment" in sync when provider edits it.
   app.patch("/api/patients/:id/labs/:labId/patient-summary", requireAuth, async (req, res) => {

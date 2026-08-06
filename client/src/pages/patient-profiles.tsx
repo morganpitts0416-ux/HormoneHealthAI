@@ -702,6 +702,27 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
   const [showAddSuppDialog, setShowAddSuppDialog] = useState(false);
   const [suppDialogSearch, setSuppDialogSearch] = useState('');
 
+  // ── Lab-eval SOAP note (generated from curated eval) ─────────────────────
+  const [labSoapNote, setLabSoapNote] = useState<string | null>(() =>
+    (interp?.soapNote as string | undefined) ?? null
+  );
+  const [showLabSoap, setShowLabSoap] = useState(false);
+
+  const regenerateSoapMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/patients/${patient.id}/labs/${lab.id}/regenerate-soap`, {});
+      return res.json() as Promise<{ soapNote: string }>;
+    },
+    onSuccess: (data) => {
+      setLabSoapNote(data.soapNote);
+      setShowLabSoap(true);
+      queryClient.invalidateQueries({ queryKey: ['/api/patients', patient.id, 'labs'] });
+    },
+    onError: () => {
+      toast({ title: "Generation failed", description: "Could not generate the note. Please try again.", variant: "destructive" });
+    },
+  });
+
   const { data: suppLibrary = [] } = useQuery<ClinicianSupplement[]>({
     queryKey: ['/api/clinician/supplements'],
   });
@@ -1120,8 +1141,86 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
                 saveStatus={saveStatus}
               />
 
-              {/* SOAP Note */}
-              {interp.soapNote && <SOAPNote soapNote={interp.soapNote} />}
+              {/* Provider SOAP Note — generated from curated eval */}
+              <div className="border rounded-lg overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3 bg-muted/40 border-b">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">Provider Chart Note</span>
+                    {labSoapNote && (
+                      <span className="text-xs text-muted-foreground bg-background border rounded-full px-2 py-0.5">
+                        Generated from curated eval
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {labSoapNote && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs gap-1.5"
+                        onClick={() => setShowLabSoap(v => !v)}
+                      >
+                        {showLabSoap ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                        {showLabSoap ? "Hide" : "View"}
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant={labSoapNote ? "outline" : "default"}
+                      className="h-7 text-xs gap-1.5"
+                      disabled={regenerateSoapMutation.isPending}
+                      onClick={() => regenerateSoapMutation.mutate()}
+                    >
+                      {regenerateSoapMutation.isPending ? (
+                        <><Loader2 className="w-3 h-3 animate-spin" />Generating…</>
+                      ) : labSoapNote ? (
+                        <><RefreshCw className="w-3 h-3" />Regenerate Note</>
+                      ) : (
+                        <><Sparkles className="w-3 h-3" />Generate Note</>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                {labSoapNote && showLabSoap && (
+                  <div className="p-4 space-y-3">
+                    <div className="flex justify-end">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs gap-1.5"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(labSoapNote);
+                            toast({ title: "Copied to clipboard" });
+                          } catch {
+                            const ta = document.createElement("textarea");
+                            ta.value = labSoapNote;
+                            document.body.appendChild(ta);
+                            ta.select();
+                            document.execCommand("copy");
+                            document.body.removeChild(ta);
+                            toast({ title: "Copied to clipboard" });
+                          }
+                        }}
+                      >
+                        <Copy className="w-3 h-3" />Copy
+                      </Button>
+                    </div>
+                    <pre className="text-xs font-mono whitespace-pre-wrap leading-relaxed text-foreground bg-muted/30 rounded p-3 max-h-[500px] overflow-y-auto">
+                      {labSoapNote}
+                    </pre>
+                  </div>
+                )}
+
+                {!labSoapNote && (
+                  <div className="px-4 py-6 text-center text-sm text-muted-foreground">
+                    <p>Finish editing the patient communication and supplement list,</p>
+                    <p>then click <span className="font-medium text-foreground">Generate Note</span> to create a chart-ready SOAP note from your curated eval.</p>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

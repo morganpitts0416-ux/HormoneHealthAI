@@ -475,6 +475,155 @@ This note is authored by the treating provider. Write in provider voice througho
     return `SOAP NOTE - ${date}\n\nS: Lab review visit. [Unable to generate AI-powered SOAP note at this time. Please document subjective findings manually.]\n\nO: See lab results above.\n\nA: See clinical interpretations above.\n\nP: See recommendations above. Follow up as clinically indicated.\n\nResults reviewed with patient. Questions answered. Patient verbalized understanding.`;
   }
 
+  /**
+   * Generate a provider SOAP note from the provider's already-curated lab eval:
+   * the edited patient communication, visible (non-hidden) interpretations, and
+   * effective supplement list. This is called after the provider has finished
+   * customizing the eval — the note reflects exactly what was shared with the
+   * patient rather than re-deriving from raw data.
+   */
+  static async generateSOAPNoteFromEdited(opts: {
+    patientName: string;
+    age?: number;
+    gender: 'male' | 'female';
+    effectivePatientSummary: string;
+    effectiveInterpretations: LabInterpretation[];
+    effectiveSupplements: SupplementRecommendation[];
+    rawLabValues: Record<string, unknown>;
+    recheckWindow: string;
+    riskSummary?: string;
+    trendContext?: string;
+  }): Promise<string> {
+    const {
+      patientName, age, gender, effectivePatientSummary,
+      effectiveInterpretations, effectiveSupplements,
+      rawLabValues, recheckWindow, riskSummary, trendContext,
+    } = opts;
+
+    const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    const ageStr = age ? `, ${age}-year-old` : '';
+    const sexStr = gender === 'female' ? 'female' : 'male';
+    const clinicType = gender === 'female' ? "Women's Hormone & Primary Care Clinic" : "Men's Hormone & Primary Care Clinic";
+
+    const abnormal = effectiveInterpretations.filter(i => i.status === 'abnormal' || i.status === 'critical');
+    const borderline = effectiveInterpretations.filter(i => i.status === 'borderline');
+    const normal = effectiveInterpretations.filter(i => i.status === 'normal');
+
+    const fmtFindings = (arr: LabInterpretation[]) =>
+      arr.map(f => `  ${f.category}: ${f.value} ${f.unit} [${f.status.toUpperCase()}]\n    Finding: ${f.interpretation}\n    Recommendation: ${f.recommendation || '—'}`).join('\n');
+
+    const suppSection = effectiveSupplements.length > 0
+      ? effectiveSupplements.map(s => `  - ${s.name}${s.dose ? ` ${s.dose}` : ''}${s.rationale ? ` — ${s.rationale}` : ''}`).join('\n')
+      : '  None';
+
+    // Flatten raw lab values into a readable objective block
+    const labLines = Object.entries(rawLabValues)
+      .filter(([k, v]) => v !== undefined && v !== null && v !== '' && typeof v !== 'object' && !k.startsWith('_') && k !== 'patientName' && k !== 'gender' && k !== 'age')
+      .map(([k, v]) => `  ${k}: ${v}`)
+      .join('\n');
+
+    const prompt = `You are generating a chart-ready provider SOAP note for a ${clinicType}.
+
+PATIENT: ${patientName}${ageStr} ${sexStr}
+DATE: ${today}
+RECHECK WINDOW: ${recheckWindow}
+${riskSummary ? `CARDIOVASCULAR RISK: ${riskSummary}` : ''}
+${trendContext ? `TREND CONTEXT:\n${trendContext}` : ''}
+
+─────────────────────────────────────────────────
+PATIENT COMMUNICATION (already approved and sent to patient)
+─────────────────────────────────────────────────
+${effectivePatientSummary || '[No patient summary recorded]'}
+
+─────────────────────────────────────────────────
+PROVIDER-APPROVED CLINICAL FINDINGS
+─────────────────────────────────────────────────
+ABNORMAL / CRITICAL (${abnormal.length}):
+${abnormal.length ? fmtFindings(abnormal) : '  None'}
+
+BORDERLINE (${borderline.length}):
+${borderline.length ? fmtFindings(borderline) : '  None'}
+
+NORMAL (${normal.length}):
+${normal.length ? normal.map(f => `  ${f.category}: ${f.value} ${f.unit}`).join('\n') : '  None'}
+
+─────────────────────────────────────────────────
+SUPPLEMENTS RECOMMENDED (provider-approved list)
+─────────────────────────────────────────────────
+${suppSection}
+
+─────────────────────────────────────────────────
+RAW LAB VALUES (for Objective section)
+─────────────────────────────────────────────────
+${labLines || '  See findings above'}
+
+─────────────────────────────────────────────────
+INSTRUCTIONS
+─────────────────────────────────────────────────
+Write a complete provider SOAP note for the chart. The provider has already reviewed and curated the findings above — your note must reflect exactly what was communicated and decided. Do not re-interpret or contradict the approved findings.
+
+SUBJECTIVE:
+- Chief complaint: Lab review / follow-up visit
+- Summarize relevant symptoms and patient context drawn from the patient communication above
+- Do not invent symptoms not referenced in the patient communication
+
+OBJECTIVE:
+- List ALL lab values in a clean, organized format grouped by category (CBC, CMP, Lipids, Hormones, Thyroid, etc.)
+- Flag abnormal and critical values
+- Include units
+
+ASSESSMENT/PLAN:
+
+Open with a 2–4 sentence summary paragraph synthesizing the overall clinical picture. Then write numbered problem entries:
+
+1. [Diagnosis]:
+   [2–3 sentences of clinical reasoning — reference the specific lab value(s) and explain what they mean for this patient. Draw from the approved findings above.]
+   Plan: [specific steps — dose/route/frequency for medications; supplement name and dose; lifestyle modifications; labs to recheck with timing; follow-up interval]
+
+Include every finding flagged as abnormal or critical as its own numbered item. Include borderline findings as items when clinically significant. Group minor borderline items together if appropriate.
+
+After the numbered list, include a supplements section:
+Supplements: [List each approved supplement with dose and one-line rationale]
+
+End with:
+"Results reviewed and discussed with patient. Questions answered. Patient verbalized understanding. Follow-up as above."
+
+CRITICAL RULES:
+- Write in provider voice throughout. Never refer to "the provider" in third person.
+- Use: "Reviewed…" / "Discussed…" / "Recommended…" / "She reports…" / "He reports…"
+- NEVER use: "The provider discussed…" or "The clinician recommended…"
+- Only use real medication and supplement names — never invent names
+- No emojis
+- Assessment Summary paragraph appears FIRST, before any numbered items
+- Every numbered problem needs both a clinical reasoning paragraph AND a Plan line`;
+
+    try {
+      const response = await openai.chat.completions.create({
+        model: "gpt-5-mini",
+        messages: [
+          {
+            role: "system",
+            content: `You are an experienced clinician-level documentation specialist generating chart-ready SOAP notes for a ${clinicType}. The provider has already curated the patient communication and approved findings — your job is to translate that curated content into a polished provider chart note. You synthesize, not re-derive. You never invent findings or contradict what the provider approved. Every note you produce is ready to sign with minimal editing.
+
+DOCUMENTATION VOICE — NON-NEGOTIABLE:
+This note is authored by the treating provider. Write in provider voice throughout.
+- NEVER write: "The provider discussed…", "The provider recommended…", "The clinician advised…"
+- Use implied-subject constructions: "Reviewed…", "Discussed…", "Recommended…", "Patient was counseled on…", "She reports…", "He denies…"
+
+MEDICATION NAME RULE: Only use real, established generic or brand names. Never invent a name.`
+          },
+          { role: "user", content: prompt }
+        ],
+        max_completion_tokens: 4000,
+      });
+
+      return response.choices[0]?.message?.content || this.getDefaultSOAPNote(today);
+    } catch (error) {
+      console.error('[AIService] generateSOAPNoteFromEdited error:', error);
+      return this.getDefaultSOAPNote(today);
+    }
+  }
+
   private static buildRecommendationPrompt(
     labs: LabValues | FemaleLabValues,
     redFlags: RedFlag[],
