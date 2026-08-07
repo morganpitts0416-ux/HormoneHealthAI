@@ -2222,3 +2222,8 @@ CREATE INDEX IF NOT EXISTS patient_screening_events_patient_key_idx
 -- supplement_orders: add fulfilled_at timestamp for order completion tracking
 ALTER TABLE supplement_orders
   ADD COLUMN IF NOT EXISTS fulfilled_at TIMESTAMPTZ;
+
+-- supplement_orders: optional patient-facing fulfillment note
+ALTER TABLE supplement_orders
+  ADD COLUMN IF NOT EXISTS fulfillment_note TEXT;
+
