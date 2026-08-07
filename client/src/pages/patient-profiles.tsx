@@ -73,6 +73,7 @@ import { EncounterEditor, EncounterErrorBoundary, type EncounterWithPatient } fr
 import { PharmacyLookup, pharmacyValueFromRecord, pharmacyValueToPatch, type PharmacyLookupValue } from "@/components/pharmacy-lookup";
 import { PharmacyDisplay } from "@/components/pharmacy-display";
 import { PatientOrdersTab } from "@/components/clinical-orders-panel";
+import { FulfillOrderPopover } from "@/components/fulfill-order-popover";
 
 // ── Safe date display utility ─────────────────────────────────────────────────
 // Dates from the DB are stored as UTC midnight. Using { timeZone: 'UTC' } prevents
@@ -3386,8 +3387,8 @@ export default function PatientProfiles() {
   });
 
   const fulfillOrderMutation = useMutation({
-    mutationFn: async (orderId: number) => {
-      const res = await apiRequest("PATCH", `/api/supplement-orders/${orderId}/status`, { status: "fulfilled" });
+    mutationFn: async ({ orderId, fulfillmentNote }: { orderId: number; fulfillmentNote?: string }) => {
+      const res = await apiRequest("PATCH", `/api/supplement-orders/${orderId}/status`, { status: "fulfilled", fulfillmentNote });
       return res.json();
     },
     onSuccess: () => {
@@ -4707,12 +4708,13 @@ export default function PatientProfiles() {
                               {order.status === 'pending' ? (
                                 <>
                                   <Badge className="text-xs" style={{ backgroundColor: "#7a5c20", color: "#fdf8ee" }}>Pending</Badge>
-                                  <Button size="sm" variant="ghost" className="text-xs h-6 px-2 gap-1"
-                                    onClick={() => fulfillOrderMutation.mutate(order.id)}
-                                    disabled={fulfillOrderMutation.isPending}
-                                    data-testid={`button-portal-fulfill-${order.id}`}>
-                                    <CheckCircle className="w-3 h-3" /> Ready
-                                  </Button>
+                                  <FulfillOrderPopover
+                                    orderId={order.id}
+                                    isPending={fulfillOrderMutation.isPending}
+                                    onFulfill={(id, note) => fulfillOrderMutation.mutate({ orderId: id, fulfillmentNote: note })}
+                                    variant="profile-ghost-sm"
+                                    data-testid={`button-portal-fulfill-${order.id}`}
+                                  />
                                 </>
                               ) : order.status === 'fulfilled' ? (
                                 <Badge variant="secondary" className="text-xs">Fulfilled</Badge>
@@ -6070,10 +6072,13 @@ export default function PatientProfiles() {
                             <div className="flex items-center gap-2">
                               <span className="text-sm font-semibold">${parseFloat(order.subtotal).toFixed(2)}</span>
                               {order.status === 'pending' && (
-                                <Button size="sm" variant="ghost" className="text-xs h-7 px-2 gap-1" onClick={() => fulfillOrderMutation.mutate(order.id)} disabled={fulfillOrderMutation.isPending} data-testid={`button-fulfill-${order.id}`}>
-                                  <CheckCircle className="w-3 h-3" />
-                                  Mark fulfilled
-                                </Button>
+                                <FulfillOrderPopover
+                                  orderId={order.id}
+                                  isPending={fulfillOrderMutation.isPending}
+                                  onFulfill={(id, note) => fulfillOrderMutation.mutate({ orderId: id, fulfillmentNote: note })}
+                                  variant="profile-ghost"
+                                  data-testid={`button-fulfill-${order.id}`}
+                                />
                               )}
                             </div>
                           </div>

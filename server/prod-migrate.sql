@@ -142,6 +142,7 @@ CREATE TABLE IF NOT EXISTS supplement_orders (
   patient_notes TEXT,
   created_at TIMESTAMP DEFAULT NOW() NOT NULL
 );
+ALTER TABLE supplement_orders ADD COLUMN IF NOT EXISTS fulfillment_note TEXT;
 
 CREATE TABLE IF NOT EXISTS clinician_supplement_settings (
   id SERIAL PRIMARY KEY,

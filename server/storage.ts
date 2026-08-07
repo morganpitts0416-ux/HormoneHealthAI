@@ -195,7 +195,7 @@ export interface IStorage {
   getSupplementOrdersByPatient(patientId: number): Promise<SupplementOrder[]>;
   getSupplementOrdersByClinicianPatient(clinicianId: number, patientId: number): Promise<SupplementOrder[]>;
   getPendingOrdersForClinician(clinicianId: number): Promise<Array<SupplementOrder & { patientFirstName: string; patientLastName: string }>>;
-  updateSupplementOrderStatus(orderId: number, clinicianId: number, status: string): Promise<SupplementOrder | undefined>;
+  updateSupplementOrderStatus(orderId: number, clinicianId: number, status: string, fulfillmentNote?: string | null): Promise<SupplementOrder | undefined>;
 
   // Patient uploaded documents (outside records, PA forms, PMP, scans, etc.)
   createPatientDocument(doc: InsertPatientDocument): Promise<PatientDocumentSummary>;
@@ -1698,9 +1698,13 @@ export class DbStorage implements IStorage {
     return rows;
   }
 
-  async updateSupplementOrderStatus(orderId: number, clinicianId: number, status: string): Promise<SupplementOrder | undefined> {
+  async updateSupplementOrderStatus(orderId: number, clinicianId: number, status: string, fulfillmentNote?: string | null): Promise<SupplementOrder | undefined> {
     const result = await db.update(schema.supplementOrders)
-      .set({ status, ...(status === 'fulfilled' ? { fulfilledAt: new Date() } : {}) })
+      .set({
+        status,
+        ...(status === 'fulfilled' ? { fulfilledAt: new Date() } : {}),
+        ...(fulfillmentNote != null ? { fulfillmentNote } : {}),
+      })
       .where(and(eq(schema.supplementOrders.id, orderId), eq(schema.supplementOrders.clinicianId, clinicianId)))
       .returning();
     return result[0];

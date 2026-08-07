@@ -7089,11 +7089,11 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
       const orderId = parseInt(req.params.id);
-      const { status } = req.body;
+      const { status, fulfillmentNote } = req.body;
       if (!status || !['pending', 'fulfilled', 'cancelled'].includes(status)) {
         return res.status(400).json({ message: "Invalid status" });
       }
-      const updated = await storage.updateSupplementOrderStatus(orderId, clinicianId, status);
+      const updated = await storage.updateSupplementOrderStatus(orderId, clinicianId, status, fulfillmentNote ?? null);
       if (!updated) return res.status(404).json({ message: "Order not found" });
 
       // ── Fulfillment side-effects ─────────────────────────────────────────
@@ -7116,7 +7116,9 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
               `Great news — your supplement order #${orderId} is ready!`,
               `\nItems in this order:\n${itemLines}`,
               `\nTotal: $${parseFloat(updated.subtotal).toFixed(2)}`,
-              `\nPlease contact us if you have any questions about pickup or delivery.`,
+              updated.fulfillmentNote
+                ? `\nPickup / delivery note: ${updated.fulfillmentNote}`
+                : `\nPlease contact us if you have any questions about pickup or delivery.`,
             ].join('\n');
             await storage.createPortalMessage({
               patientId: updated.patientId,
@@ -7143,7 +7145,9 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
                     ${itemHtml}
                     <p style="font-weight:600;color:#1c2414;margin:12px 0 0;border-top:1px solid #e8e0d0;padding-top:8px;">Total: $${parseFloat(updated.subtotal).toFixed(2)}</p>
                   </div>
-                  <p style="color:#4a5568;">Please contact us if you have any questions about pickup or delivery.</p>
+                  ${updated.fulfillmentNote
+                     ? `<div style="background:#f0f4e8;border:1px solid #c8dba0;border-radius:6px;padding:12px 16px;margin:12px 0;"><p style="font-weight:600;color:#2e3a20;margin:0 0 4px;">Pickup / delivery note</p><p style="color:#4a5568;margin:0;">${updated.fulfillmentNote.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p></div>`
+                     : `<p style="color:#4a5568;">Please contact us if you have any questions about pickup or delivery.</p>`}
                   <p style="color:#9a9a8a;font-size:12px;margin-top:24px;">${clinicName}</p>
                 </div>`;
               try {

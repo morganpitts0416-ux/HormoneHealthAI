@@ -1007,6 +1007,7 @@ export const supplementOrders = pgTable("supplement_orders", {
   subtotal: text("subtotal").notNull(),
   status: varchar("status", { length: 30 }).notNull().default('pending'),
   patientNotes: text("patient_notes"),
+  fulfillmentNote: text("fulfillment_note"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   fulfilledAt: timestamp("fulfilled_at"),
 });

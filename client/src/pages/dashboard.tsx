@@ -42,6 +42,7 @@ import { FormSubmissionPreviewDialog } from "@/components/form-submission-previe
 import { PatientSearchBar } from "@/components/patient-search-bar";
 import { AddPatientDialog } from "@/components/add-patient-dialog";
 import { ActiveOrdersWidget } from "@/components/clinical-orders-panel";
+import { FulfillOrderPopover } from "@/components/fulfill-order-popover";
 
 interface UnreadMessageRow {
   patientId: number;
@@ -352,8 +353,8 @@ export default function Dashboard() {
   });
 
   const fulfillOrderMutation = useMutation({
-    mutationFn: async (orderId: number) => {
-      const res = await apiRequest("PATCH", `/api/supplement-orders/${orderId}/status`, { status: "fulfilled" });
+    mutationFn: async ({ orderId, fulfillmentNote }: { orderId: number; fulfillmentNote?: string }) => {
+      const res = await apiRequest("PATCH", `/api/supplement-orders/${orderId}/status`, { status: "fulfilled", fulfillmentNote });
       return res.json();
     },
     onSuccess: () => {
@@ -841,10 +842,13 @@ export default function Dashboard() {
                                 <p className="text-xs mt-0.5 italic" style={{ color: "#9a8a64" }}>"{order.patientNotes}"</p>
                               )}
                             </div>
-                            <Button size="sm" data-testid={`button-fulfill-order-${order.id}`} className="h-7 px-2 text-xs gap-1" style={{ backgroundColor: "#2e3a20", color: "#ffffff" }}
-                              onClick={(e) => { e.stopPropagation(); fulfillOrderMutation.mutate(order.id); }} disabled={fulfillOrderMutation.isPending}>
-                              <CheckCircle2 className="w-3 h-3" /> Order Ready
-                            </Button>
+                            <FulfillOrderPopover
+                              orderId={order.id}
+                              isPending={fulfillOrderMutation.isPending}
+                              onFulfill={(id, note) => fulfillOrderMutation.mutate({ orderId: id, fulfillmentNote: note })}
+                              variant="dashboard"
+                              data-testid={`button-fulfill-order-${order.id}`}
+                            />
                           </div>
                         </div>
                       )}
