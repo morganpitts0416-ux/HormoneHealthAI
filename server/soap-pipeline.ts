@@ -938,7 +938,8 @@ async function generateSoapSections(
   encounter: any,
   patientName?: string,
   historicalContext?: string,
-  diagnosisBundles?: Array<{ title: string; codes: { code: string; name: string }[]; aliases: string[] }>
+  diagnosisBundles?: Array<{ title: string; codes: { code: string; name: string }[]; aliases: string[] }>,
+  transcriptDirect?: boolean
 ): Promise<PipelineOutput> {
   // ── Speaker role normalization (additive preprocessing) ───────────────────
   const { normalized: diarizedNorm2, conflicts: speakerConflicts2 } = normalizeSpeakerRoles(diarized);
@@ -1055,7 +1056,52 @@ STATE D — Clinically relevant follow-up (for needs_clinician_review only; neve
 
   const extractionSummary = buildExtractionSummary(extraction);
 
-  const systemPrompt = `You are a clinical documentation specialist writing chart-ready medical records for a concierge hormone optimization and primary care practice. You are not a transcriptionist. You are not a summarizer. You are not an AI explaining medicine to a layperson. You reconstruct clinical encounters into complete, medico-legally defensible medical records.
+  // ── TRANSCRIPT-DIRECT MODE framing block ─────────────────────────────────
+  // Prepended to the system prompt when SOAP_TRANSCRIPT_DIRECT is enabled.
+  // It does NOT override any existing clinical rules — it only reorders the
+  // writer's mental model so that the transcript, not the extraction, is the
+  // starting point for every sentence in the note.
+  const transcriptDirectSystemBlock = transcriptDirect ? `
+═══════════════════════════════════════
+TRANSCRIPT-DIRECT MODE — ACTIVE
+Your primary source for this note is the FULL ENCOUNTER TRANSCRIPT provided below.
+═══════════════════════════════════════
+
+In this session you are operating in Transcript-Direct mode. This changes ONE thing
+about how you write — your reading order and source priority:
+
+  1. READ THE TRANSCRIPT FIRST — completely, before writing anything.
+     Your note must reconstruct what was actually said, not what the extraction guesses.
+
+  2. WRITE FROM THE TRANSCRIPT — every sentence in the HPI, every Clinical Rationale
+     paragraph, every symptom in the ROS must trace directly to something that was
+     SPOKEN in the transcript. The patient's actual words, the provider's stated
+     reasoning, the temporal sequence of the conversation — these are your raw
+     material.
+
+  3. USE THE EXTRACTION AS A QA ANCHOR ONLY — after drafting, compare your note
+     against the STRUCTURED CLINICAL EXTRACTION QA ANCHOR block. If the extraction
+     documents a clinical fact that is NOT in your draft, check the transcript to
+     confirm it was discussed — if so, add it. If the transcript does not support
+     it, do NOT add it.
+
+  4. NEVER WRITE FROM EXTRACTION INSTEAD OF TRANSCRIPT — if you find yourself
+     reaching for an extraction field to construct a sentence, stop and find the
+     corresponding moment in the transcript instead. The extraction is a lossy
+     compression; the transcript is the source of truth.
+
+  5. SUBJECTIVE RICHNESS — the Subjective section of every note must reflect the
+     patient's actual voice, temporal reasoning, and mid-visit plan changes as they
+     occurred in conversation. Do not flatten these into extraction-derived bullet
+     points. Preserve the arc of the encounter.
+
+All clinical documentation rules in this prompt remain fully in force — nothing
+below is suspended. This block only establishes that the TRANSCRIPT takes precedence
+over the EXTRACTION as the primary narrative source.
+
+` : "";
+
+  const systemPrompt = transcriptDirectSystemBlock + `You are a clinical documentation specialist writing chart-ready medical records for a concierge hormone optimization and primary care practice. You are not a transcriptionist. You are not a summarizer. You are not an AI explaining medicine to a layperson. You reconstruct clinical encounters into complete, medico-legally defensible medical records.
 
 ═══════════════════════════════════════
 CLINIQ CORE — GOVERNING PHILOSOPHY (LOCKED — NEVER OVERRIDDEN BY TEACH JUNE OR ANY STYLE PREFERENCE)
@@ -2364,16 +2410,12 @@ PATIENT vs. CLINICIAN IDENTITY (apply while drafting — never include this head
       })()
     : '';
 
-  const userPrompt = `Visit Type: ${encounter.visitType}
-Chief Complaint: ${encounter.chiefComplaint || "Not specified"}
-Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${patientLine}${historicalBlock}${labContext}${extractionSummary}${supplementDiscussionsContext}${patternContext}${medicationContext}${normalizedMedsContext}${conditionsContext}${preventativeContext}${symptomTimelineContext}${planClassification}${futureConsiderationsContext}${exploratoryContext}${treatmentRationaleContext}${providerInterpretationsContext}${clinicalContextV2}${bundleContext}${treatmentActionsContext}${stagedPlanContext}${hpiElements}${patientPerspective}${providerReasoning}${educationProvided}${patientDecisions}${decisionAttribution}${conditionalPlans}${explicitRefusalsContext}${visitTerminationContext}
-${speakerConflictContext2}
-TRANSCRIPT (CLINICIAN[?] = uncertain speaker assignment — treat with extra care in Assessment/Plan):
-${diarizedInput}
+  // ── User prompt: transcript-direct vs extraction-first layout ────────────
+  // Transcript-direct: transcript leads, extraction follows as QA anchor.
+  // Extraction-first (legacy): extraction leads, transcript follows at end.
+  const sharedContextBlocks = `${patientLine}${historicalBlock}${labContext}${supplementDiscussionsContext}${patternContext}${medicationContext}${normalizedMedsContext}${conditionsContext}${preventativeContext}${symptomTimelineContext}${planClassification}${futureConsiderationsContext}${exploratoryContext}${treatmentRationaleContext}${providerInterpretationsContext}${clinicalContextV2}${bundleContext}${treatmentActionsContext}${stagedPlanContext}${hpiElements}${patientPerspective}${providerReasoning}${educationProvided}${patientDecisions}${decisionAttribution}${conditionalPlans}${explicitRefusalsContext}${visitTerminationContext}`;
 
-Generate the complete medical record following all rules above.${patientName ? ` The patient's name is "${patientName}" — use this name (NOT the clinician's name) when referring to the patient in the note.` : ""} The HPI must be a complete clinical story reconstruction — not a compressed summary. Flag uncertain items and non-duplicate recommendations in needs_clinician_review.
-
-FINAL RECONCILIATION — HPI-TO-ASSESSMENT COVERAGE:
+  const finalReconciliationBlock = `FINAL RECONCILIATION — HPI-TO-ASSESSMENT COVERAGE:
 After drafting, read back through the HPI. For every major clinical topic, symptom cluster, or concern described in the HPI, verify a corresponding numbered Assessment/Plan entry exists. The HPI and Assessment must cover the same ground.
 
 Specific coverage checks:
@@ -2384,6 +2426,39 @@ Specific coverage checks:
 - Any symptom discussed with clinical depth (fatigue, low libido, sleep, cognitive changes, pain, GI symptoms) → must have an Assessment entry, not just an HPI mention
 
 If any major HPI topic has no Assessment coverage — ADD the Assessment entry before returning output. Then perform the Four-Pass Safety Audit from the system prompt and revise automatically if any pass fails. Return only the final complete note — never the initial draft.`;
+
+  const userPrompt = transcriptDirect
+    ? `══════════════════════════════════════════════════════════════════
+PRIMARY SOURCE — READ THIS ENTIRE TRANSCRIPT BEFORE WRITING ANYTHING
+══════════════════════════════════════════════════════════════════
+Visit Type: ${encounter.visitType}
+Chief Complaint: ${encounter.chiefComplaint || "Not specified"}
+Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${patientLine}
+${speakerConflictContext2}
+TRANSCRIPT (CLINICIAN[?] = uncertain speaker assignment — treat with extra care in Assessment/Plan):
+${diarizedInput}
+
+══════════════════════════════════════════════════════════════════
+QA ANCHOR — STRUCTURED CLINICAL EXTRACTION (verify coverage after drafting)
+Use these fields ONLY to check that nothing spoken in the transcript was missed.
+Do NOT write from these fields; write from the transcript above.
+Any item here that is NOT in the transcript must be excluded from the note.
+══════════════════════════════════════════════════════════════════
+${historicalBlock}${labContext}${extractionSummary}${sharedContextBlocks}
+
+Generate the complete medical record following all rules above.${patientName ? ` The patient's name is "${patientName}" — use this name (NOT the clinician's name) when referring to the patient in the note.` : ""} You are in TRANSCRIPT-DIRECT mode: write the HPI by reading the transcript chronologically — preserve the patient's actual words, the sequence of topics, and mid-visit plan changes. The HPI must reflect what was genuinely said, not a distillation of extracted fields.
+
+${finalReconciliationBlock}`
+    : `Visit Type: ${encounter.visitType}
+Chief Complaint: ${encounter.chiefComplaint || "Not specified"}
+Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${patientLine}${historicalBlock}${labContext}${extractionSummary}${sharedContextBlocks}
+${speakerConflictContext2}
+TRANSCRIPT (CLINICIAN[?] = uncertain speaker assignment — treat with extra care in Assessment/Plan):
+${diarizedInput}
+
+Generate the complete medical record following all rules above.${patientName ? ` The patient's name is "${patientName}" — use this name (NOT the clinician's name) when referring to the patient in the note.` : ""} The HPI must be a complete clinical story reconstruction — not a compressed summary. Flag uncertain items and non-duplicate recommendations in needs_clinician_review.
+
+${finalReconciliationBlock}`;
 
   const completion = await retryOnRateLimit(() => openai.chat.completions.create({
     model: "gpt-4o",
@@ -2504,13 +2579,22 @@ function stripBracketPlaceholders(note: string): string {
   return out.join("\n");
 }
 
+// Gap finding returned by transcriptDirectGapDetect — fed as hints into qaCheck
+interface TranscriptGapFinding {
+  severity: 'critical' | 'important' | 'minor';
+  transcript_evidence: string;  // verbatim / near-verbatim quote from transcript
+  gap_description: string;      // what is missing or misrepresented in the note
+  recommended_fix: string;      // specific instruction for the QA rewriter
+}
+
 async function qaCheck(
   openai: OpenAI,
   extraction: any,
   normalized: NormalizedExtraction,
   soapOutput: PipelineOutput,
   transcriptText: string,
-  historicalContext?: string
+  historicalContext?: string,
+  transcriptGapHints?: TranscriptGapFinding[]
 ): Promise<PipelineOutput> {
   const systemPrompt = `You are a clinical documentation quality assurance specialist. Your job is to compare the SOAP note against the source extraction data and transcript to catch omissions, contradictions, and over-compression.
 
@@ -2866,7 +2950,19 @@ ${(() => {
     + transcriptText.slice(transcriptText.length - tailChars);
 })()}
 
-Review the note for quality issues. If critical/important issues are found, provide a corrected version.`;
+Review the note for quality issues. If critical/important issues are found, provide a corrected version.${
+  transcriptGapHints && transcriptGapHints.length > 0
+    ? `
+
+TRANSCRIPT-DIRECT GAP FINDINGS — ADDITIONAL PRIORITY CHECKS:
+The following gaps were identified by a transcript-direct scan. Treat each as an additional item to verify under the rules above and fix if confirmed:
+${transcriptGapHints.map((g, i) =>
+  `  ${i + 1}. [${g.severity.toUpperCase()}] ${g.gap_description}\n     Transcript evidence: "${g.transcript_evidence}"\n     Suggested fix: ${g.recommended_fix}`
+).join('\n')}
+
+For each gap above: (a) verify it in the transcript, (b) if confirmed, apply the suggested fix under the note's full clinical documentation rules, (c) if you cannot confirm it in the transcript, do not add it to the note.`
+    : ""
+}`;
 
   const completion = await retryOnRateLimit(() => openai.chat.completions.create({
     model: "gpt-4o",
@@ -2903,6 +2999,124 @@ Review the note for quality issues. If critical/important issues are found, prov
   }
 
   return soapOutput;
+}
+
+// ── Transcript-Direct Gap Detector ───────────────────────────────────────────
+// Additional scan for SOAP_TRANSCRIPT_DIRECT mode.
+// Reads the raw transcript and identifies clinical content that was spoken but
+// is missing from or under-represented in the generated note.
+//
+// IMPORTANT: This function is a GAP DETECTOR ONLY — it returns a list of
+// structured gap findings and NEVER rewrites the note itself. Any actual
+// correction is routed through the comprehensive qaCheck, which applies the
+// full clinical documentation rules, safety guardrails, and medication/plan
+// preservation contract. This ensures no rewrite can drop validated plan
+// details, required sections, or clinician-review metadata.
+async function transcriptDirectGapDetect(
+  openai: OpenAI,
+  soapOutput: PipelineOutput,
+  transcriptText: string,
+  extraction: any,
+): Promise<TranscriptGapFinding[]> {
+  const MAX_SAFE_CHARS = 200000;
+  const safeTranscript = transcriptText.length <= MAX_SAFE_CHARS
+    ? transcriptText
+    : transcriptText.slice(0, Math.floor(MAX_SAFE_CHARS * 0.6))
+        + `\n\n[... middle portion omitted for context ...]\n\n`
+        + transcriptText.slice(transcriptText.length - Math.floor(MAX_SAFE_CHARS * 0.4));
+
+  const systemPrompt = `You are a clinical documentation gap-detection specialist. Your ONLY job is to read the
+encounter transcript and identify clinical content that was spoken during the visit but is missing from or
+under-represented in the SOAP note. You do NOT rewrite the note — you produce a structured list of findings
+that a downstream QA system will use to decide whether and how to correct the note.
+
+FOCUS AREAS — clinical content worth flagging:
+1. PATIENT VOICE OVER-COMPRESSION: Patient's actual words describing symptoms — specific phrasing, temporal
+   reasoning, emotional impact, functional impairment. Example: note says "fatigue" but patient said "I can
+   barely get out of bed; I used to run marathons." Flag when the note compresses clinically meaningful
+   specificity into a generic term.
+2. MID-VISIT PLAN CHANGES: Provider or patient changed their mind mid-conversation ("Actually, let's do the
+   patch instead of the gel"). Flag if the note only shows one option without reflecting the change.
+3. PROVIDER REASONING SPOKEN ALOUD: Clinical explanations the provider gave — mechanism of action, why this
+   dose, why this route, what to watch for. These belong in Clinical Rationale and are worth preserving.
+4. TEMPORAL SEQUENCE COLLAPSE: Patient described an onset → trigger → trajectory → current status arc that
+   the note collapsed or reversed. Flag when the note loses the timeline structure.
+5. CONDITIONAL / IF-THEN INSTRUCTIONS: "If the side effects don't go away in two weeks, stop it and call us."
+   Must appear in Care Plan. Flag if absent.
+6. PATIENT-EXPRESSED CONCERNS OR FEARS: Named concerns that shaped shared decision-making — should be
+   visible in the clinical reasoning, not absent.
+7. STOP ORDERS: Any verbal instruction to stop a medication or supplement.
+8. IN-OFFICE EVENTS: Injections administered, items dispensed at this visit.
+
+DO NOT FLAG:
+- Routine social conversation with no clinical significance
+- Provider personal anecdotes or scheduling chatter
+- Content already adequately captured in the note (more formal phrasing is fine)
+- Uncertain or inaudible speech
+- Clinical inferences the note draws correctly from context
+
+Severity rules:
+- critical: changes the documented plan, a stop order, a mid-visit plan reversal, a medication omission
+- important: patient-voice compression with clinical relevance, missing clinical reasoning, absent conditional
+- minor: stylistic compression without clinical consequence — DO NOT include minor items; omit them entirely
+
+Return JSON — FINDINGS LIST ONLY, no revised note:
+{
+  "transcript_gaps": [
+    {
+      "severity": "critical|important",
+      "transcript_evidence": "verbatim or near-verbatim quote from the transcript",
+      "gap_description": "what is missing from or misrepresented in the note",
+      "recommended_fix": "specific instruction for the QA rewriter — be precise"
+    }
+  ]
+}
+
+Only include critical or important items. If no actionable gaps are found, return { "transcript_gaps": [] }.`;
+
+  const userPrompt = `TRANSCRIPT (primary source — scan every line):
+${safeTranscript}
+
+GENERATED SOAP NOTE:
+${soapOutput.fullNote}
+
+EXTRACTION REFERENCE (for context only):
+Chief concerns: ${(extraction?.chief_concerns ?? []).join("; ")}
+Plan items: ${(extraction?.plan_candidates ?? []).join("; ")}
+Medications discussed: ${(extraction?.medication_changes_discussed ?? []).join("; ")}
+
+Identify clinical content spoken in the transcript that is missing from or compressed beyond clinical
+significance in the note. Return ONLY a gap list — do not rewrite the note.`;
+
+  try {
+    const completion = await retryOnRateLimit(() => openai.chat.completions.create({
+      model: "gpt-4o",
+      temperature: 0.1,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      response_format: { type: "json_object" },
+    }));
+
+    const result = JSON.parse(completion.choices[0].message.content || "{}");
+    const gaps: TranscriptGapFinding[] = (result.transcript_gaps ?? [])
+      .filter((g: any) => g.severity === 'critical' || g.severity === 'important');
+
+    const criticalCount = gaps.filter(g => g.severity === "critical").length;
+    const importantCount = gaps.filter(g => g.severity === "important").length;
+
+    if (gaps.length > 0) {
+      console.log(`[SOAP TD-GAP] Transcript gap scan: ${gaps.length} findings (${criticalCount} critical, ${importantCount} important) — routing to comprehensive QA for correction`);
+    } else {
+      console.log(`[SOAP TD-GAP] Transcript gap scan: no actionable gaps found`);
+    }
+
+    return gaps;
+  } catch (err) {
+    console.warn("[SOAP TD-GAP] Transcript gap detection failed (non-fatal):", err);
+    return [];
+  }
 }
 
 // ── Final Fidelity Audit ────────────────────────────────────────────────────
@@ -3409,6 +3623,16 @@ function deterministicValidateNote(note: string, extraction: any): Deterministic
 export async function runEnhancedSoapPipeline(input: PipelineInput): Promise<PipelineOutput> {
   const { openai, extraction, transcriptText, diarized, labContext, patternContext, medicationContext, encounter, historicalContext, diagnosisBundles } = input;
 
+  // ── Feature flag: transcript-direct mode ────────────────────────────────
+  // When SOAP_TRANSCRIPT_DIRECT=true, the generation phase leads with the raw
+  // transcript and uses the extraction only as a QA anchor. This preserves
+  // patient voice, temporal reasoning, and mid-visit plan changes that are
+  // compressed out of the extraction-first path.
+  const useTranscriptDirect = process.env.SOAP_TRANSCRIPT_DIRECT === 'true';
+  if (useTranscriptDirect) {
+    console.log("[SOAP Pipeline] TRANSCRIPT-DIRECT mode active (SOAP_TRANSCRIPT_DIRECT=true)");
+  }
+
   console.log("[SOAP Pipeline] Step 3c: Medical normalization + context inference...");
   let normalized: NormalizedExtraction;
   try {
@@ -3436,12 +3660,13 @@ export async function runEnhancedSoapPipeline(input: PipelineInput): Promise<Pip
     };
   }
 
-  console.log("[SOAP Pipeline] Step 4: Section-specific SOAP generation (HPI reconstruction)...");
+  console.log(`[SOAP Pipeline] Step 4: SOAP generation (${useTranscriptDirect ? "TRANSCRIPT-DIRECT" : "extraction-first"} mode)...`);
   let soapOutput: PipelineOutput;
   try {
     soapOutput = await generateSoapSections(
       openai, extraction, normalized, transcriptText, diarized,
-      labContext, patternContext, medicationContext, encounter, input.patientName, historicalContext, diagnosisBundles
+      labContext, patternContext, medicationContext, encounter, input.patientName, historicalContext, diagnosisBundles,
+      useTranscriptDirect
     );
   } catch (err) {
     console.error("[SOAP Pipeline] SOAP generation failed:", err);
@@ -3453,6 +3678,32 @@ export async function runEnhancedSoapPipeline(input: PipelineInput): Promise<Pip
     soapOutput = await qaCheck(openai, extraction, normalized, soapOutput, transcriptText, historicalContext);
   } catch (qaErr) {
     console.warn("[SOAP Pipeline] QA check failed, using unrevised SOAP:", qaErr);
+  }
+
+  // ── Transcript-direct supplemental QA ────────────────────────────────────
+  // When SOAP_TRANSCRIPT_DIRECT is enabled, run an additional scan that reads
+  // the raw transcript to detect clinical content (patient voice, plan changes,
+  // conditional instructions, stop orders) that is missing from the note
+  // regardless of extraction coverage.
+  //
+  // The gap detector (transcriptDirectGapDetect) is a FINDINGS-ONLY pass —
+  // it never rewrites the note. If actionable gaps are found, they are fed
+  // as prioritized hints into a second run of the comprehensive qaCheck, which
+  // applies the full clinical documentation rules, medication/plan preservation
+  // contract, and safety guardrails before making any correction. This means
+  // no transcript-direct scan result can bypass the established QA safety net.
+  if (useTranscriptDirect) {
+    console.log("[SOAP Pipeline] Step 5b: Transcript-direct gap scan (patient voice & plan fidelity)...");
+    try {
+      const tdGaps = await transcriptDirectGapDetect(openai, soapOutput, transcriptText, extraction);
+      const actionableGaps = tdGaps.filter(g => g.severity === 'critical' || g.severity === 'important');
+      if (actionableGaps.length > 0) {
+        console.log(`[SOAP Pipeline] Step 5c: Re-running comprehensive QA with ${actionableGaps.length} transcript gap hints...`);
+        soapOutput = await qaCheck(openai, extraction, normalized, soapOutput, transcriptText, historicalContext, actionableGaps);
+      }
+    } catch (tdGapErr) {
+      console.warn("[SOAP Pipeline] Transcript-direct gap scan failed (non-fatal):", tdGapErr);
+    }
   }
 
   // Phase 9: Deterministic validation (code-based, no model call)

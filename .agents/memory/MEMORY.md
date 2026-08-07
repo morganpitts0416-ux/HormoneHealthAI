@@ -15,3 +15,4 @@
 - [Floating panel pattern](floating-panel-pattern.md) — useFloatingPanel() hook shared by chart-side panels (lab eval, SOAP builder) needing drag/minimize instead of a blocking Dialog; pair with localStorage draft autosave
 - [Encounter metadata staleness](encounter-metadata-staleness.md) — pre-generation PUTs must persist UI visit metadata (visitType etc.), not just transcription, or notes render with stale values
 - [Recording segment loss](recording-segment-loss.md) — segment uploads/recorder restarts must never fail silently; [AUDIO GAP] markers + deterministic pipeline backstop are the guarantee
+- [Transcript-direct SOAP mode](soap-transcript-direct.md) — SOAP_TRANSCRIPT_DIRECT env flag enables transcript-first generation; disabled by default pending quality comparison
