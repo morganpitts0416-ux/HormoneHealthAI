@@ -1,0 +1,104 @@
+Chief Complaint / Reason for Visit — New patient consultation for menopausal symptoms and hormone therapy.
+HPI: Michelle Black, a 55-year-old female, presents for a new patient consultation to address menopausal symptoms and explore hormone therapy options. She reports experiencing worsening hot flushes and mood changes since moving back from Nashville two years ago. She has not seen a doctor since that time and has remained on her previous regimen without recent blood work. Michelle discontinued her blood pressure medication a few months ago due to migraines, which have since resolved. Her family history includes hypothyroidism, stroke, heart disease, and diabetes.
+
+Michelle's recent lab results show elevated total cholesterol at 220 mg/dL and triglycerides at 435 mg/dL. Her B12 level is borderline at 440 pg/mL, and ferritin is low at 31 ng/mL, indicating iron deficiency. Her FSH level of 76.5 confirms postmenopausal status, with estrogen levels less than 5 and progesterone at 0.19. She reports fatigue and hair thinning, which may be related to her iron deficiency.
+
+During the visit, hormone therapy options were discussed, including progesterone, estrogen, and testosterone. The benefits of progesterone for sleep and hormonal balance, estrogen for hot flashes and mood stabilization, and testosterone for energy, mood, and libido were explained. Michelle expressed concern about her cholesterol levels and triglycerides, and omega-3 fish oils were recommended for triglyceride management. The impact of insulin resistance on triglycerides was also explained, noting that despite a low ASCVD risk score, lifestyle modifications and omega-3 supplementation are recommended to manage lipid levels.
+
+Allergies: NKDA
+
+Current Medications: 
+
+Tirzepatide unspecified dose subcutaneous weekly
+
+Dexilant 60 mg oral daily
+
+Medical History: Anxiety | Depression | Migraines
+
+Surgical History: Breast reduction 2000 | C section 2008, 2010 | Tummy tuck 2020
+
+Social History: Former smoker | Post-menopausal (>1 year without a period) | Alcohol 2-4 times per month
+
+Family History: Mother: Thyroid | Father: Heart disease, diabetes | Maternal Grandmother: Arthritis
+
+ROS
+
+Constitutional
+Reports fatigue; denies fever or weight loss.
+Cardiovascular
+Reports elevated blood pressure readings; denies chest pain or palpitations.
+Genitourinary
+Reports postmenopausal status; denies urinary symptoms.
+Musculoskeletal
+Reports hair thinning; denies joint pain.
+Neurological
+Denies headaches or dizziness.
+Psychiatric
+Reports mood changes; denies current anxiety or depression.
+Endocrine
+Reports hot flushes and night sweats.
+Hematologic/Lymphatic
+Reports iron deficiency; denies easy bruising or bleeding.
+Vital Signs: Not obtained at this encounter.
+
+Physical Examination: Physical examination not performed at this encounter.
+
+ASSESSMENT & PLAN
+
+Overall Clinical Impression: Michelle presents with postmenopausal symptoms, including hot flushes, mood changes, and sleep disturbances, compounded by metabolic concerns such as elevated cholesterol and triglycerides. Her lab results indicate iron deficiency and borderline B12 levels. The treatment plan focuses on hormone replacement therapy to address menopausal symptoms and metabolic management to improve cardiovascular health.
+
+1. Postmenopausal Disorder with Symptom Complex (F52.0, R53.83, E34.9)
+
+Clinical Rationale: Michelle's symptoms of hot flushes, mood changes, and sleep disturbances are consistent with postmenopausal status. Her low estrogen and progesterone levels support this diagnosis. Hormone therapy is recommended to alleviate these symptoms and improve quality of life.
+
+Plan: Initiate progesterone 100 mg oral nightly. Start estrogen patch twice weekly. Begin testosterone compounded gel daily. Monitor symptom response and adjust doses as needed.
+
+2. Hyperlipidemia (E78.5)
+
+Clinical Rationale: Elevated total cholesterol and triglycerides suggest hyperlipidemia. Despite a low ASCVD risk score, lifestyle modifications and omega-3 supplementation are recommended to manage lipid levels.
+
+Plan: Recommend omega-3 fish oils 1000-2000 mg daily. Discuss low-dose statin therapy as a future option if lifestyle changes are insufficient.
+
+Future Considerations: Consider low-dose statin if triglycerides remain elevated despite omega-3 supplementation and dietary changes.
+
+3. Hypertension (I10)
+
+Clinical Rationale: Michelle's blood pressure readings have been elevated, indicating hypertension. A low-dose blood pressure medication is initiated to manage her blood pressure and reduce cardiovascular risk.
+
+Plan: Start new low-dose blood pressure medication daily. Monitor blood pressure and adjust treatment as necessary.
+
+4. Iron Deficiency (D50.9)
+
+Clinical Rationale: Low ferritin levels indicate iron deficiency, contributing to fatigue and hair thinning. Iron supplementation is recommended to replenish iron stores.
+
+Plan: Continue current iron supplementation with dietary advice for improved absorption (take with vitamin C, on an empty stomach).
+
+5. Borderline B12 Deficiency (E53.8)
+
+Clinical Rationale: Borderline B12 levels may contribute to fatigue. Bioavailable B12 supplementation is recommended to improve energy levels.
+
+Plan: Discuss B12 supplementation options, focusing on bioavailable forms like methylcobalamin.
+
+CARE PLAN
+Take progesterone 100 mg by mouth at bedtime.
+
+Apply estrogen patch twice weekly as directed.
+
+Use testosterone compounded gel daily on outer thigh.
+
+Start new low-dose blood pressure medication daily.
+
+Take omega-3 fish oils 1000-2000 mg daily for triglyceride management.
+
+Continue iron supplementation with vitamin C for better absorption.
+
+Consider bioavailable B12 supplement for energy improvement.
+
+Schedule mammogram and pap smear.
+
+Return for GLP-1 refill and weigh-in in 4-6 weeks.
+
+Follow up in 6-8 weeks for lab review and hormone therapy assessment.
+
+FOLLOW-UP
+Follow-up in 6-8 weeks to assess hormone therapy response and review lab results. Monitor blood pressure and triglyceride levels. Return sooner if symptoms worsen or new concerns arise.
