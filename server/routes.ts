@@ -5742,7 +5742,11 @@ Return ONLY this JSON structure:
       const interp = labResult.interpretationResult as any;
       if (!interp) return res.status(400).json({ message: "No interpretation data for this lab result" });
 
-      const overrides = (labResult.providerOverrides as any) || {};
+      // Prefer overrides sent in the request body (current in-memory state from
+      // the UI) so we never depend on the 900ms debounce having fired yet.
+      // Fall back to whatever is persisted in the DB.
+      const bodyOverrides = req.body?.overrides && typeof req.body.overrides === 'object' ? req.body.overrides : null;
+      const overrides = bodyOverrides || (labResult.providerOverrides as any) || {};
 
       // Effective patient summary: use the edited draft if present, otherwise the original
       const effectivePatientSummary: string =

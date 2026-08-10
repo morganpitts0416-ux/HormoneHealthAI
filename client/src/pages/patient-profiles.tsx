@@ -711,7 +711,11 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
 
   const regenerateSoapMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/patients/${patient.id}/labs/${lab.id}/regenerate-soap`, {});
+      // Pass the current in-memory overrides so the server uses the latest
+      // edits even if the 900ms debounce save hasn't fired yet.
+      const res = await apiRequest("POST", `/api/patients/${patient.id}/labs/${lab.id}/regenerate-soap`, {
+        overrides,
+      });
       return res.json() as Promise<{ soapNote: string }>;
     },
     onSuccess: (data) => {

@@ -522,7 +522,7 @@ This note is authored by the treating provider. Write in provider voice througho
       .map(([k, v]) => `  ${k}: ${v}`)
       .join('\n');
 
-    const prompt = `You are generating a chart-ready provider SOAP note for a ${clinicType}.
+    const prompt = `You are generating a concise, chart-ready provider SOAP note summarizing a completed lab evaluation for a ${clinicType}.
 
 PATIENT: ${patientName}${ageStr} ${sexStr}
 DATE: ${today}
@@ -530,14 +530,15 @@ RECHECK WINDOW: ${recheckWindow}
 ${riskSummary ? `CARDIOVASCULAR RISK: ${riskSummary}` : ''}
 ${trendContext ? `TREND CONTEXT:\n${trendContext}` : ''}
 
-─────────────────────────────────────────────────
-PATIENT COMMUNICATION (already approved and sent to patient)
-─────────────────────────────────────────────────
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PATIENT COMMUNICATION SUMMARY
+(Provider-approved text already sent to the patient — use this as the basis for the Subjective section)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ${effectivePatientSummary || '[No patient summary recorded]'}
 
-─────────────────────────────────────────────────
-PROVIDER-APPROVED CLINICAL FINDINGS
-─────────────────────────────────────────────────
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LAB FINDINGS (provider-reviewed)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ABNORMAL / CRITICAL (${abnormal.length}):
 ${abnormal.length ? fmtFindings(abnormal) : '  None'}
 
@@ -547,55 +548,45 @@ ${borderline.length ? fmtFindings(borderline) : '  None'}
 NORMAL (${normal.length}):
 ${normal.length ? normal.map(f => `  ${f.category}: ${f.value} ${f.unit}`).join('\n') : '  None'}
 
-─────────────────────────────────────────────────
-SUPPLEMENTS RECOMMENDED (provider-approved list)
-─────────────────────────────────────────────────
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PROVIDER-APPROVED SUPPLEMENT RECOMMENDATIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ${suppSection}
 
-─────────────────────────────────────────────────
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 RAW LAB VALUES (for Objective section)
-─────────────────────────────────────────────────
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ${labLines || '  See findings above'}
 
-─────────────────────────────────────────────────
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 INSTRUCTIONS
-─────────────────────────────────────────────────
-Write a complete provider SOAP note for the chart. The provider has already reviewed and curated the findings above — your note must reflect exactly what was communicated and decided. Do not re-interpret or contradict the approved findings.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Write a concise, chart-ready SOAP note. The provider has already reviewed and curated everything above — reflect it exactly. Do not re-interpret, contradict, or add findings not listed.
 
 SUBJECTIVE:
-- Chief complaint: Lab review / follow-up visit
-- Summarize relevant symptoms and patient context drawn from the patient communication above
-- Do not invent symptoms not referenced in the patient communication
+- "Patient presents for lab review."
+- Pull 2–4 relevant context sentences from the PATIENT COMMUNICATION SUMMARY above (symptoms mentioned, current therapies, relevant history). Do not invent anything not referenced there.
 
 OBJECTIVE:
-- List ALL lab values in a clean, organized format grouped by category (CBC, CMP, Lipids, Hormones, Thyroid, etc.)
-- Flag abnormal and critical values
-- Include units
+- List ALL lab values grouped by panel (CBC, CMP, Lipids, Hormones, Thyroid, etc.), one value per line
+- Format: [Marker]: [Value] [Unit] — flag as (ABNORMAL) or (BORDERLINE) where applicable
+- Normal values: list without a flag
 
-ASSESSMENT/PLAN:
+ASSESSMENT:
+- Write 2–3 sentences summarizing the overall clinical picture based on the abnormal and borderline findings above.
+- Reference specific values. Do not invent clinical conclusions not supported by the findings.
 
-Open with a 2–4 sentence summary paragraph synthesizing the overall clinical picture. Then write numbered problem entries:
+PLAN:
+- Number each actionable item. One item per abnormal/critical finding; group minor borderlines if appropriate.
+- Format each item as:
+  1. [Finding/Diagnosis]: [1–2 sentence clinical rationale]. [Specific action — supplement with dose, lifestyle change, medication, recheck timing.]
+- After the numbered items, add a "Supplements" line listing every approved supplement with dose and one-line rationale.
+- Close with: "Lab results reviewed and discussed with patient. Patient verbalized understanding. Recheck labs in ${recheckWindow}. Follow-up as clinically indicated."
 
-1. [Diagnosis]:
-   [2–3 sentences of clinical reasoning — reference the specific lab value(s) and explain what they mean for this patient. Draw from the approved findings above.]
-   Plan: [specific steps — dose/route/frequency for medications; supplement name and dose; lifestyle modifications; labs to recheck with timing; follow-up interval]
-
-Include every finding flagged as abnormal or critical as its own numbered item. Include borderline findings as items when clinically significant. Group minor borderline items together if appropriate.
-
-After the numbered list, include a supplements section:
-Supplements: [List each approved supplement with dose and one-line rationale]
-
-End with:
-"Results reviewed and discussed with patient. Questions answered. Patient verbalized understanding. Follow-up as above."
-
-CRITICAL RULES:
-- Write in provider voice throughout. Never refer to "the provider" in third person.
-- Use: "Reviewed…" / "Discussed…" / "Recommended…" / "She reports…" / "He reports…"
-- NEVER use: "The provider discussed…" or "The clinician recommended…"
-- Only use real medication and supplement names — never invent names
-- No emojis
-- Assessment Summary paragraph appears FIRST, before any numbered items
-- Every numbered problem needs both a clinical reasoning paragraph AND a Plan line`;
+VOICE RULES (non-negotiable):
+- Write in provider voice throughout. Never say "The provider…" or "The clinician…"
+- Use implied subject: "Reviewed…", "Discussed…", "Recommended…", "Patient reports…", "She denies…", "He reports…"
+- No emojis. No placeholders. No invented names.`;
 
     try {
       const response = await openai.chat.completions.create({
