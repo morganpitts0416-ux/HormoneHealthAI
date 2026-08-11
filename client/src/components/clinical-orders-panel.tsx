@@ -1061,6 +1061,38 @@ function NewOrderDialog({
                   />
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Send Rx on (target date)</Label>
+                  <Input
+                    type="date"
+                    value={targetDate}
+                    onChange={(e) => setTargetDate(e.target.value)}
+                    className="h-8 text-xs"
+                    data-testid="input-refill-target-date"
+                  />
+                  <p className="text-[10px] text-muted-foreground">Leave blank to activate immediately</p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Activate in inbox</Label>
+                  <Select value={notifyDaysBefore} onValueChange={setNotifyDaysBefore} disabled={!targetDate || new Date(targetDate + "T00:00:00") <= new Date()}>
+                    <SelectTrigger className="h-8 text-xs" data-testid="select-refill-notify-days-before">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0">on target date</SelectItem>
+                      <SelectItem value="1">1 day before</SelectItem>
+                      <SelectItem value="2">2 days before</SelectItem>
+                      <SelectItem value="3">3 days before</SelectItem>
+                      <SelectItem value="5">5 days before</SelectItem>
+                      <SelectItem value="7">1 week before</SelectItem>
+                      <SelectItem value="14">2 weeks before</SelectItem>
+                      <SelectItem value="30">1 month before</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-muted-foreground">{targetDate && new Date(targetDate + "T00:00:00") > new Date() ? "Order stays scheduled until this point" : "Set a future target date to schedule"}</p>
+                </div>
+              </div>
               <div className="flex items-center gap-2">
                 <input
                   type="checkbox"
