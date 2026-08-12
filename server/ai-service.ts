@@ -588,13 +588,13 @@ VOICE RULES (non-negotiable):
 - Use implied subject: "Reviewed…", "Discussed…", "Recommended…", "Patient reports…", "She denies…", "He reports…"
 - No emojis. No placeholders. No invented names.`;
 
-    try {
-      const response = await openai.chat.completions.create({
-        model: "gpt-5-mini",
-        messages: [
-          {
-            role: "system",
-            content: `You are an experienced clinician-level documentation specialist generating chart-ready SOAP notes for a ${clinicType}. The provider has already curated the patient communication and approved findings — your job is to translate that curated content into a polished provider chart note. You synthesize, not re-derive. You never invent findings or contradict what the provider approved. Every note you produce is ready to sign with minimal editing.
+    console.log('[AIService] generateSOAPNoteFromEdited: calling OpenAI, model=gpt-5-mini, patient=', patientName);
+    const response = await openai.chat.completions.create({
+      model: "gpt-5-mini",
+      messages: [
+        {
+          role: "system",
+          content: `You are an experienced clinician-level documentation specialist generating chart-ready SOAP notes for a ${clinicType}. The provider has already curated the patient communication and approved findings — your job is to translate that curated content into a polished provider chart note. You synthesize, not re-derive. You never invent findings or contradict what the provider approved. Every note you produce is ready to sign with minimal editing.
 
 DOCUMENTATION VOICE — NON-NEGOTIABLE:
 This note is authored by the treating provider. Write in provider voice throughout.
@@ -602,17 +602,16 @@ This note is authored by the treating provider. Write in provider voice througho
 - Use implied-subject constructions: "Reviewed…", "Discussed…", "Recommended…", "Patient was counseled on…", "She reports…", "He denies…"
 
 MEDICATION NAME RULE: Only use real, established generic or brand names. Never invent a name.`
-          },
-          { role: "user", content: prompt }
-        ],
-        max_completion_tokens: 4000,
-      });
+        },
+        { role: "user", content: prompt }
+      ],
+      max_completion_tokens: 4000,
+    });
 
-      return response.choices[0]?.message?.content || this.getDefaultSOAPNote(today);
-    } catch (error) {
-      console.error('[AIService] generateSOAPNoteFromEdited error:', error);
-      return this.getDefaultSOAPNote(today);
-    }
+    const content = response.choices[0]?.message?.content;
+    console.log('[AIService] generateSOAPNoteFromEdited: response received, length=', content?.length ?? 0);
+    if (!content) throw new Error('OpenAI returned an empty response for the SOAP note');
+    return content;
   }
 
   private static buildRecommendationPrompt(
