@@ -1,0 +1,60 @@
+Please update the OpenAI client initialization so the app works correctly in BOTH Replit development and GCP production.
+
+Current problem:
+- GCP production has a real OPENAI_API_KEY.
+- Replit development uses AI_INTEGRATIONS_OPENAI_API_KEY + AI_INTEGRATIONS_OPENAI_BASE_URL.
+- Several files, including server/ai-service.ts, are hard-coded to use only the AI_INTEGRATIONS_* variables.
+- In GCP, that causes SOAP generation and potentially other AI features to fail because the Replit modelfarm proxy/base URL does not exist there.
+
+Required behavior:
+1. In production, ALWAYS prefer process.env.OPENAI_API_KEY.
+2. If OPENAI_API_KEY is present, do NOT pass AI_INTEGRATIONS_OPENAI_BASE_URL at all. Let the OpenAI SDK use the normal OpenAI endpoint.
+3. Only fall back to AI_INTEGRATIONS_OPENAI_API_KEY and AI_INTEGRATIONS_OPENAI_BASE_URL when OPENAI_API_KEY is not present, for Replit development.
+4. Do not remove Replit development support.
+5. Do not change SOAP prompts, note logic, clinical extraction logic, models, or any unrelated functionality.
+
+Use this pattern anywhere a new OpenAI client is created:
+
+const apiKey =
+  process.env.OPENAI_API_KEY ||
+  process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+
+const baseURL = process.env.OPENAI_API_KEY
+  ? undefined
+  : process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+
+const openai = new OpenAI({
+  apiKey,
+  ...(baseURL ? { baseURL } : {}),
+});
+
+Audit ALL server-side OpenAI client initializations, not just server/ai-service.ts.
+
+Based on the current code search, review at minimum:
+- server/ai-service.ts
+- server/pdf-extraction.ts
+- server/routes.ts
+- server/workflow-engine.ts
+
+Replace any direct pattern like:
+apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY
+baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL
+
+with the production-safe fallback behavior above.
+
+Also pay special attention to server/workflow-engine.ts:
+- It currently references localhost:1106/modelfarm/openai.
+- That localhost fallback must NEVER be used when OPENAI_API_KEY exists.
+- Replit may continue using it only when the direct production key is absent.
+
+Before committing:
+- search the entire server directory again for AI_INTEGRATIONS_OPENAI_API_KEY and AI_INTEGRATIONS_OPENAI_BASE_URL
+- confirm every OpenAI client either uses the production-safe fallback or has a clearly intentional reason not to
+- run the build/tests
+- report exactly which files/lines were changed
+- report any remaining AI_INTEGRATIONS_* references and explain why they are still needed
+
+Then commit and push the fix to main.
+
+IMPORTANT:
+Do not modify GCP configuration, secrets, environment variables, Docker files, deployment scripts, or unrelated frontend code. This task is specifically to make the application code portable between Replit and GCP.
