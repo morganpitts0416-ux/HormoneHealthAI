@@ -1,9 +1,12 @@
 import { PDFParse } from 'pdf-parse';
 import OpenAI from 'openai';
 
+// Production-safe: prefer OPENAI_API_KEY (GCP/direct); fall back to AI_INTEGRATIONS_* (Replit dev)
+const _pdfApiKey = process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+const _pdfBaseURL = process.env.OPENAI_API_KEY ? undefined : process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
 const openai = new OpenAI({
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+  apiKey: _pdfApiKey,
+  ...(_pdfBaseURL ? { baseURL: _pdfBaseURL } : {}),
 });
 
 export interface ExtractedLabValues {

@@ -11,9 +11,12 @@ import {
 } from "./therapy-context";
 
 // Using gpt-5-mini for faster responses - smaller model but still capable
+// Production-safe: prefer OPENAI_API_KEY (GCP/direct); fall back to AI_INTEGRATIONS_* (Replit dev)
+const _aiApiKey = process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+const _aiBaseURL = process.env.OPENAI_API_KEY ? undefined : process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
 const openai = new OpenAI({
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY
+  apiKey: _aiApiKey,
+  ...(_aiBaseURL ? { baseURL: _aiBaseURL } : {}),
 });
 
 export class AIService {

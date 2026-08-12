@@ -2432,8 +2432,8 @@ Rules:
       console.log('[Dietary] Generating for lab', labResultId, '— findings:', critical.length, 'crit /', abnormal.length, 'abn /', borderline.length, 'bord, measured values:', measured.length);
 
       const client = new OpenAI({
-        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        apiKey: process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        ...(process.env.OPENAI_API_KEY ? {} : { baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL }),
       });
 
       const completion = await client.chat.completions.create({
@@ -3450,8 +3450,8 @@ Rules:
           };
 
           const juneOpenAI = new OpenAI({
-            apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-            baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+            apiKey: process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+            ...(process.env.OPENAI_API_KEY ? {} : { baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL }),
           });
 
           // Pass the synthetic workflowSetting directly to bypass Gate 3 check
@@ -4216,8 +4216,8 @@ Rules:
       }
 
       const openai = new OpenAI({
-        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+        apiKey: process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        ...(process.env.OPENAI_API_KEY ? {} : { baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL }),
       });
 
       const systemPrompt = `You are an EHR clinical data extraction specialist. Your job is to extract persistent patient history data from a clinical encounter transcript and SOAP note.
@@ -4419,7 +4419,7 @@ Return ONLY this JSON structure:
       // Generate brief AI insight comparing to previous uploads
       let aiInsight: string | null = null;
       try {
-        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
         const previous = await storage.getSimpleLabsByPatient(id);
         const recentPrev = previous.slice(0, 3);
 
@@ -6409,8 +6409,8 @@ Return ONLY this JSON structure:
       }
 
       const client = new OpenAI({
-        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        apiKey: process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        ...(process.env.OPENAI_API_KEY ? {} : { baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL }),
       });
 
       const prompt = `You are a clinical nutritionist and creative home cook.
@@ -8992,7 +8992,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       const { name, brand, dose, category, clinicalRationale } = req.body;
       if (!name || !dose) return res.status(400).json({ message: "Name and dose are required" });
 
-      const openai = new OpenAI({ apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY, baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL });
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY, ...(process.env.OPENAI_API_KEY ? {} : { baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL }) });
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [
@@ -9860,8 +9860,8 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       }
 
       const openai = new OpenAI({
-        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+        apiKey: process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        ...(process.env.OPENAI_API_KEY ? {} : { baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL }),
       });
 
       const visitType = encounter.visitType ?? "follow-up";
@@ -10006,8 +10006,8 @@ Return ONLY the JSON array, no explanation.`;
       }
 
       const openai = new OpenAI({
-        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+        apiKey: process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        ...(process.env.OPENAI_API_KEY ? {} : { baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL }),
       });
 
       const transcriptInput = diarized?.length
@@ -10289,8 +10289,8 @@ Return this exact JSON structure (all arrays, even if empty):
       // No hard guard — evidence falls back to raw transcription if extraction hasn't been run yet
 
       const openai = new OpenAI({
-        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+        apiKey: process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        ...(process.env.OPENAI_API_KEY ? {} : { baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL }),
       });
 
       // ── Build rich visit context including SOAP plan and lab interpretation ──
@@ -10700,8 +10700,8 @@ Only return validations for guidelines that are directly and specifically applic
       const mode = labContextUsed ? "context_linked" : "transcript_only";
 
       const openai = new OpenAI({
-        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+        apiKey: process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        ...(process.env.OPENAI_API_KEY ? {} : { baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL }),
       });
 
       const systemPrompt = `You are an expert clinical pattern recognition engine for a hormone and primary care clinic.
@@ -10867,8 +10867,8 @@ Analyze this encounter and identify clinical patterns. Remember: operate in ${mo
       if (!soapNote) return res.status(400).json({ message: "No SOAP note to validate" });
 
       const openai = new OpenAI({
-        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+        apiKey: process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        ...(process.env.OPENAI_API_KEY ? {} : { baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL }),
       });
 
       // Build transcript text for validation context
@@ -11648,8 +11648,8 @@ ALLOWED: If a chart PMH condition was explicitly brought up during this visit (p
 
       // ── Init AI client (shared across all pipeline steps) ─────────────────
       const openai = new OpenAI({
-        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+        apiKey: process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        ...(process.env.OPENAI_API_KEY ? {} : { baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL }),
       });
 
       // ── PIPELINE STEP 1: Normalize + diarize (always fresh) ───────────────
@@ -13026,8 +13026,8 @@ If nothing is found, return: { "social_history_items": [] }`,
       if (!template) return res.status(400).json({ message: "Template not found" });
 
       const openai = new OpenAI({
-        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+        apiKey: process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        ...(process.env.OPENAI_API_KEY ? {} : { baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL }),
       });
 
       // Build transcript text from diarized or raw
@@ -13404,8 +13404,8 @@ This note is authored by the treating provider. Write in provider voice througho
       }
 
       const openai = new OpenAI({
-        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+        apiKey: process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        ...(process.env.OPENAI_API_KEY ? {} : { baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL }),
       });
 
       // Include a trimmed transcript so counseling, expectation-setting, and shared
@@ -19043,8 +19043,8 @@ IMPORTANT:
 
       // ── OpenAI fallback (shimmer / gpt-4o-mini-tts) ───────────────────────
       const openai = new OpenAI({
-        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined,
-        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
+        apiKey: process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        ...(process.env.OPENAI_API_KEY ? {} : { baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL }),
       });
       res.set("Content-Type", "audio/mpeg");
       res.set("Cache-Control", "no-store");
@@ -22264,8 +22264,8 @@ IMPORTANT:
           );
 
           const juneOpenAI = new OpenAI({
-            apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-            baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+            apiKey: process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+            ...(process.env.OPENAI_API_KEY ? {} : { baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL }),
           });
           runJunePipeline({
             clinicId: matchedClinicId,

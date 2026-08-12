@@ -70,12 +70,12 @@ interface StepResult {
 // ── OpenAI client factory ──────────────────────────────────────────────────
 
 function makeOpenAI(): OpenAI {
-  return new OpenAI({
-    baseURL: process.env.OPENAI_API_KEY
-      ? undefined
-      : "http://localhost:1106/modelfarm/openai",
-    apiKey: process.env.OPENAI_API_KEY ?? "modelfarm",
-  });
+  // Production-safe: prefer OPENAI_API_KEY (GCP/direct); fall back to AI_INTEGRATIONS_* (Replit dev)
+  const apiKey = process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+  const baseURL = process.env.OPENAI_API_KEY
+    ? undefined
+    : (process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || "http://localhost:1106/modelfarm/openai");
+  return new OpenAI({ apiKey, ...(baseURL ? { baseURL } : {}) });
 }
 
 // ── Milestone helper ───────────────────────────────────────────────────────
