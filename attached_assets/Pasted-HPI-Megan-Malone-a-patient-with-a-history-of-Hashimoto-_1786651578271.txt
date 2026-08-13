@@ -1,0 +1,67 @@
+HPI: Megan Malone, a patient with a history of Hashimoto's thyroiditis and recent hysterectomy in February 2026, presented for a follow-up visit to review her current hormone therapy and lab results. She reports feeling generally tired, which she attributes to her lifestyle, including running a business and caring for two small children. She exercises a couple of times a week but has noticed increased hair loss, describing a smaller ponytail size, though she has not developed bald spots. Megan experiences difficulty falling asleep, which has worsened since she ran out of her Unwind supplement, a capsule containing melatonin and herbs. She also reports waking up an hour before her alarm, a long-standing issue since college.
+
+Megan's lab results were reviewed: total testosterone was 50 ng/dL, AMH was 0.2 ng/mL indicating low ovarian reserve, vitamin D was 50.3 ng/mL, B12 was 997 pg/mL, and ferritin was 73 ng/mL. Her DHT level was 86 ng/dL, and TSH was 1.43 mIU/L. Estrogen was 84 pg/mL, showing fluctuation consistent with perimenopausal changes. Progesterone levels were low, and she is not currently on any hormone therapy other than testosterone pellets.
+
+Discussion focused on starting progesterone 100 mg at bedtime to address sleep disturbances and stress response. Progesterone is expected to help with sleep by creating a barrier between cortisol and stress response. Megan was advised to take it 30-40 minutes before bedtime, with the potential to increase to 200 mg if needed. The possibility of using magnesium was also discussed, as it may help with relaxation and is generally beneficial due to common deficiencies.
+
+Allergies: Not reported at this visit
+
+Current Medications: 
+
+Tirzepatide 10 mg weekly
+
+Testosterone pellets
+
+Medical History: Hashimoto's thyroiditis
+
+Surgical History: Hysterectomy (ovaries retained) in February 2026
+
+Social History: Not reported at this visit
+
+Family History: Not reported at this visit
+
+ROS
+
+Constitutional
+Reports tiredness; denies night sweats.
+HEENT
+Reports hair loss.
+Neurological
+Reports difficulty falling asleep; waking up before alarm.
+Psychiatric
+Reports increased irritability.
+Endocrine
+Reports feeling cold during the day; low progesterone noted.
+Vital Signs: Not obtained at this encounter.
+
+Physical Examination: Physical examination not performed at this encounter.
+
+ASSESSMENT & PLAN
+
+Overall Clinical Impression: Megan Malone presents with symptoms consistent with perimenopausal hormone fluctuations, including low progesterone and fluctuating estrogen levels, contributing to sleep disturbances and increased irritability. Her current testosterone therapy is being continued, but adjustments to her hormone regimen are being considered to optimize her overall well-being.
+
+1. Perimenopausal Transition with Symptom Complex (R53.83, N95.9)
+
+Clinical Rationale: Megan's symptoms of difficulty falling asleep, waking up early, and increased irritability are consistent with perimenopausal changes. Her low progesterone levels support the initiation of progesterone therapy to improve sleep and stress response.
+
+Plan: Initiate progesterone 100 mg oral at bedtime. Monitor for improvement in sleep and any daytime grogginess. Adjust dosage as needed based on response.
+
+Future Considerations: Consider increasing progesterone to 200 mg if symptoms do not improve with the initial dose.
+
+2. Female Testosterone Deficiency (E29.1)
+
+Clinical Rationale: Megan is currently on testosterone pellets to address symptoms of androgen deficiency. Her testosterone level is at 50 ng/dL, which is below her historical peak levels.
+
+Plan: Continue testosterone pellets. Discuss potential switch to injections for more consistent levels if current therapy becomes inadequate.
+
+CARE PLAN
+Start taking progesterone 100 mg by mouth at bedtime to help with sleep and stress response.
+
+Continue testosterone pellets as currently prescribed.
+
+Consider restarting magnesium supplements for general health benefits and relaxation.
+
+Follow up in 8 weeks to reassess hormone levels and therapy effectiveness.
+
+FOLLOW-UP
+Follow up in 8 weeks to reassess hormone levels and evaluate the effectiveness of progesterone therapy. Monitor sleep patterns and any changes in irritability or hair loss. Return sooner if new symptoms develop or if there are concerns about medication side effects.
