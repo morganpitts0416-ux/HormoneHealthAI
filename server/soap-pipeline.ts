@@ -149,6 +149,7 @@ interface PipelineOutput {
   uncertain_items: string[];
   needs_clinician_review: string[];
   provider_review_flags?: string[];
+  topicInventory?: string[]; // Step 3.5 coverage checklist — passed downstream to finalFidelityAudit
 }
 
 interface NormalizedExtraction {
@@ -809,6 +810,31 @@ CONTRADICTION DETECTION — detect and correct each of the following:
 PROVIDER ANECDOTE CONTAMINATION CHECK:
 Scan the incoming extraction for any item in surgical_history, past_medical_history, family_history, social_history, or symptoms_reported that may have originated from a provider anecdote or statement about another person. Trigger phrases to look for in source context: "my mom," "my husband," "my partner," "I had a patient," "another patient," "I went through," "when I was." Any fact traceable to these triggers must be removed from all patient history fields.
 
+═══════════════════════════════════════
+EXTRACTION COMPLETENESS SELF-CHECK — PERFORM BEFORE RETURNING JSON
+═══════════════════════════════════════
+After populating all fields, perform this mandatory self-check before returning:
+
+COUNT CHECK: Add up total entries across explicitly_decided_plan_items + discussed_but_not_decided + future_considerations.
+Expected minimums by visit length:
+  - 15–30 min visit (1–2 topics):           at least 3 combined entries
+  - 30–60 min visit (multi-topic):           at least 8 combined entries
+  - 60–90 min visit (complex/multi-factorial): at least 12 combined entries
+
+If your count falls below the minimum for this visit length, re-read the full transcript before returning. A low count almost always means topics were dropped.
+
+TOPIC SCAN — check specifically for these commonly missed categories before finalizing:
+1. Each lab result discussed with a clinical interpretation, plan implication, or follow-up timing → must appear somewhere (explicitly_decided_plan_items if acted on; discussed_but_not_decided if deferred; provider_reasoning_statements if interpretation-only with no plan)
+2. Each supplement discussed (start, restart, continue, stop) → its own explicit entry, not grouped
+3. Each specific patient instruction stated (lab draw timing relative to injection, injection technique, conditional dosing rules, refill logistics) → captured in conditional_plans or hpi_chronological_elements
+4. Each secondary or coordinating provider mentioned → documented in hpi_chronological_elements
+5. Each deferred treatment with a stated trigger or follow-up timeline → explicitly in discussed_but_not_decided AND future_considerations
+6. Each cardiovascular, metabolic, or screening lab finding mentioned (even if no action taken) → in provider_reasoning_statements or discussed_but_not_decided
+7. Each lifestyle, dietary, or exercise recommendation → explicitly_decided_plan_items if decided; discussed_but_not_decided if deferred
+8. Each formula, calculation, or clinical scoring tool discussed → in provider_reasoning_statements so the note writer can document it
+
+Add any missing entries before returning the JSON.
+
 Return this exact JSON structure:
 {
   "medications_normalized": [...],
@@ -939,7 +965,8 @@ async function generateSoapSections(
   patientName?: string,
   historicalContext?: string,
   diagnosisBundles?: Array<{ title: string; codes: { code: string; name: string }[]; aliases: string[] }>,
-  transcriptDirect?: boolean
+  transcriptDirect?: boolean,
+  topicInventory?: string[]
 ): Promise<PipelineOutput> {
   // ── Speaker role normalization (additive preprocessing) ───────────────────
   const { normalized: diarizedNorm2, conflicts: speakerConflicts2 } = normalizeSpeakerRoles(diarized);
@@ -1055,6 +1082,26 @@ STATE D — Clinically relevant follow-up (for needs_clinician_review only; neve
     : "";
 
   const extractionSummary = buildExtractionSummary(extraction);
+
+  // ── Topic inventory checklist ─────────────────────────────────────────────
+  // Injected at the end of the user prompt as a mandatory pre-output checklist.
+  // Every topic from the Step 3.5 inventory must appear in the note. This
+  // block is intentionally placed LAST so it is the final instruction the
+  // model reads before writing — maximizing its influence on coverage.
+  const topicInventoryChecklist = topicInventory?.length
+    ? `\n\n═══════════════════════════════════════
+MANDATORY TOPIC COVERAGE CHECKLIST — Step 3.5 Clinical Inventory
+═══════════════════════════════════════
+Every item below was identified by an INDEPENDENT READ of the full transcript before generation began.
+Every item MUST appear in this note (HPI, Assessment/Plan, Care Plan, or Follow-Up as appropriate).
+A topic is NOT documented by a vague category mention — it requires the specific detail, decision, or instruction listed below.
+Before returning output, verify each numbered item is present. If any is absent, add it now.
+
+${topicInventory.map((item: string, i: number) => `${i + 1}. ${item}`).join('\n')}
+
+RULE: No item on this list is optional. An encounter topic in this inventory that is absent from the note is a documentation failure.
+═══════════════════════════════════════`
+    : "";
 
   // ── TRANSCRIPT-DIRECT MODE framing block ─────────────────────────────────
   // Prepended to the system prompt when SOAP_TRANSCRIPT_DIRECT is enabled.
@@ -2448,7 +2495,7 @@ ${historicalBlock}${labContext}${extractionSummary}${sharedContextBlocks}
 
 Generate the complete medical record following all rules above.${patientName ? ` The patient's name is "${patientName}" — use this name (NOT the clinician's name) when referring to the patient in the note.` : ""} You are in TRANSCRIPT-DIRECT mode: write the HPI by reading the transcript chronologically — preserve the patient's actual words, the sequence of topics, and mid-visit plan changes. The HPI must reflect what was genuinely said, not a distillation of extracted fields.
 
-${finalReconciliationBlock}`
+${finalReconciliationBlock}${topicInventoryChecklist}`
     : `Visit Type: ${encounter.visitType}
 Chief Complaint: ${encounter.chiefComplaint || "Not specified"}
 Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${patientLine}${historicalBlock}${labContext}${extractionSummary}${sharedContextBlocks}
@@ -2458,7 +2505,7 @@ ${diarizedInput}
 
 Generate the complete medical record following all rules above.${patientName ? ` The patient's name is "${patientName}" — use this name (NOT the clinician's name) when referring to the patient in the note.` : ""} The HPI must be a complete clinical story reconstruction — not a compressed summary. Flag uncertain items and non-duplicate recommendations in needs_clinician_review.
 
-${finalReconciliationBlock}`;
+${finalReconciliationBlock}${topicInventoryChecklist}`;
 
   const completion = await retryOnRateLimit(() => openai.chat.completions.create({
     model: "gpt-4o",
@@ -2594,8 +2641,20 @@ async function qaCheck(
   soapOutput: PipelineOutput,
   transcriptText: string,
   historicalContext?: string,
-  transcriptGapHints?: TranscriptGapFinding[]
+  transcriptGapHints?: TranscriptGapFinding[],
+  topicInventory?: string[]
 ): Promise<PipelineOutput> {
+  const inventoryCheckSection = topicInventory?.length
+    ? `
+
+58. TOPIC INVENTORY COVERAGE — CRITICAL: A Clinical Topic Inventory was generated by an independent read of the full transcript before note creation. Every item on this list was discussed in this encounter and must appear in the note with adequate specificity. For each numbered inventory item below, verify it is present in the note. A topic is NOT covered by a vague category mention — it must include the specific detail, decision, or instruction from the inventory. If any item is absent or inadequately represented, flag CRITICAL and add it now.
+
+CLINICAL TOPIC INVENTORY:
+${topicInventory.map((item: string, i: number) => `${i + 1}. ${item}`).join('\n')}
+
+Every item on this list is mandatory. An inventory item absent from the note is a CRITICAL documentation failure.`
+    : "";
+
   const systemPrompt = `You are a clinical documentation quality assurance specialist. Your job is to compare the SOAP note against the source extraction data and transcript to catch omissions, contradictions, and over-compression.
 
 CHECK FOR:
@@ -2848,6 +2907,7 @@ When a generalized phrase has replaced specific clinical content from the transc
    When found: flag as CRITICAL. Remove the chart PMH condition from the HPI. Rewrite the HPI sentence to describe only what was discussed in the transcript. The condition remains in Medical History (its correct location).
    Exception: if the condition appears in both the chart AND this visit's transcript (patient or provider mentioned it), it may remain in the HPI in that documented context.
    Why this matters: connecting a chart PMH condition to the current complaint without transcript support implies clinical reasoning that did not occur — it can mislead future providers, influence billing, and create a false picture of what was discussed.
+${inventoryCheckSection}
 
 STYLE PRESERVATION — MANDATORY WHEN REVISING:
 If you are writing a revised_fullNote, the ClinIQ Core Principles and all documentation rules from the generation system prompt apply without exception. The QA pass fixes issues — it must NEVER reduce documentation fidelity.
@@ -2951,6 +3011,9 @@ ${(() => {
 })()}
 
 Review the note for quality issues. If critical/important issues are found, provide a corrected version.${
+  topicInventory?.length
+    ? `\n\nTOPIC INVENTORY (verify all ${topicInventory.length} items are covered in the note):\n${topicInventory.map((t: string, i: number) => `${i + 1}. ${t}`).join('\n')}`
+    : ""}${
   transcriptGapHints && transcriptGapHints.length > 0
     ? `
 
@@ -3151,9 +3214,11 @@ export async function finalFidelityAudit(params: {
   extraction: any;
   normalized: any;
   openai: any;
+  topicInventory?: string[];
 }): Promise<{ note: string; restoredDetail: boolean; warnings: string[] }> {
-  const { finalNote, preJuneNote, transcriptText, extraction, normalized, openai } = params;
+  const { finalNote, preJuneNote, transcriptText, extraction, normalized, openai, topicInventory } = params;
   const warnings: string[] = [];
+  const hasTopicInventory = Array.isArray(topicInventory) && topicInventory.length > 0;
 
   // Dev diagnostics: detect compression from June pass
   if (process.env.NODE_ENV !== "production" && preJuneNote) {
@@ -3176,36 +3241,60 @@ export async function finalFidelityAudit(params: {
     }
   }
 
-  // Skip AI audit only if there is no baseline to compare against, or if the
-  // note is byte-for-byte identical to the baseline (nothing changed at all).
-  // Previously this skipped whenever the personalization pass was a noop —
-  // but the QA pass (which runs inside runEnhancedSoapPipeline) can also
-  // condense content, and that condensation was never caught. Now we always
-  // run the audit whenever the final note differs from the pre-pipeline
-  // baseline, regardless of which layer introduced the change.
-  if (!preJuneNote || preJuneNote === finalNote) {
+  // The audit now runs in two scenarios:
+  //   1. June/personalization changed the note (preJuneNote differs from finalNote)
+  //      → diff-based audit: detect what June removed or compressed
+  //   2. A topic inventory is available (always, for any encounter)
+  //      → inventory-based audit: detect what generation/QA never wrote in the
+  //        first place (topics dropped before June ever saw the note)
+  //
+  // Previously this skipped when preJuneNote was null (June didn't run). That
+  // missed an entire class of omissions: topics dropped during generation or QA,
+  // which June never had a chance to remove — and therefore the diff never caught.
+  if (!preJuneNote && !hasTopicInventory) {
+    return { note: finalNote, restoredDetail: false, warnings };
+  }
+  if (preJuneNote === finalNote && !hasTopicInventory) {
     return { note: finalNote, restoredDetail: false, warnings };
   }
 
   try {
+    const inventoryAuditSection = hasTopicInventory ? `
+
+TOPIC INVENTORY COVERAGE AUDIT — MANDATORY:
+You have received a Step 3.5 Clinical Topic Inventory — a flat list of every clinical topic identified by an independent read of the full encounter transcript BEFORE note generation began. This list was generated without prioritization or compression.
+
+For each numbered item in the CLINICAL TOPIC INVENTORY below, verify it appears in the FINAL NOTE with adequate specificity. A topic is NOT covered by:
+- A vague category mention ("labs reviewed," "supplements discussed")
+- An implied reference without the specific detail from the inventory
+A topic IS covered when the specific detail, value, decision, or instruction appears in the note in the appropriate section (HPI, Assessment/Plan, Care Plan, or Follow-Up).
+
+For each inventory item that is missing or inadequately represented in the final note, flag it and add it with the specific detail from the inventory. All items on the inventory are mandatory — there are no optional items.
+` : "";
+
+    const auditSystemPrompt = `You are a clinical documentation fidelity auditor. Your job is to ensure the final SOAP note is complete and accurate relative to the full encounter transcript.
+
+You will receive:
+${preJuneNote ? "1. The PRE-REFINEMENT note (the fully generated, QA-checked note before June/personalization ran)\n2. The POST-REFINEMENT note (the final note after all passes)\n3. The full visit transcript (ground truth)\n4. The structured clinical extraction" : "1. The FINAL note (after all generation and QA passes)\n2. The full visit transcript (ground truth)\n3. The structured clinical extraction"}
+${hasTopicInventory ? "5. A CLINICAL TOPIC INVENTORY — comprehensive flat list of every topic discussed in this encounter" : ""}
+
+Your task:
+${preJuneNote ? "- Compare the post-refinement note against the pre-refinement note and the transcript\n- Identify clinically meaningful content that existed in the pre-refinement note but is absent or generalized in the final note" : ""}
+- Compare the final note against the full transcript and clinical extraction
+- Identify any clinically meaningful content that was discussed in the encounter but is absent or generalized in the final note
+- If such content is missing, restore it to produce a corrected final note
+${inventoryAuditSection}`;
+
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
       temperature: 0.1,
       messages: [
         {
           role: "system",
-          content: `You are a clinical documentation fidelity auditor. A SOAP note has gone through a post-processing refinement pass. Your job is to determine whether the refinement removed or generalized any clinically meaningful information that was present before.
+          content: auditSystemPrompt + `
 
-You will receive:
-1. The PRE-REFINEMENT note (the fully generated, QA-checked note before June ran)
-2. The POST-REFINEMENT note (the final note after June/personalization passes)
-3. The full visit transcript (ground truth)
-4. The structured clinical extraction
-
-Your task:
-- Compare the post-refinement note against the pre-refinement note and the transcript
-- Identify any clinically meaningful content that existed in the pre-refinement note but is absent or generalized in the final note
-- If such content is missing, restore it to produce a corrected final note
+FIDELITY STANDARD:
+A fact is not considered preserved merely because its general topic appears. The final note must contain enough detail for another clinician to understand: what the patient reported, what the provider recommended, why, how the patient responded, and how it affected the plan.
 
 FIDELITY STANDARD:
 A fact is not considered preserved merely because its general topic appears. The final note must contain enough detail for another clinician to understand: what the patient reported, what the provider recommended, why, how the patient responded, and how it affected the plan.
@@ -3247,7 +3336,7 @@ RESPONSE FORMAT (JSON):
         },
         {
           role: "user",
-          content: `PRE-REFINEMENT NOTE:\n${preJuneNote}\n\n---\nPOST-REFINEMENT NOTE (final):\n${finalNote}\n\n---\nTRANSCRIPT:\n${transcriptText.substring(0, 80000)}\n\n---\nCLINICAL EXTRACTION (summary):\n${JSON.stringify({ chief_concerns: extraction?.chief_concerns, symptoms_reported: extraction?.symptoms_reported, plan_candidates: extraction?.plan_candidates, diagnoses_discussed: extraction?.diagnoses_discussed }, null, 2)}\n\nAudit the post-refinement note now.`,
+          content: `${preJuneNote && preJuneNote !== finalNote ? `PRE-REFINEMENT NOTE:\n${preJuneNote}\n\n---\n` : ""}FINAL NOTE:\n${finalNote}\n\n---\nTRANSCRIPT:\n${transcriptText.substring(0, 80000)}\n\n---\nCLINICAL EXTRACTION (summary):\n${JSON.stringify({ chief_concerns: extraction?.chief_concerns, symptoms_reported: extraction?.symptoms_reported, plan_candidates: extraction?.plan_candidates, diagnoses_discussed: extraction?.diagnoses_discussed }, null, 2)}${hasTopicInventory ? `\n\n---\nCLINICAL TOPIC INVENTORY (Step 3.5 — every topic discussed in this encounter, generated independently before note creation):\n${topicInventory!.map((t: string, i: number) => `${i + 1}. ${t}`).join('\n')}` : ""}\n\nAudit the final note now.`,
         },
       ],
       response_format: { type: "json_object" },
@@ -3620,17 +3709,92 @@ function deterministicValidateNote(note: string, extraction: any): Deterministic
   return discrepancies;
 }
 
+// ── Step 3.5: Clinical Topic Inventory ─────────────────────────────────────────
+// Independent enumeration pass that reads the FULL transcript and produces a
+// flat, prioritization-free list of every clinical topic discussed. This list
+// is the mandatory coverage gate that prevents complex multi-factorial encounters
+// from having secondary topics compressed out during extraction-first generation.
+//
+// It does NOT analyze, interpret, or prioritize — only enumerate. This is the
+// key property: the extraction phase must pick which facts fit into a schema;
+// the inventory just lists what was said, with no schema constraints.
+// ────────────────────────────────────────────────────────────────────────────────
+async function buildTopicInventory(
+  openai: OpenAI,
+  transcriptText: string,
+  diarized: any[]
+): Promise<string[]> {
+  const { normalized: diarizedNorm } = normalizeSpeakerRoles(diarized);
+  const diarizedInput = diarizedNorm.length > 0
+    ? diarizedNorm.map((u: any) => `${u.speaker.toUpperCase()}${u.uncertain ? "[?]" : ""}: ${u.normalizedText ?? u.text}`).join('\n')
+    : transcriptText;
+
+  try {
+    const completion = await retryOnRateLimit(() => openai.chat.completions.create({
+      model: "gpt-4o",
+      temperature: 0.1,
+      max_tokens: 4096,
+      messages: [
+        {
+          role: "system",
+          content: `You are a clinical documentation completeness auditor. Your ONLY job is to enumerate every distinct clinical topic discussed in this encounter — without analysis, prioritization, or compression.
+
+RULES:
+1. Read the ENTIRE transcript before writing anything.
+2. List EVERY distinct clinical topic raised by either the clinician or patient, regardless of how briefly it was mentioned. Lab results reviewed, supplements discussed, patient questions answered, instructions given, coordinating providers mentioned, formulas calculated — all belong on this list.
+3. Do NOT prioritize. A single-sentence mention of a lab result with a plan implication is just as required as the chief complaint.
+4. Do NOT compress. Each medication action, each lab with plan implications, each symptom cluster, each deferred treatment, each supplement, each specific patient instruction, each formula or calculation discussed, each coordinating provider mention — is its own separate entry.
+5. Do NOT analyze or interpret — only enumerate what was actually discussed.
+6. For each topic: capture (a) the topic name, (b) what was specifically discussed (names, values, doses — not categories), (c) the decision, plan, or specific instruction — or "No specific plan; reviewed/discussed only" if no action was taken.
+7. For complex visits (60+ minutes, multiple clinical domains), expect 15–25+ entries. If you have fewer than 10 for a clearly complex multi-topic visit, re-read the transcript.
+
+OUTPUT FORMAT: Return a JSON object with a single key "topics" containing an array of strings. Each string is one topic in this format:
+"[TOPIC NAME]: [what was specifically discussed] | [decision/plan/instruction — or 'Reviewed; no action taken at this visit' if no plan]"
+
+Example entries (show the level of specificity required):
+"Lipoprotein A: Reviewed as genetic cardiovascular risk factor; sticky atherogenic particles; lower atherogenic particle count reduces its effect | Start fish oil / omega-3 supplements"
+"Testosterone lab draw timing: Patient asked when to draw labs relative to twice-weekly injections | Draw on injection day before the injection, approximately day 3-4 post-prior injection (e.g., Monday/Thursday schedule)"
+"Epstein-Barr virus panel: Reviewed — not active, not reactivation; ~90% of population has antibodies; no current illness indicators | No action needed; benign finding"
+"DHT calculation (coordinating provider Molly's protocol): DHT 86 ng/dL; formula T×3.47÷SHBG; result at trial labs = 4.99 (threshold = 5); at peak labs = 7.14 | No specific DHT treatment at this visit; switching from pellets to injections expected to lower DHT exposure"`,
+        },
+        {
+          role: "user",
+          content: `TRANSCRIPT:\n${diarizedInput.slice(0, 90000)}`,
+        },
+      ],
+      response_format: { type: "json_object" },
+    }));
+
+    const result = JSON.parse(completion.choices[0].message.content || "{}");
+    const topics = Array.isArray(result.topics)
+      ? result.topics.filter((t: any) => typeof t === "string" && t.trim())
+      : [];
+    return topics;
+  } catch (err) {
+    console.warn("[Topic Inventory] Build failed (non-fatal, proceeding without coverage checklist):", err);
+    return [];
+  }
+}
+
 export async function runEnhancedSoapPipeline(input: PipelineInput): Promise<PipelineOutput> {
   const { openai, extraction, transcriptText, diarized, labContext, patternContext, medicationContext, encounter, historicalContext, diagnosisBundles } = input;
 
-  // ── Feature flag: transcript-direct mode ────────────────────────────────
-  // When SOAP_TRANSCRIPT_DIRECT=true, the generation phase leads with the raw
-  // transcript and uses the extraction only as a QA anchor. This preserves
-  // patient voice, temporal reasoning, and mid-visit plan changes that are
-  // compressed out of the extraction-first path.
-  const useTranscriptDirect = process.env.SOAP_TRANSCRIPT_DIRECT === 'true';
+  // ── Transcript-direct mode ─────────────────────────────────────────────────
+  // Active when SOAP_TRANSCRIPT_DIRECT=true (manual override) OR when the
+  // transcript length exceeds the threshold for complex multi-topic encounters.
+  // For encounters ≥8,000 chars (~10+ minutes) the writer reads the full
+  // transcript first and treats the structured extraction only as a QA anchor.
+  // This preserves patient voice, temporal reasoning, and mid-visit plan
+  // changes that get compressed out of the extraction-first path.
+  const TRANSCRIPT_DIRECT_CHAR_THRESHOLD = 8000;
+  const useTranscriptDirect =
+    process.env.SOAP_TRANSCRIPT_DIRECT === 'true' ||
+    transcriptText.length >= TRANSCRIPT_DIRECT_CHAR_THRESHOLD;
   if (useTranscriptDirect) {
-    console.log("[SOAP Pipeline] TRANSCRIPT-DIRECT mode active (SOAP_TRANSCRIPT_DIRECT=true)");
+    const tdReason = process.env.SOAP_TRANSCRIPT_DIRECT === 'true'
+      ? "SOAP_TRANSCRIPT_DIRECT=true (manual override)"
+      : `transcript ${transcriptText.length} chars ≥ ${TRANSCRIPT_DIRECT_CHAR_THRESHOLD}-char auto threshold`;
+    console.log(`[SOAP Pipeline] TRANSCRIPT-DIRECT mode active (${tdReason})`);
   }
 
   console.log("[SOAP Pipeline] Step 3c: Medical normalization + context inference...");
@@ -3660,13 +3824,31 @@ export async function runEnhancedSoapPipeline(input: PipelineInput): Promise<Pip
     };
   }
 
+  // ── Step 3.5: Clinical Topic Inventory ──────────────────────────────────────
+  // Independent enumeration pass — reads the full transcript and produces a
+  // flat checklist of every clinical topic discussed, without prioritization.
+  // Passed downstream to generation, QA, and fidelity audit as a mandatory
+  // coverage gate. Runs in parallel with normalization is not possible (it needs
+  // the transcript), so it runs here, right after normalization completes.
+  let topicInventory: string[] = [];
+  try {
+    console.log("[SOAP Pipeline] Step 3.5: Building clinical topic inventory...");
+    topicInventory = await buildTopicInventory(openai, transcriptText, diarized);
+    console.log(`[SOAP Pipeline] Topic inventory: ${topicInventory.length} clinical topics enumerated for mandatory coverage gate`);
+    if (topicInventory.length < 5 && transcriptText.length > 3000) {
+      console.warn(`[SOAP Pipeline] Topic inventory suspiciously short (${topicInventory.length} items for a ${transcriptText.length}-char transcript) — coverage gate may be incomplete`);
+    }
+  } catch (invErr) {
+    console.warn("[SOAP Pipeline] Topic inventory build failed (non-fatal, proceeding without coverage checklist):", invErr);
+  }
+
   console.log(`[SOAP Pipeline] Step 4: SOAP generation (${useTranscriptDirect ? "TRANSCRIPT-DIRECT" : "extraction-first"} mode)...`);
   let soapOutput: PipelineOutput;
   try {
     soapOutput = await generateSoapSections(
       openai, extraction, normalized, transcriptText, diarized,
       labContext, patternContext, medicationContext, encounter, input.patientName, historicalContext, diagnosisBundles,
-      useTranscriptDirect
+      useTranscriptDirect, topicInventory
     );
   } catch (err) {
     console.error("[SOAP Pipeline] SOAP generation failed:", err);
@@ -3675,13 +3857,13 @@ export async function runEnhancedSoapPipeline(input: PipelineInput): Promise<Pip
 
   console.log("[SOAP Pipeline] Step 5: Omission/contradiction QA check...");
   try {
-    soapOutput = await qaCheck(openai, extraction, normalized, soapOutput, transcriptText, historicalContext);
+    soapOutput = await qaCheck(openai, extraction, normalized, soapOutput, transcriptText, historicalContext, undefined, topicInventory);
   } catch (qaErr) {
     console.warn("[SOAP Pipeline] QA check failed, using unrevised SOAP:", qaErr);
   }
 
   // ── Transcript-direct supplemental QA ────────────────────────────────────
-  // When SOAP_TRANSCRIPT_DIRECT is enabled, run an additional scan that reads
+  // When transcript-direct mode is active, run an additional scan that reads
   // the raw transcript to detect clinical content (patient voice, plan changes,
   // conditional instructions, stop orders) that is missing from the note
   // regardless of extraction coverage.
@@ -3698,8 +3880,8 @@ export async function runEnhancedSoapPipeline(input: PipelineInput): Promise<Pip
       const tdGaps = await transcriptDirectGapDetect(openai, soapOutput, transcriptText, extraction);
       const actionableGaps = tdGaps.filter(g => g.severity === 'critical' || g.severity === 'important');
       if (actionableGaps.length > 0) {
-        console.log(`[SOAP Pipeline] Step 5c: Re-running comprehensive QA with ${actionableGaps.length} transcript gap hints...`);
-        soapOutput = await qaCheck(openai, extraction, normalized, soapOutput, transcriptText, historicalContext, actionableGaps);
+        console.log(`[SOAP Pipeline] Step 5c: Re-running comprehensive QA with ${actionableGaps.length} transcript gap hints + inventory...`);
+        soapOutput = await qaCheck(openai, extraction, normalized, soapOutput, transcriptText, historicalContext, actionableGaps, topicInventory);
       }
     } catch (tdGapErr) {
       console.warn("[SOAP Pipeline] Transcript-direct gap scan failed (non-fatal):", tdGapErr);
@@ -3755,6 +3937,10 @@ export async function runEnhancedSoapPipeline(input: PipelineInput): Promise<Pip
       ],
     };
   }
+
+  // Attach the topic inventory to the output so the caller (routes.ts) can
+  // pass it to finalFidelityAudit — enabling the always-run coverage gate.
+  soapOutput = { ...soapOutput, topicInventory: topicInventory.length ? topicInventory : undefined };
 
   console.log("[SOAP Pipeline] Pipeline complete.");
   return soapOutput;

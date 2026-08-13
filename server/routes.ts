@@ -12789,6 +12789,7 @@ Return a JSON object:
         extraction: freshExtraction,
         normalized: null,
         openai,
+        topicInventory: soapNote.topicInventory,
       });
       if (fidelityResult.restoredDetail) {
         soapNote = { ...soapNote, fullNote: fidelityResult.note };
