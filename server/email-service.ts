@@ -170,44 +170,106 @@ export async function sendPatientPortalInviteEmail(
 ): Promise<void> {
   const base = getBaseUrl(req);
   const link = `${base}/portal/set-password?token=${token}`;
+  // Canonical portal URL patients return to after setup
+  const portalUrl = "https://app.cliniqapp.ai";
 
   await sendEmail({
     to,
     fromName: clinicName,
-    subject: `${clinicName} has invited you to your personal health portal`,
+    subject: `Welcome to your ${clinicName} health portal — set up your access`,
     html: `
-      <div style="font-family: 'Inter', Georgia, serif; max-width: 560px; margin: 0 auto; background: #fffdf9;">
+      <div style="font-family: 'Inter', Georgia, serif; max-width: 580px; margin: 0 auto; background: #fffdf9;">
+
+        <!-- Header -->
         <div style="background: #2e3a20; padding: 28px 32px; text-align: center;">
           <h1 style="color: #e8ddd0; margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">${clinicName}</h1>
-          <p style="color: #a8b88c; margin: 6px 0 0; font-size: 13px; letter-spacing: 0.5px; text-transform: uppercase;">Your Personal Wellness Portal</p>
+          <p style="color: #a8b88c; margin: 6px 0 0; font-size: 13px; letter-spacing: 0.5px; text-transform: uppercase;">Your Personal Health Portal</p>
         </div>
-        <div style="padding: 40px 32px; background: #fffdf9;">
-          <p style="color: #2e3a20; font-size: 28px; font-weight: 700; margin: 0 0 8px; line-height: 1.2;">Hello, ${patientFirstName}.</p>
-          <p style="color: #7a8a64; font-size: 14px; margin: 0 0 28px; letter-spacing: 0.3px;">${clinicName}</p>
-          <p style="color: #3d4a30; font-size: 15px; line-height: 1.7; margin: 0 0 12px;">
-            Your care team has set up a private health portal just for you. Inside, you'll find:
+
+        <!-- Welcome -->
+        <div style="padding: 40px 32px 28px; background: #fffdf9;">
+          <p style="color: #2e3a20; font-size: 26px; font-weight: 700; margin: 0 0 16px; line-height: 1.25;">Welcome, ${patientFirstName}! 👋</p>
+          <p style="color: #3d4a30; font-size: 15px; line-height: 1.75; margin: 0 0 12px;">
+            We're so glad you're here. Your care team at <strong>${clinicName}</strong> has set up a private health portal just for you — a secure space where you can stay connected with your care, track your progress, and access everything in one place.
           </p>
-          <ul style="color: #3d4a30; font-size: 14px; line-height: 2; margin: 0 0 28px; padding-left: 20px;">
-            <li>Your lab results explained in plain language</li>
-            <li>Your personalized wellness supplement protocol</li>
-            <li>Your health trends over time</li>
-            <li>Notes and updates from your care team</li>
-          </ul>
-          <div style="text-align: center; margin: 36px 0;">
-            <a href="${link}" style="background: #2e3a20; color: #e8ddd0; padding: 16px 40px; border-radius: 6px; text-decoration: none; font-size: 15px; font-weight: 600; display: inline-block; letter-spacing: 0.3px;">
-              Access My Health Portal
+          <p style="color: #3d4a30; font-size: 15px; line-height: 1.75; margin: 0 0 24px;">
+            Inside your portal you'll find your lab results explained in plain language, your personalized wellness protocol, notes and updates from your care team, and your health trends over time.
+          </p>
+        </div>
+
+        <!-- Step 1: Set password -->
+        <div style="margin: 0 32px 24px; background: #f0f4e8; border-radius: 10px; padding: 24px 28px;">
+          <p style="color: #2e3a20; font-size: 13px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; margin: 0 0 10px;">Step 1 — Create your password</p>
+          <p style="color: #3d4a30; font-size: 14px; line-height: 1.65; margin: 0 0 20px;">
+            Click the button below to set your password and activate your account. This link is unique to you and expires in <strong>72 hours</strong>.
+          </p>
+          <div style="text-align: center;">
+            <a href="${link}" style="background: #2e3a20; color: #e8ddd0; padding: 15px 40px; border-radius: 6px; text-decoration: none; font-size: 15px; font-weight: 600; display: inline-block; letter-spacing: 0.3px;">
+              Set My Password &rarr;
             </a>
           </div>
-          <p style="color: #7a8a64; font-size: 13px; line-height: 1.6; margin: 24px 0 0; text-align: center;">
-            This invitation expires in <strong>72 hours</strong>. Your health data is private and secure — only you and your care team can access it.
-          </p>
-          <p style="color: #b0b8a0; font-size: 12px; margin: 12px 0 0; word-break: break-all; text-align: center;">
-            ${link}
+          <p style="color: #7a8a64; font-size: 12px; margin: 16px 0 0; word-break: break-all; text-align: center;">
+            Or copy this link into your browser:<br>${link}
           </p>
         </div>
-        <div style="border-top: 1px solid #e8ddd0; padding: 20px 32px; text-align: center; background: #f5f0e8;">
+
+        <!-- Step 2: Return access -->
+        <div style="margin: 0 32px 24px; background: #f5f0e8; border-radius: 10px; padding: 24px 28px;">
+          <p style="color: #2e3a20; font-size: 13px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; margin: 0 0 10px;">Step 2 — Coming back to your portal</p>
+          <p style="color: #3d4a30; font-size: 14px; line-height: 1.65; margin: 0 0 10px;">
+            After you've set your password, you can log in any time at:
+          </p>
+          <p style="text-align: center; margin: 0 0 10px;">
+            <a href="${portalUrl}" style="color: #2e3a20; font-size: 15px; font-weight: 600; text-decoration: underline;">${portalUrl}</a>
+          </p>
+          <p style="color: #3d4a30; font-size: 14px; line-height: 1.65; margin: 0;">
+            Use your email address and the password you just created. Make sure to select <strong>"Patient Login"</strong> on the login page.
+          </p>
+        </div>
+
+        <!-- Step 3: Add to homescreen -->
+        <div style="margin: 0 32px 32px; background: #eef2f8; border-radius: 10px; padding: 24px 28px;">
+          <p style="color: #2e3a20; font-size: 13px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; margin: 0 0 10px;">Step 3 — Save it to your phone like an app (optional but recommended!)</p>
+          <p style="color: #3d4a30; font-size: 14px; line-height: 1.65; margin: 0 0 18px;">
+            You can add your portal to your phone's home screen for one-tap access — it works just like an app, no download required.
+          </p>
+
+          <!-- iPhone -->
+          <div style="margin-bottom: 18px;">
+            <p style="color: #2e3a20; font-size: 14px; font-weight: 700; margin: 0 0 8px;">📱 iPhone (Safari)</p>
+            <ol style="color: #3d4a30; font-size: 14px; line-height: 1.9; margin: 0; padding-left: 20px;">
+              <li>Open <strong>${portalUrl}</strong> in Safari</li>
+              <li>Tap the <strong>Share button</strong> (the square with an arrow pointing up)</li>
+              <li>Scroll down and tap <strong>"Add to Home Screen"</strong></li>
+              <li>Tap <strong>"Add"</strong> in the top right</li>
+            </ol>
+          </div>
+
+          <!-- Android -->
+          <div>
+            <p style="color: #2e3a20; font-size: 14px; font-weight: 700; margin: 0 0 8px;">📱 Android (Chrome)</p>
+            <ol style="color: #3d4a30; font-size: 14px; line-height: 1.9; margin: 0; padding-left: 20px;">
+              <li>Open <strong>${portalUrl}</strong> in Chrome</li>
+              <li>Tap the <strong>3-dot menu</strong> in the top right corner</li>
+              <li>Tap <strong>"Add to Home Screen"</strong></li>
+              <li>Tap <strong>"Add"</strong></li>
+            </ol>
+          </div>
+        </div>
+
+        <!-- Security note -->
+        <div style="padding: 0 32px 36px;">
+          <p style="color: #7a8a64; font-size: 13px; line-height: 1.65; margin: 0; text-align: center;">
+            Your health data is private and secure — only you and your care team can access it.<br>
+            If you have any trouble accessing your portal, reach out to your clinic directly.
+          </p>
+        </div>
+
+        <!-- Footer -->
+        <div style="border-top: 1px solid #e8ddd0; padding: 18px 32px; text-align: center; background: #f5f0e8;">
           <p style="color: #7a8a64; font-size: 12px; margin: 0;">Powered by ClinIQ &mdash; Thoughtful Care, Personalized Wellness</p>
         </div>
+
       </div>
     `,
   });
