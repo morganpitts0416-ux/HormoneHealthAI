@@ -1,0 +1,29 @@
+I want to make the existing Mode B GPT-5.6 Sol SOAP path the production SOAP-generation path for a limited real-world trial.
+
+Do not delete or substantially refactor the existing GPT-4o enhanced SOAP pipeline. Preserve it as a rollback/legacy path.
+
+The goal is for normal SOAP generation to use the same prompt/input architecture currently used by the /api/encounters/:id/test-soap-model endpoint when mode: "B":
+
+raw transcript + existing historical/chart context + linked lab context + ClinIQ SOAP system rules → GPT-5.6 Sol
+
+Do not run GPT-4o extraction, medical normalization/inference, or topic inventory as prerequisites for the Sol-generated SOAP note. The raw transcript must remain the primary source of truth for what occurred during the encounter.
+
+Use the exact GPT-5.6 Sol API configuration already proven to work in the Mode B test, including omission of temperature.
+
+Important: Do not change the ClinIQ SOAP-writing rules yet. I want the production output to match the Mode B behavior we just tested before we begin refining the A&P prompt.
+
+Preserve all existing chart context and linked-lab context that Mode B currently receives.
+
+Do not change the lab evaluation pipeline, Evidence Layer, June, Patient Communication, database schema, or any unrelated feature.
+
+Keep the existing enhanced GPT-4o SOAP pipeline available behind a clearly named feature flag/configuration so we can immediately revert without a code reconstruction if the Sol trial does not perform as expected.
+
+Before implementing, show me:
+
+Exactly which production function/route will change.
+How you will route production generation through the Mode B architecture.
+How the legacy pipeline will remain available for rollback.
+Whether any downstream QA, gap-scan, fidelity-audit, or personalization steps currently run after Mode B generation and whether you propose keeping or bypassing each one.
+Confirmation that no database/schema changes are required.
+
+Do not implement yet. Give me the proposed diff/implementation plan first.
