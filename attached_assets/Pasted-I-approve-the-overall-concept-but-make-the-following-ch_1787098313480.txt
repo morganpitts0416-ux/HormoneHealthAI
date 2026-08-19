@@ -1,0 +1,75 @@
+I approve the overall concept, but make the following changes before implementation:
+
+1. Mode A must be a true apples-to-apples Step 4 comparison.
+
+Do not independently reconstruct the Step 4 context/prompt inside routes.ts.
+
+Instead, extract the existing prompt-construction portion of generateSoapSections() into a shared helper that returns the exact final:
+
+systemPrompt
+userPrompt
+
+Production generateSoapSections() should call that helper with no change in resulting prompt content or behavior. The test endpoint should call the same helper.
+
+I want Mode A to mean:
+
+identical Step 4 system prompt + identical Step 4 user prompt + identical stored upstream data, with only the model changed from gpt-4o to gpt-5.6-sol.
+
+Do not rewrite, shorten, improve, or otherwise modify the existing production prompt while extracting it into the helper.
+
+2. Do not automatically retry using the Responses API.
+
+We have already confirmed gpt-5.6-sol works through Chat Completions.
+
+Use Chat Completions only for this experiment. If any parameter is rejected, return the exact error. Do not change APIs, models, or parameters automatically.
+
+3. Reuse stored extraction for Mode A. Do not run fresh extraction.
+
+If the required stored upstream data does not exist for an encounter, Mode A should return a clear "Mode A unavailable for this encounter" error. Do not fall back to Mode B automatically.
+
+4. Mode B should remain truly transcript-direct.
+
+Mode B should receive:
+
+complete raw/diarized transcript
+relevant patient/chart context already available to the generator
+ClinIQ SOAP rules/system instructions
+
+But it should NOT receive:
+
+Step 1–2 extraction
+Step 3c medical normalization
+Step 3.5 topic inventory
+QA output
+gap-scan output
+fidelity-audit output
+
+The purpose is to determine whether the stronger model can reason directly from the original encounter better than our multi-stage pipeline.
+
+5. Do not include patient name unless the SOAP generator actually needs it.
+
+Use the minimum patient-identifying information necessary for generation. Visit date/type are fine where clinically relevant.
+
+6. Keep the test read-only.
+
+No generated notes, test results, errors, prompts, or model responses should be written to the database.
+
+Return:
+
+mode
+exact model
+API
+generated note
+input tokens
+output tokens
+total tokens if available
+generation time
+system prompt character count
+user prompt character count
+error
+
+7. Do not modify the production model.
+
+Production must continue using gpt-4o.
+
+Once these changes are incorporated, show me the revised diff before implementing.
