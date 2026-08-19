@@ -1,0 +1,79 @@
+Do not make any code changes. I need an architecture audit of the existing Full Lab Evaluation clinical reasoning pipeline.
+
+The Full Evaluation provider view is currently producing several layers of clinical reasoning before the provider generates the Patient Report. I need to understand exactly how those outputs are created and where the underlying rules/algorithms live.
+
+Trace one Full Evaluation from raw submitted lab values through every clinical reasoning step and through generation of the Patient Communication Summary and Patient Report.
+
+Specifically map:
+
+Individual lab interpretation
+optimized/reference ranges
+status determination
+assessment text
+management guidance
+follow-up guidance
+PREVENT Cardiovascular Risk Assessment
+calculation/rules
+risk classification
+LDL/statin guidance
+Atherogenic Marker Risk Adjustment
+ApoB
+Lp(a)
+how these modify or contextualize PREVENT
+Insulin Resistance Screening / Phenotype Assessment
+weighted scoring
+marker thresholds
+phenotype selection
+hepatic/liver-driven IR
+visceral/metabolic IR
+pathophysiology text
+treatment plan
+supplement considerations
+monitoring
+confirmatory testing
+Cellular Energy / Mito Score
+scoring domains
+thresholds
+primary/secondary pattern selection
+generated recommendations
+Hormone Pattern Assessment
+menopause
+SHBG trap
+hypoestrogenic pattern
+all other currently implemented hormone patterns
+criteria and management attached to each
+Clinical Phenotype Assessment
+how phenotypes are generated
+confidence determination
+supporting findings
+relationship to the dedicated IR/hormone/Mito engines
+Supplement Protocol
+how supplements are selected
+where indication rules live
+how dose is selected
+how priority is determined
+how each recommendation is linked to labs, phenotypes, diagnoses, or clinical findings
+Patient Communication Summary
+exactly what structured clinical information is supplied to the generator
+model/prompt used
+whether it receives the complete reasoning output or reconstructs reasoning independently
+Patient Report
+exactly what structured information is supplied when the provider clicks Patient Report
+which portions are deterministic versus AI-generated
+
+For every module, identify:
+
+source file(s)
+relevant functions
+TypeScript interfaces/types
+database tables/columns involved
+whether the result is persisted or transient
+whether logic is deterministic/rule-based or AI-generated
+AI model and prompt if applicable
+what downstream features currently consume that output
+
+Most importantly: determine whether there is already a single structured object containing the complete clinical reasoning output from a Full Evaluation. If there is, show me its exact schema and where it is created. If there is not, show me the separate objects that collectively contain this information and where each is created.
+
+Also identify whether the SOAP pipeline, Evidence tab, Ask June, Patient Communication generator, and Patient Report currently consume any of these same clinical reasoning outputs. Show exactly which ones each feature receives and which ones it does not.
+
+Do not propose a redesign yet. Do not modify code. Do not consolidate anything. This is an architecture/data-flow audit only.
