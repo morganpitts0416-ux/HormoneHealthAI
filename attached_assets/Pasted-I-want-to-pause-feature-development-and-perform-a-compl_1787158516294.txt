@@ -1,0 +1,307 @@
+I want to pause feature development and perform a complete architecture audit of ClinIQ's clinical intelligence.
+
+**Do not modify any code yet. Do not refactor anything yet. Do not fix the Evidence Layer yet. I want findings and a map first.**
+
+The goal is to determine:
+
+1. What currently constitutes the **ClinIQ Brain**
+2. Where every clinical rule/algorithm lives
+3. Which parts of ClinIQ actually receive and use those outputs
+4. Where clinical intelligence is being lost between the Brain and the various AI writers
+5. How the existing Evidence Layer is supposed to work and why it is not currently working in production
+
+## PART 1 — INVENTORY THE ENTIRE CLINIQ BRAIN
+
+Search the entire codebase and identify every piece of deterministic or AI-assisted clinical logic, including but not limited to:
+
+* Insulin resistance screening / phenotypes
+* Metabolic dysfunction rules
+* Ferritin / iron algorithms
+* Vitamin D rules
+* B12 / folate rules
+* Hormone optimization rules
+* Estradiol rules
+* Progesterone rules
+* Testosterone rules
+* SHBG interpretation
+* Perimenopause / menopause patterns
+* Female testosterone patterns
+* Thyroid interpretation
+* Cardiovascular risk logic
+* PREVENT / ASCVD calculations
+* ApoB
+* Lp(a)
+* hs-CRP
+* Lipid interpretation
+* Obesity / BMI logic
+* GLP-1 treatment logic
+* Supplement recommendations
+* Medication recommendations
+* Lifestyle recommendations
+* Lab thresholds
+* Follow-up/recheck intervals
+* Contraindications / caution logic
+* Pattern matching
+* Diagnosis suggestions
+* ICD-10 mapping
+* Any other clinical algorithm, ruleset, clinical decision tree, protocol, interpretation engine, or clinical recommendation anywhere in the repository
+
+For EACH rule/algorithm, report:
+
+* Name / purpose
+* File path
+* Function/class/constant name
+* Whether it is deterministic code, prompt-based AI logic, or hybrid
+* Inputs it requires
+* Outputs it generates
+* Clinical conditions/problems it maps to
+* Interventions it recommends
+* Whether it assigns or suggests diagnoses
+* Whether it includes evidence/source metadata
+* Whether it includes dosing information
+* Whether it includes follow-up/recheck recommendations
+* Which ClinIQ features currently consume that output
+
+I want this organized into a readable Clinical Brain inventory, not just grep results.
+
+## PART 2 — MAP THE CLINICAL RELATIONSHIPS
+
+For each Brain rule, determine whether ClinIQ currently knows the relationship between:
+
+**clinical problem → supporting findings → interpretation → interventions**
+
+For example, determine whether ClinIQ currently represents relationships conceptually like:
+
+Atherogenic dyslipidemia / cardiovascular risk
+
+* supporting findings: LDL/ApoB/Lp(a)/family history/smoking/etc.
+* interventions: omega-3, CoQ10, CAC screening, lifestyle, medications as appropriate
+
+Metabolic dysregulation / insulin-resistance phenotype
+
+* supporting findings: glucose/A1C/insulin/TG-HDL pattern/hs-CRP/ferritin/ALT/obesity/etc.
+* interventions: GLP-1 therapy, berberine, lifestyle, protein recommendations, etc.
+
+Iron deficiency
+
+* supporting findings: ferritin/iron saturation/CBC/symptoms
+* interventions: oral iron, recheck interval, IV iron consideration, etc.
+
+Determine whether these relationships are actually represented structurally in code, merely implied inside prompts, or fragmented across multiple locations.
+
+This is important because the SOAP writer must eventually understand that an intervention belongs under its relevant diagnosis rather than creating diagnoses such as "Cardiac Health Support" or "Cholesterol Support."
+
+## PART 3 — TRACE EVERY AI GENERATOR
+
+Identify every AI-generated output in ClinIQ, including at minimum:
+
+* SOAP note generation
+* Lab evaluation
+* Lab-evaluation patient communication
+* Ask June
+* Evidence Layer
+* Any patient education generation
+* Any care-plan generation
+* Any diagnosis-generation/inference
+* Any other LLM-generated clinical content
+
+For EACH generator, report:
+
+* File/function
+* Model currently used
+* System prompt source
+* User prompt/context source
+* Exactly which ClinIQ Brain outputs it receives
+* Which Brain outputs it does NOT receive
+* Whether it receives raw labs
+* Whether it receives interpreted labs
+* Whether it receives protocol recommendations
+* Whether it receives supplement/medication mappings
+* Whether it receives diagnosis relationships
+* Whether it independently re-interprets clinical data already interpreted elsewhere
+* Whether it can generate recommendations that bypass ClinIQ Brain rules
+
+I specifically want to know whether we currently have situations where:
+
+**ClinIQ Brain interprets a lab one way, but a separate LLM writer receives only the raw lab and independently decides what it means.**
+
+Flag every instance where this occurs.
+
+## PART 4 — TRACE THE SOAP PIPELINE AGAINST THE CLINIQ BRAIN
+
+For the SOAP pipeline specifically, identify exactly what Step 4 receives from ClinIQ's existing clinical algorithms.
+
+Map:
+
+Transcript
+→ Extraction
+→ Pattern matching
+→ Medical normalization
+→ Topic inventory
+→ ClinIQ Brain algorithms/rules
+→ Step 4 SOAP prompt
+→ Generated note
+
+For every known ClinIQ Brain module, mark:
+
+* INCLUDED in Step 4
+* PARTIALLY INCLUDED
+* NOT INCLUDED
+
+Also identify whether Step 4 receives only the final recommendation or also receives the **clinical relationship explaining where that recommendation belongs**.
+
+Example:
+
+If ClinIQ knows:
+`CoQ10 300 mg → cardiovascular/dyslipidemia intervention`
+
+does Step 4 receive:
+
+* only "CoQ10 300 mg recommended"
+  OR
+* "CoQ10 300 mg is an intervention associated with the dyslipidemia/CV-risk problem"
+
+This distinction is critical.
+
+## PART 5 — AUDIT THE EVIDENCE LAYER
+
+The intended Evidence Layer behavior is:
+
+After a SOAP note is generated, the provider should see evidence attached to diagnoses, recommendations, medications, interventions, and counseling.
+
+There should be brief evidence "pills" adjacent to relevant SOAP content, for example:
+
+"This intervention is supported by [guideline/source]. [Medication/intervention] is recommended for..."
+
+The provider should also be able to open the full Evidence tab/page and see ALL evidence used to support that SOAP note.
+
+The hierarchy should be:
+
+### When ClinIQ Brain HAS a rule/recommendation
+
+The Evidence Layer should SUPPORT the ClinIQ Brain with the legitimate evidence underlying that rule.
+
+It should NOT independently challenge or contradict the ClinIQ Brain.
+
+### When ClinIQ Brain DOES NOT cover a diagnosis/condition/intervention
+
+The Evidence Layer should be ADDITIVE:
+
+* retrieve current reputable evidence
+* provide supporting guideline/research information
+* identify relevant additional evidence-based considerations
+* cite the source
+
+Audit the current implementation and report:
+
+* What triggers evidence generation?
+* Which files/functions control it?
+* What model/provider does it use?
+* Does it perform live/current evidence retrieval?
+* What sources can it access?
+* How citations are generated
+* How evidence is associated with a specific SOAP diagnosis/plan item
+* How evidence pills are rendered
+* How the Evidence page is populated
+* What is stored in the database
+* What is generated dynamically
+* Whether evidence generation is currently being called during SOAP generation
+* Whether evidence results are currently being persisted
+* Whether the UI is requesting/displaying them
+* Why the Evidence Layer is not functioning in current production
+
+Trace this end-to-end:
+
+SOAP generation
+→ evidence request
+→ evidence generation/retrieval
+→ evidence storage
+→ API response
+→ frontend state
+→ evidence pill
+→ Evidence tab/page
+
+Identify the exact break point(s).
+
+## PART 6 — FIND EXISTING SOURCE/EVIDENCE METADATA IN THE CLINIQ BRAIN
+
+Search every current clinical algorithm and determine whether its recommendations already contain:
+
+* source
+* citation
+* PMID
+* DOI
+* guideline organization
+* guideline title
+* publication date
+* URL
+* evidence level
+* evidence summary
+* last-reviewed date
+* version
+
+Report which Brain modules already carry this information and which do not.
+
+Do NOT add citations yet.
+
+## PART 7 — IDENTIFY THE ARCHITECTURAL GAP
+
+After completing the audit, tell me whether ClinIQ currently has a single reusable representation of its clinical reasoning.
+
+Specifically, does anything currently produce a standardized object resembling:
+
+Clinical problem
+→ supporting findings
+→ interpretation
+→ related biomarkers
+→ risk modifiers
+→ recommended interventions
+→ encounter-confirmed interventions
+→ relevant diagnosis/ICD mapping
+→ follow-up recommendations
+→ supporting evidence references
+
+If something like this already exists, identify it.
+
+If not, explain where these pieces currently live and how fragmented they are.
+
+Do NOT design or implement a replacement yet.
+
+## PART 8 — DELIVERABLE
+
+Give me a structured report with these sections:
+
+1. **ClinIQ Brain Inventory**
+2. **Clinical Rule Location Map**
+3. **Clinical Relationship Map**
+4. **Generator Data-Flow Matrix**
+5. **SOAP → Brain Coverage Matrix**
+6. **Evidence Layer Architecture**
+7. **Evidence Layer Production Failure — Root Cause**
+8. **Existing Evidence/Citation Metadata**
+9. **Clinical Intelligence Fragmentation / Gaps**
+10. **Recommended Architecture Direction — high level only**
+11. **Files/functions that would eventually need modification**
+
+For the Generator Data-Flow Matrix, include columns for:
+
+* Generator
+* Raw clinical data
+* ClinIQ interpreted data
+* Brain recommendations
+* Intervention-to-diagnosis relationships
+* Evidence metadata
+* Historical context
+* Transcript
+* Independent LLM reasoning
+* Current model
+
+For the SOAP → Brain Coverage Matrix, list each identified ClinIQ Brain module and mark:
+
+* Full
+* Partial
+* None
+
+with an explanation.
+
+**Do not implement anything after completing this audit. Stop and show me the report first.**

@@ -41,7 +41,7 @@ import { labsApi, femaleLabsApi, type WellnessPlan } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
-import type { Patient, LabResult, InterpretationResult, LabValues, FemaleLabValues, ClinicalEncounter, PatientChart, PatientChartDraft, ExtractedMedication, Appointment, SimpleLabUpload, ProviderOverrides, SupplementRecommendation, ClinicianSupplement, PatientVital } from "@shared/schema";
+import type { Patient, LabResult, InterpretationResult, LabValues, FemaleLabValues, ClinicalEncounter, PatientChart, PatientChartDraft, ExtractedMedication, Appointment, SimpleLabUpload, ProviderOverrides, SupplementRecommendation, ClinicianSupplement, PatientVital, EvidenceOverlay } from "@shared/schema";
 import { ResultsDisplay } from "@/components/results-display";
 import { LabComparisonDialog } from "@/components/lab-comparison-dialog";
 import {
@@ -59,7 +59,7 @@ import { PatientSummary } from "@/components/patient-summary";
 import PatientDocumentsCard from "@/components/patient-documents-card";
 import { SOAPNote } from "@/components/soap-note";
 import { RedFlagAlert } from "@/components/red-flag-alert";
-import { SoapNoteViewer } from "@/components/soap-note-viewer";
+import { EvidenceCard, SoapNoteViewer } from "@/components/soap-note-viewer";
 import { ManualSoapBuilder } from "@/components/manual-soap-builder";
 import { useFloatingPanel } from "@/hooks/use-floating-panel";
 import { NurseNoteBuilder } from "@/components/nurse-note-builder";
@@ -2820,6 +2820,7 @@ export default function PatientProfiles() {
   const [templatePickerEncounterId, setTemplatePickerEncounterId] = useState<number | null>(null);
   const [templatePickerNoteType, setTemplatePickerNoteType] = useState<string>("");
   const [evidenceOpenId, setEvidenceOpenId] = useState<number | null>(null);
+  const [generatingEvidenceId, setGeneratingEvidenceId] = useState<number | null>(null);
   const [summaryOpenId, setSummaryOpenId] = useState<number | null>(null);
   const [summaryTextMap, setSummaryTextMap] = useState<Record<number, string>>({});
   const [generatingSummaryId, setGeneratingSummaryId] = useState<number | null>(null);
@@ -3416,7 +3417,7 @@ export default function PatientProfiles() {
     phoneContact?: { contactedWith?: string; direction?: 'incoming' | 'outgoing'; durationMinutes?: number } | null;
     pendingCollabReview?: boolean;
     lockedAt?: string | Date | null;
-    evidenceSuggestions?: { suggestions?: Array<{ title: string; rationale?: string; strength_of_support?: string; level_of_evidence?: string; citations?: Array<{ doi?: string; pmid?: string; journal?: string; year?: number; authors?: string }> }> } | null;
+    evidenceSuggestions?: EvidenceOverlay | null;
     diarizedTranscript?: any[] | null;
   };
 
@@ -5607,6 +5608,33 @@ export default function PatientProfiles() {
                                     >
                                       <PenLine className={`w-3.5 h-3.5 ${isAmending ? "text-amber-600" : "text-muted-foreground"}`} />
                                     </Button>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-7 w-7"
+                                      disabled={generatingEvidenceId === enc.id}
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        setGeneratingEvidenceId(enc.id);
+                                        try {
+                                          await apiRequest("POST", `/api/encounters/${enc.id}/evidence`, { expectedPatientId: selectedPatient?.id });
+                                          await queryClient.invalidateQueries({ queryKey: ['/api/encounters', selectedPatient?.id] });
+                                          setEvidenceOpenId(enc.id);
+                                          setExpandedEncounterId(enc.id);
+                                          toast({ title: "Evidence overlay ready", description: "Review citations; they are informational only and never inserted into the chart." });
+                                        } catch (err: any) {
+                                          toast({ variant: "destructive", title: "Evidence generation failed", description: err?.message });
+                                        } finally {
+                                          setGeneratingEvidenceId(null);
+                                        }
+                                      }}
+                                      data-testid={`button-generate-evidence-encounter-${enc.id}`}
+                                      title={evidenceSuggestions.length > 0 ? "Regenerate evidence" : "Generate evidence"}
+                                    >
+                                      {generatingEvidenceId === enc.id
+                                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                        : <BookOpen className="w-3.5 h-3.5 text-muted-foreground" />}
+                                    </Button>
                                     {evidenceSuggestions.length > 0 && (
                                       <Button
                                         size="icon"
@@ -5726,24 +5754,8 @@ export default function PatientProfiles() {
                                     </Button>
                                   </div>
                                   {evidenceSuggestions.map((s: any, idx: number) => (
-                                    <div key={idx} className="rounded-md border bg-background px-3 py-2 space-y-1">
-                                      <div className="flex items-start gap-2">
-                                        <span className="text-xs font-medium text-foreground leading-snug flex-1">{s.title}</span>
-                                        {s.strength_of_support && (
-                                          <span className="text-[10px] text-primary/70 bg-primary/10 rounded px-1.5 py-0.5 flex-shrink-0">{s.strength_of_support}</span>
-                                        )}
-                                      </div>
-                                      {s.rationale && <p className="text-[11px] text-muted-foreground leading-snug">{s.rationale}</p>}
-                                      {s.citations && s.citations.length > 0 && (
-                                        <div className="flex flex-wrap gap-1 pt-0.5">
-                                          {s.citations.map((c: any, ci: number) => (
-                                            <span key={ci} className="text-[10px] text-muted-foreground">
-                                              {c.authors ? `${c.authors.split(',')[0]} et al.` : ""}{c.journal ? ` · ${c.journal}` : ""}{c.year ? ` (${c.year})` : ""}
-                                              {c.doi && <a href={`https://doi.org/${c.doi}`} target="_blank" rel="noreferrer" className="ml-1 text-primary hover:underline">DOI</a>}
-                                            </span>
-                                          ))}
-                                        </div>
-                                      )}
+                                    <div key={idx} className="rounded-md border bg-background px-3 py-2">
+                                      <EvidenceCard sug={s} />
                                     </div>
                                   ))}
                                 </div>

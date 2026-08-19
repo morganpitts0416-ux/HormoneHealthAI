@@ -1070,6 +1070,24 @@ export function EncounterEditor({
     );
   };
 
+  const generateEvidenceForEncounter = async (encounterId: number, announce = true) => {
+    setPipelineLoading("evidence");
+    try {
+      const res = await apiRequest("POST", `/api/encounters/${encounterId}/evidence`, {
+        expectedPatientId: patientId ? parseInt(patientId) : undefined,
+      });
+      const data = await res.json();
+      setEvidenceOverlay(data.evidenceSuggestions);
+      invalidate();
+      if (announce) {
+        toast({ title: "Evidence overlay ready", description: "Review citations. These are informational only — not auto-inserted into your chart." });
+      }
+      return data.evidenceSuggestions as EvidenceOverlay;
+    } finally {
+      setPipelineLoading(null);
+    }
+  };
+
   // Generate SOAP note
   const soapMutation = useMutation({
     mutationFn: async () => {
@@ -1108,7 +1126,7 @@ export function EncounterEditor({
       await apiRequest("PUT", `/api/encounters/${encounterId}`, { transcription: transcription || null, visitType, chiefComplaint: chiefComplaint || null, expectedPatientId });
 
       const res = await apiRequest("POST", `/api/encounters/${encounterId}/generate-soap`, { expectedPatientId });
-      return res.json();
+      return { ...(await res.json()), encounterId };
     },
     onSuccess: (data) => {
       setSoap(data.soapNote);
@@ -1142,6 +1160,12 @@ export function EncounterEditor({
         if (juneApplied.length > 0) parts.push(`June rules: ${juneApplied.join(", ")}`);
         toast({ title: "Provider personalization applied", description: parts.join(" · ") });
       }
+      // Evidence requires the saved SOAP plan for meaningful alignment checks.
+      // Run it only after SOAP persistence completes rather than relying on a
+      // background job whose result cannot be surfaced to this editor.
+      void generateEvidenceForEncounter(data.encounterId, false).catch((e: any) => {
+        toast({ variant: "destructive", title: "Evidence generation failed", description: e?.message ?? "Please try again from the Evidence tab." });
+      });
     },
     onError: (e: any) => toast({ variant: "destructive", title: "Generation failed", description: e.message }),
   });
@@ -1176,16 +1200,21 @@ export function EncounterEditor({
         await apiRequest("PUT", `/api/encounters/${encounterId}`, { transcription: transcription || null, visitType, chiefComplaint: chiefComplaint || null, expectedPatientId: parseInt(patientId) });
       }
 
-      // Step 2: Fire SOAP and evidence simultaneously
-      toast({ title: "Generating…", description: "SOAP note and evidence running in parallel." });
+      // Step 2: Generate SOAP first, then use its persisted plan for evidence.
+      // Running both concurrently lets evidence read stale encounter context.
+      toast({ title: "Generating…", description: "Creating the SOAP note, then gathering supporting evidence." });
 
       // PATIENT-SAFETY: tripwire — server returns 409 if encounter.patientId
       // doesn't match the patient currently shown in the UI.
       const expectedPatientId = parseInt(patientId);
-      const [soapResult, evidenceResult] = await Promise.allSettled([
+      const [soapResult] = await Promise.allSettled([
         apiRequest("POST", `/api/encounters/${encounterId}/generate-soap`, { expectedPatientId }).then(r => r.json()),
-        apiRequest("POST", `/api/encounters/${encounterId}/evidence`, { expectedPatientId }).then(r => r.json()),
       ]);
+      const evidenceResult = soapResult.status === "fulfilled"
+        ? (await Promise.allSettled([
+            apiRequest("POST", `/api/encounters/${encounterId}/evidence`, { expectedPatientId }).then(r => r.json()),
+          ]))[0]
+        : { status: "rejected" as const, reason: new Error("SOAP generation did not complete, so evidence could not be generated.") };
 
       // apiRequest throws errors of the form "<status>: <body>" — pull the
       // server's `message` so the toast shows the real reason (e.g. "Evidence
@@ -1445,18 +1474,11 @@ export function EncounterEditor({
   const runEvidence = async () => {
     if (!savedId) { toast({ variant: "destructive", title: "Save first", description: "Save before running evidence lookup." }); return; }
     if (!transcription.trim() && !diarizedTranscript?.length) { toast({ variant: "destructive", title: "No transcript", description: "Add a transcript before running evidence lookup." }); return; }
-    setPipelineLoading("evidence");
     try {
-      const res = await apiRequest("POST", `/api/encounters/${savedId}/evidence`, { expectedPatientId: patientId ? parseInt(patientId) : undefined });
-      const data = await res.json();
-      setEvidenceOverlay(data.evidenceSuggestions);
-      invalidate();
+      await generateEvidenceForEncounter(savedId);
       setActiveTab("evidence");
-      toast({ title: "Evidence overlay ready", description: "Review citations. These are informational only — not auto-inserted into your chart." });
     } catch (e: any) {
       toast({ variant: "destructive", title: "Evidence lookup failed", description: e.message });
-    } finally {
-      setPipelineLoading(null);
     }
   };
 

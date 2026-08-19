@@ -91,13 +91,17 @@ export function EvidenceCard({ sug }: { sug: EvidenceSuggestion }) {
       {sug.citations?.length > 0 && (
         <div className="space-y-0.5 pt-0.5 border-t border-muted/40">
           {sug.citations.map((cit: any, i: number) => (
-            <p key={i} className="text-[10px] text-muted-foreground leading-snug">
+            <div key={i} className="text-[10px] text-muted-foreground leading-snug">
+              {cit.title && <span className="font-medium text-foreground/80">{cit.title} — </span>}
               {cit.source}{cit.year ? ` (${cit.year})` : ""}
-              {cit.doi ? (
+              {cit.url ? (
+                <a href={cit.url} target="_blank" rel="noopener noreferrer"
+                  className="ml-1 text-primary/70 hover:text-primary underline-offset-2 hover:underline">View source</a>
+              ) : cit.doi ? (
                 <a href={`https://doi.org/${cit.doi}`} target="_blank" rel="noopener noreferrer"
                   className="ml-1 text-primary/70 hover:text-primary underline-offset-2 hover:underline">DOI</a>
               ) : null}
-            </p>
+            </div>
           ))}
         </div>
       )}

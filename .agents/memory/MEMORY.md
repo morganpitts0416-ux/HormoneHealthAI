@@ -17,3 +17,4 @@
 - [Recording segment loss](recording-segment-loss.md) — segment uploads/recorder restarts must never fail silently; [AUDIO GAP] markers + deterministic pipeline backstop are the guarantee
 - [Transcript-direct SOAP mode](soap-transcript-direct.md) — SOAP_TRANSCRIPT_DIRECT env flag enables transcript-first generation; disabled by default pending quality comparison
 - [SOAP model test endpoint](soap-test-endpoint.md) — gpt-5.6-sol comparison route; temperature must be omitted; Mode A uses buildSoapGenerationMessages; Mode B uses buildSoapCoreSystemPrompt; strictly read-only
+- [Evidence overlay flow](evidence-overlay-flow.md) — generate after SOAP persistence, not in a hidden background race; all UIs use the shared citation schema
