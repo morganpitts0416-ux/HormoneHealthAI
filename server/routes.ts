@@ -23,7 +23,12 @@ import {
 } from "./vital-signs-analyzer";
 import { PDFExtractionService } from "./pdf-extraction";
 import { ASCVDCalculator } from "./ascvd-calculator";
-import { runEnhancedSoapPipeline, finalFidelityAudit } from "./soap-pipeline";
+import {
+  runEnhancedSoapPipeline, finalFidelityAudit,
+  buildSoapGenerationMessages, buildSoapCoreSystemPrompt,
+  buildTopicInventory, medicalNormalizationAndInference,
+  type NormalizedExtraction,
+} from "./soap-pipeline";
 import { runJunePipeline, shouldJuneAcknowledge } from "./spruce-june";
 import { getSpruceAuthorId, invalidateSpruceAuthorCache } from "./spruce-author";
 import { PREVENTCalculator } from "./prevent-calculator";
@@ -11617,6 +11622,461 @@ ALLOWED: If a chart PMH condition was explicitly brought up during this visit (p
 
   // POST /api/encounters/:id/generate-soap — Stage 4: Generate SOAP note
   // Uses clinical extraction when available. NEVER invents unsupported facts.
+
+// ── Shared context builder for SOAP pipeline Step 4 ──────────────────────────
+// Used by both the production generate-soap route AND the test-soap-model
+// endpoint so both always receive identical context inputs.
+//
+// Parameters:
+//   persistPatternMatch   Production passes true → pattern match saved to DB.
+//                         Test endpoint passes false → result kept in memory only.
+//   storedPatternMatch    Test endpoint passes encounter.patternMatch to skip the
+//                         AI re-run and reuse the stored result.  If null/undefined,
+//                         a fresh AI call runs (production behaviour).
+// ──────────────────────────────────────────────────────────────────────────────
+
+interface SoapEncounterContext {
+  labContext: string;
+  patternContext: string;
+  medicationContext: string;
+  historicalContext: string;
+  diagnosisBundles: Array<{ title: string; codes: { code: string; name: string }[]; aliases: string[] }>;
+  patientName: string | undefined;
+  autoMedMatches: any[];
+  patternMatchRegenerated: boolean;
+}
+
+async function buildSoapEncounterContext(params: {
+  encounter: any;
+  encounterId: number;
+  clinicianId: number;
+  clinicId: number;
+  extraction: any;
+  transcriptText: string;
+  diarized: any[];
+  wasNormalized: boolean;
+  openai: OpenAI;
+  persistPatternMatch: boolean;
+  storedPatternMatch?: any;
+}): Promise<SoapEncounterContext> {
+  const { encounter, encounterId, clinicianId, clinicId, extraction, transcriptText, diarized, wasNormalized, openai, persistPatternMatch } = params;
+
+  let labContext = "";
+  if (encounter.linkedLabResultId) {
+    const labResult = await storage.getLabResult(encounter.linkedLabResultId);
+    if (labResult) {
+      const NON_LAB_KEYS = new Set([
+        "patientName", "labDrawDate", "demographics",
+        "menstrualPhase", "lastMenstrualPeriod",
+        "onHRT", "onBirthControl", "onTRT",
+      ]);
+      const KEY_LABELS: Record<string, string> = {
+        hemoglobin: "Hemoglobin (g/dL)", hematocrit: "Hematocrit (%)", mcv: "MCV (fL)",
+        rbc: "RBC (M/µL)", wbc: "WBC (K/µL)", platelets: "Platelets (K/µL)",
+        ast: "AST (U/L)", alt: "ALT (U/L)", bilirubin: "Bilirubin (mg/dL)",
+        creatinine: "Creatinine (mg/dL)", egfr: "eGFR (mL/min/1.73m²)", bun: "BUN (mg/dL)",
+        sodium: "Sodium (mEq/L)", potassium: "Potassium (mEq/L)", chloride: "Chloride (mEq/L)",
+        co2: "CO2 (mEq/L)", glucose: "Glucose (mg/dL)", fastingGlucose: "Fasting Glucose (mg/dL)",
+        calcium: "Calcium (mg/dL)", albumin: "Albumin (g/dL)", totalProtein: "Total Protein (g/dL)",
+        ldl: "LDL-C (mg/dL)", hdl: "HDL-C (mg/dL)", totalCholesterol: "Total Cholesterol (mg/dL)",
+        triglycerides: "Triglycerides (mg/dL)", apoB: "ApoB (mg/dL)", lpa: "Lp(a) (nmol/L)",
+        testosterone: "Testosterone (ng/dL)", estradiol: "Estradiol (pg/mL)", lh: "LH (mIU/mL)",
+        fsh: "FSH (mIU/mL)", prolactin: "Prolactin (ng/mL)", shbg: "SHBG (nmol/L)",
+        freeTestosterone: "Free Testosterone (pg/mL)", progesterone: "Progesterone (ng/mL)",
+        tsh: "TSH (µIU/mL)", freeT4: "Free T4 (ng/dL)", freeT3: "Free T3 (pg/mL)",
+        psa: "PSA (ng/mL)", previousPsa: "Previous PSA (ng/mL)", monthsSinceLastPsa: "Months Since Last PSA",
+        a1c: "HbA1c (%)", hsCRP: "hs-CRP (mg/L)", vitaminD: "Vitamin D 25-OH (ng/mL)",
+        vitaminB12: "Vitamin B12 (pg/mL)", ferritin: "Ferritin (ng/mL)", iron: "Iron (µg/dL)",
+        tibc: "TIBC (µg/dL)", ironSaturation: "Iron Saturation/TSAT (%)", dhea: "DHEA (µg/dL)", dheas: "DHEA-S (µg/dL)",
+        igf1: "IGF-1 (ng/mL)", cortisol: "Cortisol (µg/dL)", insulin: "Fasting Insulin (µIU/mL)",
+        homocysteine: "Homocysteine (µmol/L)", uricAcid: "Uric Acid (mg/dL)",
+      };
+      const BOOL_LABELS: Record<string, string> = {
+        onTRT: "On TRT", onHRT: "On HRT", onBirthControl: "On Birth Control",
+      };
+      const labVals = labResult.labValues as Record<string, any>;
+      const labLines = Object.entries(labVals)
+        .filter(([k, v]) => {
+          if (NON_LAB_KEYS.has(k)) return false;
+          if (v === null || v === undefined || v === "") return false;
+          if (typeof v === "object") return false;
+          return true;
+        })
+        .map(([k, v]) => {
+          const label = KEY_LABELS[k] ?? k;
+          if (typeof v === "boolean") return `  ${BOOL_LABELS[k] ?? label}: ${v ? "Yes" : "No"}`;
+          return `  ${label}: ${v}`;
+        })
+        .join("\n");
+
+      const labPatient = await storage.getPatient(labResult.patientId, clinicianId, clinicId);
+      const genderLabel = labPatient?.gender === "female" ? "Female" : "Male";
+
+      const drawDate = new Date(labResult.labDate as unknown as string);
+      const dateLabel = !isNaN(drawDate.getTime())
+        ? drawDate.toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric", year: "numeric" })
+        : "Unknown date";
+
+      const interp = labResult.interpretationResult as any;
+      const interpSections: string[] = [];
+
+      if (interp?.redFlags?.length) {
+        const flagLines = interp.redFlags
+          .map((f: any) => `  ⚑ [${(f.severity ?? "WARNING").toUpperCase()}] ${f.marker}: ${f.message}`)
+          .join("\n");
+        interpSections.push(`RED FLAGS (require immediate attention):\n${flagLines}`);
+      }
+
+      if (interp?.interpretations?.length) {
+        const notable = interp.interpretations.filter(
+          (i: any) => i.status && i.status !== "normal"
+        );
+        if (notable.length) {
+          const notableLines = notable
+            .map((i: any) => {
+              const rec = i.recommendation ? `\n    [SUGGESTED — clinician must approve before charting: ${i.recommendation}]` : "";
+              return `  ${i.marker} [${i.status?.toUpperCase()}]: ${i.interpretation ?? ""}${rec}`;
+            })
+            .join("\n");
+          interpSections.push(`NOTABLE LAB FINDINGS (non-normal status):\n${notableLines}`);
+        }
+      }
+
+      if (interp?.insulinResistance?.detected) {
+        const ir = interp.insulinResistance;
+        const phenoNames = ir.phenotypes?.map((p: any) => p.name).join(", ") ?? "unspecified phenotype";
+        interpSections.push(
+          `INSULIN RESISTANCE SCREENING: Likely detected — ${phenoNames}. Likelihood: ${ir.likelihood ?? "moderate"}.`
+        );
+      }
+
+      if (interp?.preventRisk) {
+        const pr = interp.preventRisk;
+        const riskLines: string[] = [];
+        if (pr.tenYearCVD != null) riskLines.push(`10-yr CVD risk: ${pr.tenYearCVD}%`);
+        if (pr.thirtyYearCVD != null) riskLines.push(`30-yr CVD risk: ${pr.thirtyYearCVD}%`);
+        if (pr.tenYearASCVD != null) riskLines.push(`10-yr ASCVD risk: ${pr.tenYearASCVD}%`);
+        if (pr.riskCategory) riskLines.push(`Category: ${pr.riskCategory}`);
+        if (riskLines.length) {
+          interpSections.push(`PREVENT CARDIOVASCULAR RISK (2023 AHA):\n  ${riskLines.join(", ")}`);
+        }
+      }
+
+      if (interp?.hsCrpInterpretation) {
+        interpSections.push(`hs-CRP RISK STRATIFICATION: ${interp.hsCrpInterpretation}`);
+      }
+
+      const rawSupplements: any[] = interp?.supplements ?? [];
+      if (rawSupplements.length) {
+        const suppLines = rawSupplements.map((s: any) => {
+          const name = s.name ?? s.productName ?? "Unnamed supplement";
+          const dose = s.dosage ?? s.dose ?? "";
+          const reason = s.reason ?? s.rationale ?? s.indication ?? "";
+          return `  • ${name}${dose ? ` — ${dose}` : ""}${reason ? ` (${reason})` : ""}`;
+        }).join("\n");
+        interpSections.push(
+          `SUPPLEMENT RECOMMENDATIONS (from linked lab evaluation — document in CARE PLAN):\n${suppLines}\nNOTE: These supplements were clinically indicated by the lab evaluation and/or discussed in the transcript. They MUST be listed in the CARE PLAN section of the SOAP note.`
+        );
+      }
+
+      const clinicalInterpContext = interpSections.length
+        ? `\n\nCLINICAL INTERPRETATION (computed from linked labs):\n${interpSections.join("\n\n")}`
+        : "";
+
+      labContext = labLines
+        ? `\n\nLINKED LAB RESULTS (${genderLabel} panel, drawn ${dateLabel}):\n${labLines}${clinicalInterpContext}`
+        : "";
+    }
+  }
+
+  // ── Pattern context ────────────────────────────────────────────────────────
+  let patternContext = "";
+  let patternMatchRegenerated = false;
+
+  if (params.storedPatternMatch != null) {
+    // Test endpoint: reuse stored pattern match — no AI call, no DB write
+    const pm = params.storedPatternMatch;
+    if (pm.matched_patterns?.length) {
+      const pmLabel = pm.mode === "context_linked" ? "transcript + lab data" : "transcript symptoms only";
+      const pmLines = pm.matched_patterns.map((p: any) =>
+        `- ${p.pattern_name} [${p.evidence_basis}]: ${p.supporting_evidence?.join("; ") ?? "no detail"}`
+      );
+      patternContext = `\n\nCLINICAL PATTERN MATCHING (${pmLabel}):\n${pmLines.join('\n')}`;
+      if (pm.symptom_clusters?.length) {
+        patternContext += `\nSymptom clusters: ${pm.symptom_clusters.join("; ")}`;
+      }
+    }
+    patternMatchRegenerated = false;
+  } else {
+    // Production / fallback: run fresh AI pattern-matching call
+    try {
+      const pmLabResultId = encounter.linkedLabResultId;
+      let pmLabContext = "";
+      let pmLabContextUsed = false;
+      if (pmLabResultId) {
+        const pmLabResult = await storage.getLabResult(pmLabResultId);
+        if (pmLabResult) {
+          pmLabContextUsed = true;
+          const NON_LAB_KEYS_PM = new Set(["patientName","labDrawDate","demographics","menstrualPhase","lastMenstrualPeriod","onHRT","onBirthControl","onTRT"]);
+          const pmVals = pmLabResult.labValues as Record<string, any>;
+          const pmLabLines = Object.entries(pmVals)
+            .filter(([k, v]) => !NON_LAB_KEYS_PM.has(k) && v !== null && v !== undefined && v !== "" && typeof v !== "object")
+            .map(([k, v]) => typeof v === "boolean" ? `  ${k}: ${v ? "Yes" : "No"}` : `  ${k}: ${v}`)
+            .join("\n");
+          const pmInterp = pmLabResult.interpretationResult as any;
+          const pmPriorPatterns = pmInterp?.insulinResistance ? `\n  Prior IR screening: ${pmInterp.insulinResistance.likelihood ?? "assessed"}` : "";
+          const pmPriorRedFlags = pmInterp?.redFlags?.length ? `\n  Prior red flags: ${pmInterp.redFlags.map((f: any) => f.title ?? f).join("; ")}` : "";
+          const pmPatient = await storage.getPatient(pmLabResult.patientId, clinicianId, clinicId);
+          const pmGender = pmPatient?.gender === "female" ? "Female" : "Male";
+          pmLabContext = `\n\nLINKED LAB RESULTS (${pmGender} panel):\n${pmLabLines}${pmPriorPatterns}${pmPriorRedFlags}`;
+        }
+      }
+      const pmMode = pmLabContextUsed ? "context_linked" : "transcript_only";
+      const pmExtLines: string[] = [];
+      if (extraction) {
+        if (extraction.chief_concerns?.length)           pmExtLines.push(`Chief concerns: ${extraction.chief_concerns.join("; ")}`);
+        if (extraction.secondary_concerns?.length)       pmExtLines.push(`Secondary concerns: ${extraction.secondary_concerns.join("; ")}`);
+        if (extraction.symptoms_reported?.length)         pmExtLines.push(`Symptoms reported: ${extraction.symptoms_reported.join("; ")}`);
+        if (extraction.symptoms_denied?.length)           pmExtLines.push(`Symptoms denied: ${extraction.symptoms_denied.join("; ")}`);
+        if (extraction.medications_current?.length)       pmExtLines.push(`Current medications: ${extraction.medications_current.join("; ")}`);
+        if (extraction.supplements_current?.length)       pmExtLines.push(`Current supplements: ${extraction.supplements_current.join("; ")}`);
+        if (Array.isArray(extraction.supplement_discussions) && extraction.supplement_discussions.length) {
+          const suppConvLines = extraction.supplement_discussions.map((s: any) => {
+            const parts = [`[${(s.action ?? 'discuss').toUpperCase()}] ${s.supplement_name}`];
+            if (s.dose) parts.push(s.dose);
+            if (s.indication) parts.push(`for: ${s.indication}`);
+            if (s.provider_education) parts.push(`explained: ${s.provider_education}`);
+            if (s.patient_questions) parts.push(`pt asked: ${s.patient_questions}`);
+            return parts.join(' — ');
+          });
+          pmExtLines.push(`Supplement conversations: ${suppConvLines.join('; ')}`);
+        }
+        if (extraction.mental_health_context?.length)     pmExtLines.push(`Mental health context: ${extraction.mental_health_context.join("; ")}`);
+        if (extraction.lifestyle_factors?.length)         pmExtLines.push(`Lifestyle factors: ${extraction.lifestyle_factors.join("; ")}`);
+        if (extraction.diagnoses_discussed?.length)       pmExtLines.push(`Diagnoses discussed: ${extraction.diagnoses_discussed.join("; ")}`);
+        if (extraction.assessment_candidates?.length)     pmExtLines.push(`Assessment candidates: ${extraction.assessment_candidates.join("; ")}`);
+        if (extraction.plan_candidates?.length)           pmExtLines.push(`Plan items: ${extraction.plan_candidates.join("; ")}`);
+        if (extraction.red_flags?.length)                 pmExtLines.push(`Red flags: ${extraction.red_flags.join("; ")}`);
+        if (extraction.medication_changes_discussed?.length) pmExtLines.push(`Medication changes: ${extraction.medication_changes_discussed.join("; ")}`);
+        if (extraction.side_effects_reported?.length)     pmExtLines.push(`Side effects: ${extraction.side_effects_reported.join("; ")}`);
+        if (extraction.prior_treatments_and_trials?.length) pmExtLines.push(`Prior treatments/trials: ${extraction.prior_treatments_and_trials.join("; ")}`);
+        if (extraction.allergies?.length)                 pmExtLines.push(`Allergies: ${extraction.allergies.join("; ")}`);
+        if (extraction.past_medical_history?.length)      pmExtLines.push(`Past medical history: ${extraction.past_medical_history.join("; ")}`);
+        if (extraction.surgical_history?.length)           pmExtLines.push(`Surgical history: ${extraction.surgical_history.join("; ")}`);
+        if (extraction.family_history?.length)             pmExtLines.push(`Family history: ${extraction.family_history.join("; ")}`);
+        if (extraction.social_history?.length)             pmExtLines.push(`Social history: ${extraction.social_history.join("; ")}`);
+        if (extraction.context_inferred_items?.length)     pmExtLines.push(`Context-inferred (confirm): ${extraction.context_inferred_items.join("; ")}`);
+      }
+      const pmExtContext = pmExtLines.length ? `\n\nSTRUCTURED CLINICAL FACTS (extracted from transcript):\n${pmExtLines.join('\n')}` : "";
+      const pmCompletion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: `You are an expert clinical pattern recognition engine for a hormone and primary care clinic.
+Your task is to identify clinically relevant patterns and phenotypes from a patient encounter.
+
+OPERATING MODE: ${pmMode === "context_linked" ? "CONTEXT-LINKED (transcript + lab data available)" : "TRANSCRIPT-ONLY (no linked labs — use symptoms and chart context only)"}
+
+CLINICAL FRAMEWORKS YOU KNOW:
+
+1. PERIMENOPAUSE PATTERNS
+   - Estrogen dominance: heavy periods, bloating, breast tenderness, mood swings, weight gain
+   - Estrogen deficiency: hot flashes, night sweats, vaginal dryness, brain fog, poor sleep, bone loss concern
+   - Progesterone deficiency: sleep disruption, anxiety, PMS, irregular cycles, heavy periods
+   - Androgen excess: acne, hirsutism, hair thinning at crown, oily skin
+   - Lab confirmation markers: E2, progesterone, FSH, LH, testosterone, SHBG, DHEA-S
+
+2. TESTOSTERONE OPTIMIZATION (male and female)
+   - Male: low libido, fatigue, decreased motivation, poor sleep, reduced muscle mass, mood changes, cognitive fog
+   - Female: low libido, fatigue, reduced muscle tone, mood flatness, cognitive fog (low-normal testosterone)
+   - TRT monitoring patterns: erythrocytosis risk (hematocrit >50%), PSA velocity, estradiol elevation
+   - Lab confirmation markers: total T, free T, SHBG, E2, LH, FSH, hematocrit, PSA
+
+3. INSULIN RESISTANCE SCREENING
+   - Classic IR: acanthosis nigricans, central adiposity, fatigue after meals, sugar cravings, frequent hunger
+   - PCOS-related IR: irregular cycles, androgen excess signs, polycystic ovaries, anovulation
+   - Lean IR: normal BMI but metabolic dysfunction signs
+   - Lab confirmation markers: fasting glucose, fasting insulin, HOMA-IR, HbA1c, triglycerides, HDL
+
+4. THYROID PATTERNS
+   - Hypothyroid: fatigue, cold intolerance, hair loss, constipation, weight gain, brain fog, dry skin
+   - Hyperthyroid/overtreatment: palpitations, heat intolerance, anxiety, weight loss, tremor
+   - Hashimoto's: fluctuating symptoms, positive TPO antibodies context, autoimmune history
+   - Lab confirmation: TSH, free T4, free T3, TPO antibodies
+
+5. LIPID / CARDIOMETABOLIC
+   - Atherogenic dyslipidemia: high TG, low HDL, small dense LDL pattern
+   - Elevated cardiovascular risk: family history, smoking, hypertension combined with lab markers
+   - Lab confirmation: LDL, HDL, TG, ApoB, Lp(a), hs-CRP, glucose
+
+6. ADRENAL / HPA AXIS
+   - Cortisol dysregulation: fatigue (especially AM), salt cravings, poor stress response
+   - DHEA deficiency: low energy, poor mood, reduced libido (especially postmenopause)
+   - Lab confirmation: DHEA-S, morning cortisol
+
+7. NUTRIENT DEFICIENCY PATTERNS
+   - Vitamin D deficiency: fatigue, musculoskeletal aches, immune concerns, mood depression
+   - B12 deficiency: neuropathy symptoms, fatigue, cognitive fog (especially with metformin use)
+   - Iron/ferritin: fatigue, hair loss, poor exercise tolerance, restless legs
+   - Lab confirmation: 25-OH vitamin D, B12, ferritin, iron panel
+
+EVIDENCE BASIS RULES:
+- "symptom_based": pattern inferred from symptoms alone, no lab confirmation in this encounter
+- "lab_backed": pattern supported by linked lab values meeting clinical thresholds
+- "combined": both symptom evidence AND lab values support the pattern
+- "insufficient": mentioned or possible, but not enough information to assess
+
+CRITICAL RULES:
+- NEVER require labs to run this analysis — transcript-only mode is fully valid
+- NEVER fabricate lab values not provided
+- Only include patterns with at least "possible" confidence
+- If no clear patterns are identified, return an empty matched_patterns array
+
+Return a JSON object:
+{
+  "matched_patterns": [
+    {
+      "pattern_name": "concise pattern name",
+      "category": "perimenopause" | "testosterone_optimization" | "insulin_resistance" | "thyroid" | "lipid_cardiometabolic" | "adrenal_hpa" | "nutrient_deficiency" | "other",
+      "evidence_basis": "symptom_based" | "lab_backed" | "combined" | "insufficient",
+      "supporting_evidence": ["list of specific symptoms, facts, or lab values"],
+      "recommended_considerations": ["specific clinical actions to consider"],
+      "requires_lab_confirmation": true | false,
+      "notes": "any important clinical nuance"
+    }
+  ],
+  "symptom_clusters": ["grouped symptom patterns noted in the visit"],
+  "unmatched_concerns": ["concerns that don't fit the above frameworks"],
+  "lab_context_used": ${pmLabContextUsed}
+}` },
+          { role: "user", content: `Visit Type: ${encounter.visitType}\nChief Complaint: ${encounter.chiefComplaint || "Not specified"}${pmLabContext}${pmExtContext}\n\nTRANSCRIPT:\n${transcriptText}\n\nMode: ${pmMode}.` },
+        ],
+        response_format: { type: "json_object" },
+      });
+      const pmRaw = JSON.parse(pmCompletion.choices[0].message.content || "{}");
+      const pmResult = {
+        mode: pmMode,
+        matched_patterns: pmRaw.matched_patterns ?? [],
+        symptom_clusters: pmRaw.symptom_clusters ?? [],
+        unmatched_concerns: pmRaw.unmatched_concerns ?? [],
+        lab_context_used: pmLabContextUsed,
+        generated_at: new Date().toISOString(),
+      };
+      if (persistPatternMatch) {
+        await storage.updateEncounter(encounterId, clinicianId, { patternMatch: pmResult }, clinicId);
+      }
+      if (pmResult.matched_patterns.length) {
+        const pmLabel = pmMode === "context_linked" ? "transcript + lab data" : "transcript symptoms only";
+        const pmLines = pmResult.matched_patterns.map((p: any) =>
+          `- ${p.pattern_name} [${p.evidence_basis}]: ${p.supporting_evidence?.join("; ") ?? "no detail"}`
+        );
+        patternContext = `\n\nCLINICAL PATTERN MATCHING (${pmLabel}):\n${pmLines.join('\n')}`;
+        if (pmResult.symptom_clusters?.length) {
+          patternContext += `\nSymptom clusters: ${pmResult.symptom_clusters.join("; ")}`;
+        }
+      }
+      patternMatchRegenerated = true;
+    } catch (pmErr) {
+      console.warn("[SOAP Pipeline] Pattern matching failed:", pmErr);
+    }
+  }
+
+  // ── Medication context ─────────────────────────────────────────────────────
+  let medicationContext = "";
+  let autoMedMatches: any[] = [];
+  try {
+    const medEntries = await storage.getAllMedicationEntries(clinicianId);
+    if (medEntries.length && transcriptText.trim()) {
+      const rawMedText = wasNormalized
+        ? diarized.map((u: any) => u.normalizedText ?? u.text).join(' ')
+        : (encounter.transcription ?? "");
+
+      const rawMatches = normalizeTranscript(rawMedText, medEntries);
+      const enriched = enrichWithRxNorm(rawMatches);
+      autoMedMatches = enriched;
+
+      if (enriched.length) {
+        const lasaAlerts = enriched.filter(m => m.possibleMatches?.length > 0);
+        const confirmed = enriched.filter(m => m.confidenceTier === "high" && !m.requiresReview);
+        const needsReview = enriched.filter(m => m.requiresReview);
+
+        const lines: string[] = [];
+
+        if (lasaAlerts.length) {
+          lines.push("⚠ LOOK-ALIKE/SOUND-ALIKE MEDICATION ALERTS — DO NOT AUTO-NORMALIZE:");
+          for (const m of lasaAlerts) {
+            lines.push(`  ⚠ LASA ALERT: "${m.originalTerm}" matched to ${m.canonicalName}${m.rxcui ? ` (RxCUI ${m.rxcui})` : ""}`);
+            if (m.reviewReason) lines.push(`    ${m.reviewReason}`);
+          }
+        }
+
+        if (confirmed.length) {
+          lines.push("Confirmed medications (high confidence — use these canonical generic names in the SOAP):");
+          for (const m of confirmed) {
+            const rxMeta = m.rxcui ? ` [RxCUI:${m.rxcui}]` : "";
+            const classMeta = m.medicationClass ?? m.drugClass ?? null;
+            const spoken = m.originalTerm !== m.canonicalName ? ` (spoken as: "${m.originalTerm}")` : "";
+            lines.push(`  • ${m.canonicalName}${spoken}${rxMeta}${classMeta ? ` — ${classMeta}` : ""}`);
+          }
+        }
+
+        const reviewNonLasa = needsReview.filter(m => !(m.possibleMatches?.length > 0));
+        if (reviewNonLasa.length) {
+          lines.push("Uncertain matches — verify before charting (do NOT assume these are correct):");
+          for (const m of reviewNonLasa) {
+            const tier = m.confidenceTier ?? "low";
+            lines.push(`  ⚠ "${m.originalTerm}" → possibly ${m.canonicalName} (${Math.round(m.confidence * 100)}% confidence, ${tier} confidence tier, ${m.matchType} match)`);
+            if (m.reviewReason && !m.possibleMatches?.length) {
+              lines.push(`    ${m.reviewReason}`);
+            }
+          }
+        }
+
+        if (lines.length) {
+          medicationContext = `\n\nNORMALIZED MEDICATION LIST (auto-detected from clinician's dictionary):\n${lines.join('\n')}\nIMPORTANT: Use only the canonical names above for confirmed high-confidence medications. For LASA alerts and uncertain matches, preserve the original text and/or flag for provider review — do NOT auto-normalize. Do not allow this data to override medication status, plan intent, discontinuation status, or provider recommendations.`;
+        }
+      }
+    }
+  } catch (medErr) {
+    console.warn("[SOAP] Medication normalization skipped:", medErr);
+  }
+
+  // ── Patient name ───────────────────────────────────────────────────────────
+  let patientName: string | undefined;
+  if (encounter.patientId) {
+    try {
+      const patient = await storage.getPatient(encounter.patientId, clinicianId, clinicId);
+      if (patient) {
+        patientName = `${patient.firstName} ${patient.lastName}`.trim();
+      }
+    } catch (pErr) {
+      console.warn("[SOAP] Could not resolve patient name:", pErr);
+    }
+  }
+
+  // ── Historical context ─────────────────────────────────────────────────────
+  let historicalContext = "";
+  if (encounter.patientId) {
+    historicalContext = await buildPatientHistoricalContext(
+      encounter.patientId, encounterId, clinicianId, clinicId
+    );
+  }
+
+  // ── Diagnosis bundles ──────────────────────────────────────────────────────
+  let diagnosisBundles: Array<{ title: string; codes: { code: string; name: string }[]; aliases: string[] }> = [];
+  if (clinicId) {
+    try {
+      diagnosisBundles = (await storage.getDiagnosisPresets(clinicId)).map(p => ({
+        title: p.title,
+        codes: Array.isArray(p.codes) ? p.codes : [],
+        aliases: Array.isArray(p.aliases) ? p.aliases : [],
+      }));
+    } catch (bundleErr) {
+      console.warn("[SOAP] Could not load diagnosis bundles, proceeding without:", bundleErr);
+    }
+  }
+
+  return { labContext, patternContext, medicationContext, historicalContext, diagnosisBundles, patientName, autoMedMatches, patternMatchRegenerated };
+}
   app.post("/api/encounters/:id/generate-soap", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
@@ -12277,420 +12737,20 @@ Examples:
       }
 
       // Fetch linked lab result for context
-      let labContext = "";
-      if (encounter.linkedLabResultId) {
-        const labResult = await storage.getLabResult(encounter.linkedLabResultId);
-        if (labResult) {
-          // Metadata/context keys that are NOT numeric lab markers — exclude from AI prompt
-          const NON_LAB_KEYS = new Set([
-            "patientName", "labDrawDate", "demographics",
-            "menstrualPhase", "lastMenstrualPeriod",
-            "onHRT", "onBirthControl", "onTRT",
-          ]);
-          // Human-readable labels for camelCase lab keys
-          const KEY_LABELS: Record<string, string> = {
-            hemoglobin: "Hemoglobin (g/dL)", hematocrit: "Hematocrit (%)", mcv: "MCV (fL)",
-            rbc: "RBC (M/µL)", wbc: "WBC (K/µL)", platelets: "Platelets (K/µL)",
-            ast: "AST (U/L)", alt: "ALT (U/L)", bilirubin: "Bilirubin (mg/dL)",
-            creatinine: "Creatinine (mg/dL)", egfr: "eGFR (mL/min/1.73m²)", bun: "BUN (mg/dL)",
-            sodium: "Sodium (mEq/L)", potassium: "Potassium (mEq/L)", chloride: "Chloride (mEq/L)",
-            co2: "CO2 (mEq/L)", glucose: "Glucose (mg/dL)", fastingGlucose: "Fasting Glucose (mg/dL)",
-            calcium: "Calcium (mg/dL)", albumin: "Albumin (g/dL)", totalProtein: "Total Protein (g/dL)",
-            ldl: "LDL-C (mg/dL)", hdl: "HDL-C (mg/dL)", totalCholesterol: "Total Cholesterol (mg/dL)",
-            triglycerides: "Triglycerides (mg/dL)", apoB: "ApoB (mg/dL)", lpa: "Lp(a) (nmol/L)",
-            testosterone: "Testosterone (ng/dL)", estradiol: "Estradiol (pg/mL)", lh: "LH (mIU/mL)",
-            fsh: "FSH (mIU/mL)", prolactin: "Prolactin (ng/mL)", shbg: "SHBG (nmol/L)",
-            freeTestosterone: "Free Testosterone (pg/mL)", progesterone: "Progesterone (ng/mL)",
-            tsh: "TSH (µIU/mL)", freeT4: "Free T4 (ng/dL)", freeT3: "Free T3 (pg/mL)",
-            psa: "PSA (ng/mL)", previousPsa: "Previous PSA (ng/mL)", monthsSinceLastPsa: "Months Since Last PSA",
-            a1c: "HbA1c (%)", hsCRP: "hs-CRP (mg/L)", vitaminD: "Vitamin D 25-OH (ng/mL)",
-            vitaminB12: "Vitamin B12 (pg/mL)", ferritin: "Ferritin (ng/mL)", iron: "Iron (µg/dL)",
-            tibc: "TIBC (µg/dL)", ironSaturation: "Iron Saturation/TSAT (%)", dhea: "DHEA (µg/dL)", dheas: "DHEA-S (µg/dL)",
-            igf1: "IGF-1 (ng/mL)", cortisol: "Cortisol (µg/dL)", insulin: "Fasting Insulin (µIU/mL)",
-            homocysteine: "Homocysteine (µmol/L)", uricAcid: "Uric Acid (mg/dL)",
-          };
-          // Special boolean flags to render as text
-          const BOOL_LABELS: Record<string, string> = {
-            onTRT: "On TRT", onHRT: "On HRT", onBirthControl: "On Birth Control",
-          };
-          const labVals = labResult.labValues as Record<string, any>;
-          const labLines = Object.entries(labVals)
-            .filter(([k, v]) => {
-              if (NON_LAB_KEYS.has(k)) return false;
-              if (v === null || v === undefined || v === "") return false;
-              if (typeof v === "object") return false; // skip nested objects like demographics
-              return true;
-            })
-            .map(([k, v]) => {
-              const label = KEY_LABELS[k] ?? k;
-              if (typeof v === "boolean") return `  ${BOOL_LABELS[k] ?? label}: ${v ? "Yes" : "No"}`;
-              return `  ${label}: ${v}`;
-            })
-            .join("\n");
-
-          // Gender from patient record (lab_results has no gender column)
-          const labPatient = await storage.getPatient(labResult.patientId, clinicianId, clinicId);
-          const genderLabel = labPatient?.gender === "female" ? "Female" : "Male";
-
-          // Use actual lab draw date, not DB insertion timestamp
-          const drawDate = new Date(labResult.labDate as unknown as string);
-          const dateLabel = !isNaN(drawDate.getTime())
-            ? drawDate.toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric", year: "numeric" })
-            : "Unknown date";
-
-          // ── Build clinical interpretation context from stored interpretationResult ──
-          const interp = labResult.interpretationResult as any;
-          const interpSections: string[] = [];
-
-          // 1. Red flags — always include, highest priority
-          if (interp?.redFlags?.length) {
-            const flagLines = interp.redFlags
-              .map((f: any) => `  ⚑ [${(f.severity ?? "WARNING").toUpperCase()}] ${f.marker}: ${f.message}`)
-              .join("\n");
-            interpSections.push(`RED FLAGS (require immediate attention):\n${flagLines}`);
-          }
-
-          // 2. Per-marker clinical status — only abnormal/critical/borderline markers
-          if (interp?.interpretations?.length) {
-            const notable = interp.interpretations.filter(
-              (i: any) => i.status && i.status !== "normal"
-            );
-            if (notable.length) {
-              const notableLines = notable
-                .map((i: any) => {
-                  const rec = i.recommendation ? `\n    [SUGGESTED — clinician must approve before charting: ${i.recommendation}]` : "";
-                  return `  ${i.marker} [${i.status?.toUpperCase()}]: ${i.interpretation ?? ""}${rec}`;
-                })
-                .join("\n");
-              interpSections.push(`NOTABLE LAB FINDINGS (non-normal status):\n${notableLines}`);
-            }
-          }
-
-          // 3. Insulin resistance phenotype
-          if (interp?.insulinResistance?.detected) {
-            const ir = interp.insulinResistance;
-            const phenoNames = ir.phenotypes?.map((p: any) => p.name).join(", ") ?? "unspecified phenotype";
-            interpSections.push(
-              `INSULIN RESISTANCE SCREENING: Likely detected — ${phenoNames}. Likelihood: ${ir.likelihood ?? "moderate"}.`
-            );
-          }
-
-          // 4. PREVENT cardiovascular risk
-          if (interp?.preventRisk) {
-            const pr = interp.preventRisk;
-            const riskLines: string[] = [];
-            if (pr.tenYearCVD != null) riskLines.push(`10-yr CVD risk: ${pr.tenYearCVD}%`);
-            if (pr.thirtyYearCVD != null) riskLines.push(`30-yr CVD risk: ${pr.thirtyYearCVD}%`);
-            if (pr.tenYearASCVD != null) riskLines.push(`10-yr ASCVD risk: ${pr.tenYearASCVD}%`);
-            if (pr.riskCategory) riskLines.push(`Category: ${pr.riskCategory}`);
-            if (riskLines.length) {
-              interpSections.push(`PREVENT CARDIOVASCULAR RISK (2023 AHA):\n  ${riskLines.join(", ")}`);
-            }
-          }
-
-          // 5. hs-CRP interpretation
-          if (interp?.hsCrpInterpretation) {
-            interpSections.push(`hs-CRP RISK STRATIFICATION: ${interp.hsCrpInterpretation}`);
-          }
-
-          // 6. Supplement recommendations from lab evaluation — always include so SOAP CARE PLAN documents them
-          const rawSupplements: any[] = interp?.supplements ?? [];
-          if (rawSupplements.length) {
-            const suppLines = rawSupplements.map((s: any) => {
-              const name = s.name ?? s.productName ?? "Unnamed supplement";
-              const dose = s.dosage ?? s.dose ?? "";
-              const reason = s.reason ?? s.rationale ?? s.indication ?? "";
-              return `  • ${name}${dose ? ` — ${dose}` : ""}${reason ? ` (${reason})` : ""}`;
-            }).join("\n");
-            interpSections.push(
-              `SUPPLEMENT RECOMMENDATIONS (from linked lab evaluation — document in CARE PLAN):\n${suppLines}\nNOTE: These supplements were clinically indicated by the lab evaluation and/or discussed in the transcript. They MUST be listed in the CARE PLAN section of the SOAP note.`
-            );
-          }
-
-          const clinicalInterpContext = interpSections.length
-            ? `\n\nCLINICAL INTERPRETATION (computed from linked labs):\n${interpSections.join("\n\n")}`
-            : "";
-
-          labContext = labLines
-            ? `\n\nLINKED LAB RESULTS (${genderLabel} panel, drawn ${dateLabel}):\n${labLines}${clinicalInterpContext}`
-            : "";
-        }
-      }
-
-      // ── PIPELINE STEP 3: Pattern matching inline (fresh, after lab context is built) ──
-      let patternContext = "";
-      try {
-        const pmLabResultId = encounter.linkedLabResultId;
-        let pmLabContext = "";
-        let pmLabContextUsed = false;
-        if (pmLabResultId) {
-          const pmLabResult = await storage.getLabResult(pmLabResultId);
-          if (pmLabResult) {
-            pmLabContextUsed = true;
-            const NON_LAB_KEYS_PM = new Set(["patientName","labDrawDate","demographics","menstrualPhase","lastMenstrualPeriod","onHRT","onBirthControl","onTRT"]);
-            const pmVals = pmLabResult.labValues as Record<string, any>;
-            const pmLabLines = Object.entries(pmVals)
-              .filter(([k, v]) => !NON_LAB_KEYS_PM.has(k) && v !== null && v !== undefined && v !== "" && typeof v !== "object")
-              .map(([k, v]) => typeof v === "boolean" ? `  ${k}: ${v ? "Yes" : "No"}` : `  ${k}: ${v}`)
-              .join("\n");
-            const pmInterp = pmLabResult.interpretationResult as any;
-            const pmPriorPatterns = pmInterp?.insulinResistance ? `\n  Prior IR screening: ${pmInterp.insulinResistance.likelihood ?? "assessed"}` : "";
-            const pmPriorRedFlags = pmInterp?.redFlags?.length ? `\n  Prior red flags: ${pmInterp.redFlags.map((f: any) => f.title ?? f).join("; ")}` : "";
-            const pmPatient = await storage.getPatient(pmLabResult.patientId, clinicianId, clinicId);
-            const pmGender = pmPatient?.gender === "female" ? "Female" : "Male";
-            pmLabContext = `\n\nLINKED LAB RESULTS (${pmGender} panel):\n${pmLabLines}${pmPriorPatterns}${pmPriorRedFlags}`;
-          }
-        }
-        const pmMode = pmLabContextUsed ? "context_linked" : "transcript_only";
-        const pmExtLines: string[] = [];
-        if (freshExtraction) {
-          if (freshExtraction.chief_concerns?.length)           pmExtLines.push(`Chief concerns: ${freshExtraction.chief_concerns.join("; ")}`);
-          if (freshExtraction.secondary_concerns?.length)       pmExtLines.push(`Secondary concerns: ${freshExtraction.secondary_concerns.join("; ")}`);
-          if (freshExtraction.symptoms_reported?.length)         pmExtLines.push(`Symptoms reported: ${freshExtraction.symptoms_reported.join("; ")}`);
-          if (freshExtraction.symptoms_denied?.length)           pmExtLines.push(`Symptoms denied: ${freshExtraction.symptoms_denied.join("; ")}`);
-          if (freshExtraction.medications_current?.length)       pmExtLines.push(`Current medications: ${freshExtraction.medications_current.join("; ")}`);
-          if (freshExtraction.supplements_current?.length)       pmExtLines.push(`Current supplements: ${freshExtraction.supplements_current.join("; ")}`);
-          if (Array.isArray(freshExtraction.supplement_discussions) && freshExtraction.supplement_discussions.length) {
-            const suppConvLines = freshExtraction.supplement_discussions.map((s: any) => {
-              const parts = [`[${(s.action ?? 'discuss').toUpperCase()}] ${s.supplement_name}`];
-              if (s.dose) parts.push(s.dose);
-              if (s.indication) parts.push(`for: ${s.indication}`);
-              if (s.provider_education) parts.push(`explained: ${s.provider_education}`);
-              if (s.patient_questions) parts.push(`pt asked: ${s.patient_questions}`);
-              return parts.join(' — ');
-            });
-            pmExtLines.push(`Supplement conversations: ${suppConvLines.join('; ')}`);
-          }
-          if (freshExtraction.mental_health_context?.length)     pmExtLines.push(`Mental health context: ${freshExtraction.mental_health_context.join("; ")}`);
-          if (freshExtraction.lifestyle_factors?.length)         pmExtLines.push(`Lifestyle factors: ${freshExtraction.lifestyle_factors.join("; ")}`);
-          if (freshExtraction.diagnoses_discussed?.length)       pmExtLines.push(`Diagnoses discussed: ${freshExtraction.diagnoses_discussed.join("; ")}`);
-          if (freshExtraction.assessment_candidates?.length)     pmExtLines.push(`Assessment candidates: ${freshExtraction.assessment_candidates.join("; ")}`);
-          if (freshExtraction.plan_candidates?.length)           pmExtLines.push(`Plan items: ${freshExtraction.plan_candidates.join("; ")}`);
-          if (freshExtraction.red_flags?.length)                 pmExtLines.push(`Red flags: ${freshExtraction.red_flags.join("; ")}`);
-          if (freshExtraction.medication_changes_discussed?.length) pmExtLines.push(`Medication changes: ${freshExtraction.medication_changes_discussed.join("; ")}`);
-          if (freshExtraction.side_effects_reported?.length)     pmExtLines.push(`Side effects: ${freshExtraction.side_effects_reported.join("; ")}`);
-          if (freshExtraction.prior_treatments_and_trials?.length) pmExtLines.push(`Prior treatments/trials: ${freshExtraction.prior_treatments_and_trials.join("; ")}`);
-          if (freshExtraction.allergies?.length)                 pmExtLines.push(`Allergies: ${freshExtraction.allergies.join("; ")}`);
-          if (freshExtraction.past_medical_history?.length)      pmExtLines.push(`Past medical history: ${freshExtraction.past_medical_history.join("; ")}`);
-          if (freshExtraction.surgical_history?.length)           pmExtLines.push(`Surgical history: ${freshExtraction.surgical_history.join("; ")}`);
-          if (freshExtraction.family_history?.length)             pmExtLines.push(`Family history: ${freshExtraction.family_history.join("; ")}`);
-          if (freshExtraction.social_history?.length)             pmExtLines.push(`Social history: ${freshExtraction.social_history.join("; ")}`);
-          if (freshExtraction.context_inferred_items?.length)     pmExtLines.push(`Context-inferred (confirm): ${freshExtraction.context_inferred_items.join("; ")}`);
-        }
-        const pmExtContext = pmExtLines.length ? `\n\nSTRUCTURED CLINICAL FACTS (extracted from transcript):\n${pmExtLines.join('\n')}` : "";
-        const pmCompletion = await openai.chat.completions.create({
-          model: "gpt-4o",
-          messages: [
-            { role: "system", content: `You are an expert clinical pattern recognition engine for a hormone and primary care clinic.
-Your task is to identify clinically relevant patterns and phenotypes from a patient encounter.
-
-OPERATING MODE: ${pmMode === "context_linked" ? "CONTEXT-LINKED (transcript + lab data available)" : "TRANSCRIPT-ONLY (no linked labs — use symptoms and chart context only)"}
-
-CLINICAL FRAMEWORKS YOU KNOW:
-
-1. PERIMENOPAUSE PATTERNS
-   - Estrogen dominance: heavy periods, bloating, breast tenderness, mood swings, weight gain
-   - Estrogen deficiency: hot flashes, night sweats, vaginal dryness, brain fog, poor sleep, bone loss concern
-   - Progesterone deficiency: sleep disruption, anxiety, PMS, irregular cycles, heavy periods
-   - Androgen excess: acne, hirsutism, hair thinning at crown, oily skin
-   - Lab confirmation markers: E2, progesterone, FSH, LH, testosterone, SHBG, DHEA-S
-
-2. TESTOSTERONE OPTIMIZATION (male and female)
-   - Male: low libido, fatigue, decreased motivation, poor sleep, reduced muscle mass, mood changes, cognitive fog
-   - Female: low libido, fatigue, reduced muscle tone, mood flatness, cognitive fog (low-normal testosterone)
-   - TRT monitoring patterns: erythrocytosis risk (hematocrit >50%), PSA velocity, estradiol elevation
-   - Lab confirmation markers: total T, free T, SHBG, E2, LH, FSH, hematocrit, PSA
-
-3. INSULIN RESISTANCE SCREENING
-   - Classic IR: acanthosis nigricans, central adiposity, fatigue after meals, sugar cravings, frequent hunger
-   - PCOS-related IR: irregular cycles, androgen excess signs, polycystic ovaries, anovulation
-   - Lean IR: normal BMI but metabolic dysfunction signs
-   - Lab confirmation markers: fasting glucose, fasting insulin, HOMA-IR, HbA1c, triglycerides, HDL
-
-4. THYROID PATTERNS
-   - Hypothyroid: fatigue, cold intolerance, hair loss, constipation, weight gain, brain fog, dry skin
-   - Hyperthyroid/overtreatment: palpitations, heat intolerance, anxiety, weight loss, tremor
-   - Hashimoto's: fluctuating symptoms, positive TPO antibodies context, autoimmune history
-   - Lab confirmation: TSH, free T4, free T3, TPO antibodies
-
-5. LIPID / CARDIOMETABOLIC
-   - Atherogenic dyslipidemia: high TG, low HDL, small dense LDL pattern
-   - Elevated cardiovascular risk: family history, smoking, hypertension combined with lab markers
-   - Lab confirmation: LDL, HDL, TG, ApoB, Lp(a), hs-CRP, glucose
-
-6. ADRENAL / HPA AXIS
-   - Cortisol dysregulation: fatigue (especially AM), salt cravings, poor stress response
-   - DHEA deficiency: low energy, poor mood, reduced libido (especially postmenopause)
-   - Lab confirmation: DHEA-S, morning cortisol
-
-7. NUTRIENT DEFICIENCY PATTERNS
-   - Vitamin D deficiency: fatigue, musculoskeletal aches, immune concerns, mood depression
-   - B12 deficiency: neuropathy symptoms, fatigue, cognitive fog (especially with metformin use)
-   - Iron/ferritin: fatigue, hair loss, poor exercise tolerance, restless legs
-   - Lab confirmation: 25-OH vitamin D, B12, ferritin, iron panel
-
-EVIDENCE BASIS RULES:
-- "symptom_based": pattern inferred from symptoms alone, no lab confirmation in this encounter
-- "lab_backed": pattern supported by linked lab values meeting clinical thresholds
-- "combined": both symptom evidence AND lab values support the pattern
-- "insufficient": mentioned or possible, but not enough information to assess
-
-CRITICAL RULES:
-- NEVER require labs to run this analysis — transcript-only mode is fully valid
-- NEVER fabricate lab values not provided
-- Only include patterns with at least "possible" confidence
-- If no clear patterns are identified, return an empty matched_patterns array
-
-Return a JSON object:
-{
-  "matched_patterns": [
-    {
-      "pattern_name": "concise pattern name",
-      "category": "perimenopause" | "testosterone_optimization" | "insulin_resistance" | "thyroid" | "lipid_cardiometabolic" | "adrenal_hpa" | "nutrient_deficiency" | "other",
-      "evidence_basis": "symptom_based" | "lab_backed" | "combined" | "insufficient",
-      "supporting_evidence": ["list of specific symptoms, facts, or lab values"],
-      "recommended_considerations": ["specific clinical actions to consider"],
-      "requires_lab_confirmation": true | false,
-      "notes": "any important clinical nuance"
-    }
-  ],
-  "symptom_clusters": ["grouped symptom patterns noted in the visit"],
-  "unmatched_concerns": ["concerns that don't fit the above frameworks"],
-  "lab_context_used": ${pmLabContextUsed}
-}` },
-            { role: "user", content: `Visit Type: ${encounter.visitType}\nChief Complaint: ${encounter.chiefComplaint || "Not specified"}${pmLabContext}${pmExtContext}\n\nTRANSCRIPT:\n${transcriptText}\n\nMode: ${pmMode}.` },
-          ],
-          response_format: { type: "json_object" },
-        });
-        const pmRaw = JSON.parse(pmCompletion.choices[0].message.content || "{}");
-        const pmResult = {
-          mode: pmMode,
-          matched_patterns: pmRaw.matched_patterns ?? [],
-          symptom_clusters: pmRaw.symptom_clusters ?? [],
-          unmatched_concerns: pmRaw.unmatched_concerns ?? [],
-          lab_context_used: pmLabContextUsed,
-          generated_at: new Date().toISOString(),
-        };
-        await storage.updateEncounter(id, clinicianId, { patternMatch: pmResult }, clinicId);
-        if (pmResult.matched_patterns.length) {
-          const pmLabel = pmMode === "context_linked" ? "transcript + lab data" : "transcript symptoms only";
-          const pmLines = pmResult.matched_patterns.map((p: any) =>
-            `- ${p.pattern_name} [${p.evidence_basis}]: ${p.supporting_evidence?.join("; ") ?? "no detail"}`
-          );
-          patternContext = `\n\nCLINICAL PATTERN MATCHING (${pmLabel}):\n${pmLines.join('\n')}`;
-          if (pmResult.symptom_clusters?.length) {
-            patternContext += `\nSymptom clusters: ${pmResult.symptom_clusters.join("; ")}`;
-          }
-        }
-      } catch (pmErr) {
-        console.warn("[SOAP Pipeline] Pattern matching failed:", pmErr);
-      }
-
-      // ── PIPELINE STEP 3b: Medication detection (single shared run) ────────
-      let medicationContext = "";
-      let autoMedMatches: any[] = [];
-      try {
-        const medEntries = await storage.getAllMedicationEntries(clinicianId);
-        if (medEntries.length && transcriptText.trim()) {
-          const rawMedText = wasNormalized
-            ? diarized.map((u: any) => u.normalizedText ?? u.text).join(' ')
-            : (encounter.transcription ?? "");
-
-          // Base fuzzy matching (existing logic — unchanged)
-          const rawMatches = normalizeTranscript(rawMedText, medEntries);
-
-          // RxNorm enrichment pass (additive — never modifies status/intent)
-          const enriched = enrichWithRxNorm(rawMatches);
-          autoMedMatches = enriched;
-
-          if (enriched.length) {
-            // LASA safety alerts — highest priority, surfaced first in context
-            const lasaAlerts = enriched.filter(m => m.possibleMatches?.length > 0);
-
-            // High-confidence confirmed matches (safe to suggest generic name in SOAP)
-            const confirmed = enriched.filter(m => m.confidenceTier === "high" && !m.requiresReview);
-
-            // Medium/low confidence or LASA — must be flagged for provider review
-            const needsReview = enriched.filter(m => m.requiresReview);
-
-            const lines: string[] = [];
-
-            // LASA warnings first — patient safety
-            if (lasaAlerts.length) {
-              lines.push("⚠ LOOK-ALIKE/SOUND-ALIKE MEDICATION ALERTS — DO NOT AUTO-NORMALIZE:");
-              for (const m of lasaAlerts) {
-                lines.push(`  ⚠ LASA ALERT: "${m.originalTerm}" matched to ${m.canonicalName}${m.rxcui ? ` (RxCUI ${m.rxcui})` : ""}`);
-                if (m.reviewReason) lines.push(`    ${m.reviewReason}`);
-              }
-            }
-
-            if (confirmed.length) {
-              lines.push("Confirmed medications (high confidence — use these canonical generic names in the SOAP):");
-              for (const m of confirmed) {
-                const rxMeta = m.rxcui ? ` [RxCUI:${m.rxcui}]` : "";
-                const classMeta = m.medicationClass ?? m.drugClass ?? null;
-                const spoken = m.originalTerm !== m.canonicalName ? ` (spoken as: "${m.originalTerm}")` : "";
-                lines.push(`  • ${m.canonicalName}${spoken}${rxMeta}${classMeta ? ` — ${classMeta}` : ""}`);
-              }
-            }
-
-            // Non-LASA review items (medium/low confidence)
-            const reviewNonLasa = needsReview.filter(m => !(m.possibleMatches?.length > 0));
-            if (reviewNonLasa.length) {
-              lines.push("Uncertain matches — verify before charting (do NOT assume these are correct):");
-              for (const m of reviewNonLasa) {
-                const tier = m.confidenceTier ?? "low";
-                lines.push(`  ⚠ "${m.originalTerm}" → possibly ${m.canonicalName} (${Math.round(m.confidence * 100)}% confidence, ${tier} confidence tier, ${m.matchType} match)`);
-                if (m.reviewReason && !m.possibleMatches?.length) {
-                  lines.push(`    ${m.reviewReason}`);
-                }
-              }
-            }
-
-            if (lines.length) {
-              medicationContext = `\n\nNORMALIZED MEDICATION LIST (auto-detected from clinician's dictionary):\n${lines.join('\n')}\nIMPORTANT: Use only the canonical names above for confirmed high-confidence medications. For LASA alerts and uncertain matches, preserve the original text and/or flag for provider review — do NOT auto-normalize. Do not allow this data to override medication status, plan intent, discontinuation status, or provider recommendations.`;
-            }
-          }
-        }
-      } catch (medErr) {
-        console.warn("[SOAP] Medication normalization skipped:", medErr);
-      }
-
-      // ── Resolve patient name for SOAP identity disambiguation ─────────────
-      let patientName: string | undefined;
-      if (encounter.patientId) {
-        try {
-          const clinicId = getEffectiveClinicId(req);
-          const patient = await storage.getPatient(encounter.patientId, clinicianId, clinicId);
-          if (patient) {
-            patientName = `${patient.firstName} ${patient.lastName}`.trim();
-          }
-        } catch (pErr) {
-          console.warn("[SOAP] Could not resolve patient name:", pErr);
-        }
-      }
-
-      // ── Build historical patient context (prior notes, chart, vitals) ────────
-      let historicalContext = "";
-      if (encounter.patientId) {
-        historicalContext = await buildPatientHistoricalContext(
-          encounter.patientId, id, clinicianId, clinicId
-        );
-      }
-
-      // ── Load diagnosis bundles for bundle pattern matching (Stage 1 Part 5) ─
-      let diagnosisBundles: Array<{ title: string; codes: { code: string; name: string }[]; aliases: string[] }> = [];
-      if (clinicId) {
-        try {
-          diagnosisBundles = (await storage.getDiagnosisPresets(clinicId)).map(p => ({
-            title: p.title,
-            codes: Array.isArray(p.codes) ? p.codes : [],
-            aliases: Array.isArray(p.aliases) ? p.aliases : [],
-          }));
-        } catch (bundleErr) {
-          console.warn("[SOAP] Could not load diagnosis bundles, proceeding without:", bundleErr);
-        }
-      }
+      const ctx = await buildSoapEncounterContext({
+        encounter,
+        encounterId: id,
+        clinicianId,
+        clinicId,
+        extraction: freshExtraction,
+        transcriptText,
+        diarized,
+        wasNormalized,
+        openai,
+        persistPatternMatch: true,
+        storedPatternMatch: undefined,
+      });
+      const { labContext, patternContext, medicationContext, historicalContext, diagnosisBundles, patientName, autoMedMatches } = ctx;
 
       // ── PIPELINE STEP 4+5: Enhanced multi-stage SOAP generation ─────────────
       // Uses the new enhanced pipeline: normalization+inference → section-specific generation → QA check
@@ -13002,6 +13062,271 @@ If nothing is found, return: { "social_history_items": [] }`,
   // POST /api/encounters/:id/generate-template-note
   // Template-based note generation. NEVER modifies the generate-soap pipeline.
   // Routes to SOAP-enriched, Nurses Note, or Non-Visit generator by noteType.
+
+  // ── POST /api/encounters/:id/test-soap-model ──────────────────────────────
+  // Read-only model comparison endpoint. Runs Mode A (identical Step 4 prompts,
+  // different model) or Mode B (transcript-direct, no extraction pipeline).
+  //
+  // HARD-CODED MODEL: gpt-5.6-sol only. Not configurable from request body.
+  // TEMPERATURE: omitted — gpt-5.6-sol rejects temperature != 1 (default).
+  //              Confirmed via API probe: HTTP 400 "Only the default (1) value is supported."
+  // STRICTLY READ-ONLY: no DB writes under any circumstance.
+  // ──────────────────────────────────────────────────────────────────────────
+  app.post("/api/encounters/:id/test-soap-model", requireAuth, async (req: Request, res: Response) => {
+    const clinicianId = req.user!.id;
+    const clinicId = getEffectiveClinicId(req);
+    const id = parseInt(req.params.id);
+
+    if (isNaN(id)) {
+      return res.status(400).json({ error: "Invalid encounter ID" });
+    }
+
+    const { mode } = req.body as { mode?: string };
+    if (mode !== "A" && mode !== "B") {
+      return res.status(400).json({ error: "mode must be 'A' or 'B'" });
+    }
+
+    const TEST_MODEL = "gpt-5.6-sol";
+
+    // Load encounter and verify clinic ownership
+    const encounter = await storage.getEncounter(id, clinicianId, clinicId);
+    if (!encounter) {
+      return res.status(404).json({ error: "Encounter not found" });
+    }
+
+    // Build openai client (same portability as production routes)
+    const openaiKey = process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+    const openaiBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+    const openai = new OpenAI({
+      apiKey: openaiKey,
+      ...(openaiBase ? { baseURL: openaiBase } : {}),
+    });
+
+    const apiUsed = "chat_completions";
+    const temperatureOmitted = true;  // gpt-5.6-sol rejects temperature != 1
+
+    try {
+      // ── Build diarized / transcriptText (same as production) ────────────
+      const rawDiarized = (encounter.diarizedTranscript as any[]) ?? [];
+      const diarized = rawDiarized;
+      const wasNormalized = diarized.length > 0;
+      const transcriptText = wasNormalized
+        ? diarized.map((u: any) => `${u.speaker.toUpperCase()}: ${u.normalizedText ?? u.text}`).join('\n')
+        : (encounter.transcription ?? "");
+
+      if (!transcriptText.trim()) {
+        return res.status(400).json({ error: "Encounter has no transcript to test against" });
+      }
+
+      if (mode === "A") {
+        // ── MODE A: Identical Step 4 prompts — only model changes ──────────
+        const extraction = encounter.clinicalExtraction as any;
+        if (!extraction) {
+          return res.status(400).json({
+            error: "Mode A unavailable: this encounter has no stored clinical extraction. Run the full SOAP pipeline first.",
+            mode: "A", model: TEST_MODEL,
+          });
+        }
+
+        // Build the same encounter context production Step 4 receives.
+        // persistPatternMatch: false — test endpoint never writes to DB.
+        // storedPatternMatch: reuse stored result if present (avoids AI re-run).
+        // patternMatchRegenerated will be true only if stored result was absent.
+        const storedPM = (encounter as any).patternMatch ?? null;
+        const ctx = await buildSoapEncounterContext({
+          encounter,
+          encounterId: id,
+          clinicianId,
+          clinicId,
+          extraction,
+          transcriptText,
+          diarized,
+          wasNormalized,
+          openai,
+          persistPatternMatch: false,
+          storedPatternMatch: storedPM,
+        });
+
+        // Run medicalNormalizationAndInference fresh from stored extraction.
+        // Not stored in DB → flag as regenerated.
+        let normalized: NormalizedExtraction;
+        try {
+          normalized = await medicalNormalizationAndInference(
+            openai, extraction, transcriptText, diarized,
+            ctx.diagnosisBundles
+          );
+        } catch (normErr) {
+          return res.status(500).json({
+            error: `Mode A normalization failed: ${(normErr as Error).message}`,
+            mode: "A", model: TEST_MODEL,
+          });
+        }
+
+        // Run buildTopicInventory fresh — not stored in DB → flag as regenerated.
+        let topicInventory: string[] | undefined;
+        try {
+          topicInventory = await buildTopicInventory(openai, transcriptText, diarized);
+        } catch (invErr) {
+          console.warn("[test-soap-model] Topic inventory failed, proceeding without:", invErr);
+          topicInventory = undefined;
+        }
+
+        // Build the exact same prompts production Step 4 sends to gpt-4o.
+        const { systemPrompt, userPrompt } = buildSoapGenerationMessages(
+          extraction, normalized, transcriptText, diarized,
+          ctx.labContext, ctx.patternContext, ctx.medicationContext,
+          encounter, ctx.patientName,
+          ctx.historicalContext, ctx.diagnosisBundles,
+          /* transcriptDirect= */ true,
+          topicInventory
+        );
+
+        // Call test model — no temperature (hard-coded omission), no DB write.
+        const t0 = Date.now();
+        let completion: any;
+        try {
+          completion = await openai.chat.completions.create({
+            model: TEST_MODEL,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt },
+            ],
+            response_format: { type: "json_object" },
+          });
+        } catch (apiErr: any) {
+          return res.status(500).json({
+            error: apiErr?.message ?? String(apiErr),
+            status: apiErr?.status,
+            mode: "A", model: TEST_MODEL, apiUsed, temperatureOmitted,
+            normalizedRegenerated: true,
+            topicInventoryRegenerated: topicInventory !== undefined,
+            patternMatchRegenerated: ctx.patternMatchRegenerated,
+          });
+        }
+        const generationMs = Date.now() - t0;
+
+        const raw = JSON.parse(completion.choices[0]?.message?.content ?? "{}");
+        const usage = completion.usage ?? {};
+
+        return res.json({
+          mode: "A",
+          model: TEST_MODEL,
+          apiUsed,
+          temperatureOmitted,
+          generatedNote: raw.fullNote ?? raw,
+          inputTokens: usage.prompt_tokens ?? null,
+          outputTokens: usage.completion_tokens ?? null,
+          totalTokens: usage.total_tokens ?? null,
+          generationMs,
+          systemPromptChars: systemPrompt.length,
+          userPromptChars: userPrompt.length,
+          normalizedRegenerated: true,
+          topicInventoryRegenerated: topicInventory !== undefined,
+          patternMatchRegenerated: ctx.patternMatchRegenerated,
+          error: null,
+        });
+      }
+
+      // ── MODE B: Transcript-direct — no extraction pipeline ──────────────
+      // Same ClinIQ rules, same transcript, no structured extraction context.
+      // Tests what gpt-5.6-sol does with raw transcript + chart context only.
+      const systemPromptB = buildSoapCoreSystemPrompt(/* transcriptDirect= */ true);
+
+      // Build historical and lab context (chart data — same as Mode A)
+      let historicalContextB = "";
+      if (encounter.patientId) {
+        historicalContextB = await buildPatientHistoricalContext(
+          encounter.patientId, id, clinicianId, clinicId
+        );
+      }
+
+      let labContextB = "";
+      if (encounter.linkedLabResultId) {
+        // Reuse the same labContext builder via buildSoapEncounterContext
+        // with a no-op extraction so only labContext is populated
+        const labCtx = await buildSoapEncounterContext({
+          encounter,
+          encounterId: id,
+          clinicianId,
+          clinicId,
+          extraction: null,
+          transcriptText,
+          diarized,
+          wasNormalized,
+          openai,
+          persistPatternMatch: false,
+          // Pass empty storedPatternMatch so pattern match is skipped entirely
+          storedPatternMatch: { matched_patterns: [], symptom_clusters: [], mode: "transcript_only", lab_context_used: false },
+        });
+        labContextB = labCtx.labContext;
+      }
+
+      const diarizedInput = diarized.length > 0
+        ? diarized.map((u: any) => `${u.speaker.toUpperCase()}: ${u.normalizedText ?? u.text}`).join('\n')
+        : transcriptText;
+
+      const userPromptB = `Visit Type: ${encounter.visitType}
+Chief Complaint: ${encounter.chiefComplaint || "Not specified"}
+Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}
+${historicalContextB}${labContextB}
+
+TRANSCRIPT:
+${diarizedInput}
+
+Generate the complete medical record following all rules above. The HPI must be a complete clinical story reconstruction derived entirely from the transcript above.`;
+
+      const t0B = Date.now();
+      let completionB: any;
+      try {
+        completionB = await openai.chat.completions.create({
+          model: TEST_MODEL,
+          messages: [
+            { role: "system", content: systemPromptB },
+            { role: "user", content: userPromptB },
+          ],
+          response_format: { type: "json_object" },
+        });
+      } catch (apiErrB: any) {
+        return res.status(500).json({
+          error: apiErrB?.message ?? String(apiErrB),
+          status: apiErrB?.status,
+          mode: "B", model: TEST_MODEL, apiUsed, temperatureOmitted,
+          normalizedRegenerated: false,
+          topicInventoryRegenerated: false,
+          patternMatchRegenerated: false,
+        });
+      }
+      const generationMsB = Date.now() - t0B;
+
+      const rawB = JSON.parse(completionB.choices[0]?.message?.content ?? "{}");
+      const usageB = completionB.usage ?? {};
+
+      return res.json({
+        mode: "B",
+        model: TEST_MODEL,
+        apiUsed,
+        temperatureOmitted,
+        generatedNote: rawB.fullNote ?? rawB,
+        inputTokens: usageB.prompt_tokens ?? null,
+        outputTokens: usageB.completion_tokens ?? null,
+        totalTokens: usageB.total_tokens ?? null,
+        generationMs: generationMsB,
+        systemPromptChars: systemPromptB.length,
+        userPromptChars: userPromptB.length,
+        normalizedRegenerated: false,
+        topicInventoryRegenerated: false,
+        patternMatchRegenerated: false,
+        error: null,
+      });
+
+    } catch (outerErr: any) {
+      console.error("[test-soap-model] Unexpected error:", outerErr);
+      return res.status(500).json({
+        error: outerErr?.message ?? "Unexpected error",
+        mode, model: TEST_MODEL, apiUsed, temperatureOmitted,
+      });
+    }
+  });
   app.post("/api/encounters/:id/generate-template-note", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);

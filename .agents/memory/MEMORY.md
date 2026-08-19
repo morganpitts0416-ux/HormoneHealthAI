@@ -16,3 +16,4 @@
 - [Encounter metadata staleness](encounter-metadata-staleness.md) — pre-generation PUTs must persist UI visit metadata (visitType etc.), not just transcription, or notes render with stale values
 - [Recording segment loss](recording-segment-loss.md) — segment uploads/recorder restarts must never fail silently; [AUDIO GAP] markers + deterministic pipeline backstop are the guarantee
 - [Transcript-direct SOAP mode](soap-transcript-direct.md) — SOAP_TRANSCRIPT_DIRECT env flag enables transcript-first generation; disabled by default pending quality comparison
+- [SOAP model test endpoint](soap-test-endpoint.md) — gpt-5.6-sol comparison route; temperature must be omitted; Mode A uses buildSoapGenerationMessages; Mode B uses buildSoapCoreSystemPrompt; strictly read-only

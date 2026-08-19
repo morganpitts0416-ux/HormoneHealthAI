@@ -47,7 +47,7 @@ interface SpeakerNormResult {
  * 3. Never mutate utterances that already have validated labels — only fill
  *    in gaps or reclassify generic labels.
  */
-function normalizeSpeakerRoles(diarized: any[]): SpeakerNormResult {
+export function normalizeSpeakerRoles(diarized: any[]): SpeakerNormResult {
   if (!diarized || diarized.length === 0) return { normalized: [], conflicts: [] };
 
   const conflicts: string[] = [];
@@ -152,7 +152,7 @@ interface PipelineOutput {
   topicInventory?: string[]; // Step 3.5 coverage checklist — passed downstream to finalFidelityAudit
 }
 
-interface NormalizedExtraction {
+export interface NormalizedExtraction {
   medications_normalized: Array<{
     name: string;
     dose?: string;
@@ -212,7 +212,7 @@ interface NormalizedExtraction {
   enhanced_extraction: any;
 }
 
-async function medicalNormalizationAndInference(
+export async function medicalNormalizationAndInference(
   openai: OpenAI,
   extraction: any,
   transcriptText: string,
@@ -952,157 +952,12 @@ ${diarizedInput}`;
   };
 }
 
-async function generateSoapSections(
-  openai: OpenAI,
-  extraction: any,
-  normalized: NormalizedExtraction,
-  transcriptText: string,
-  diarized: any[],
-  labContext: string,
-  patternContext: string,
-  medicationContext: string,
-  encounter: any,
-  patientName?: string,
-  historicalContext?: string,
-  diagnosisBundles?: Array<{ title: string; codes: { code: string; name: string }[]; aliases: string[] }>,
-  transcriptDirect?: boolean,
-  topicInventory?: string[]
-): Promise<PipelineOutput> {
-  // ── Speaker role normalization (additive preprocessing) ───────────────────
-  const { normalized: diarizedNorm2, conflicts: speakerConflicts2 } = normalizeSpeakerRoles(diarized);
-
-  const diarizedInput = diarizedNorm2.length > 0
-    ? diarizedNorm2.map((u: any) => `${u.speaker.toUpperCase()}${u.uncertain ? "[?]" : ""}: ${u.normalizedText ?? u.text}`).join('\n')
-    : transcriptText;
-
-  const speakerConflictContext2 = speakerConflicts2.length > 0
-    ? `\nSPEAKER ROLE CONFLICTS DETECTED — these segments have medication or lab content attributed to PATIENT; verify before using in Assessment/Plan:\n${speakerConflicts2.map(c => `  ⚠ ${c}`).join('\n')}\n`
-    : "";
-
-  const normalizedMedsContext = normalized.medications_normalized.length
-    ? `\nNORMALIZED MEDICATIONS:\n${normalized.medications_normalized.map(m => {
-        // For adjusted medications, show prior → new dose explicitly so the generation model
-        // never writes the old dose in the A/P or Care Plan.
-        let doseStr = "";
-        if (m.status === "adjusted" && m.previous_dose && m.new_dose) {
-          doseStr = ` ${m.previous_dose} → ${m.new_dose} (DOSE CHANGE: use ${m.new_dose} in A/P and Care Plan)`;
-        } else if (m.status === "adjusted" && m.new_dose) {
-          doseStr = ` → ${m.new_dose} (DOSE CHANGE: use ${m.new_dose} in A/P and Care Plan)`;
-        } else if (m.dose) {
-          doseStr = ` ${m.dose}`;
-        }
-        return `- ${m.name}${doseStr}${m.route ? ` ${m.route}` : ""}${m.frequency ? ` ${m.frequency}` : ""} [${m.status}] (${m.confidence})${m.indication ? ` — for: ${m.indication}` : ""}`;
-      }).join('\n')}`
-    : "";
-
-  const conditionsContext = normalized.conditions_inferred.length
-    ? `\nINFERRED CONDITIONS:\n${normalized.conditions_inferred.map(c =>
-        `- ${c.condition} [${c.confidence}]: ${c.basis}`
-      ).join('\n')}`
-    : "";
-
-  const preventativeContext = normalized.preventative_signals.length
-    ? `\nPREVENTATIVE MEDICINE SIGNALS:\n${normalized.preventative_signals.map(s =>
-        `- ${s.signal}: ${s.clinical_relevance}${Array.isArray(s.supporting_evidence) && s.supporting_evidence.length ? ` (evidence: ${s.supporting_evidence.join("; ")})` : ""}`
-      ).join('\n')}`
-    : "";
-
-  const symptomTimelineContext = normalized.symptom_timeline.length
-    ? `\nSYMPTOM TIMELINE:\n${normalized.symptom_timeline.map(s =>
-        `- ${s.symptom} [${s.trajectory}${s.causality ? ` / causality:${s.causality}` : ""}]${s.onset ? ` onset: ${s.onset}` : ""}${s.duration ? ` duration: ${s.duration}` : ""}${s.context ? ` — ${s.context}` : ""}`
-      ).join('\n')}`
-    : "";
-
-  const futureConsiderationsContext = normalized.future_considerations?.length
-    ? `\nFUTURE CONSIDERATIONS (STATE B — deferred with specific trigger; MUST receive a numbered Assessment/Plan entry; Plan line must name the deferral reason):\n${normalized.future_considerations.map(f => {
-        const lines = [`- ${f.item} | deferred because: ${f.deferred_reason} | trigger type: ${f.deferred_trigger}`];
-        if (f.education_summary) lines.push(`  education: ${f.education_summary}`);
-        if (f.patient_response_summary) lines.push(`  patient response: ${f.patient_response_summary}`);
-        if (f.provider_reasoning_summary) lines.push(`  provider reasoning: ${f.provider_reasoning_summary}`);
-        if (f.follow_up_or_reassessment_plan) lines.push(`  follow-up plan: ${f.follow_up_or_reassessment_plan}`);
-        return lines.join('\n');
-      }).join('\n')}`
-    : "";
-
-  const exploratoryContext = normalized.exploratory_discussions?.length
-    ? `\nEXPLORATORY DISCUSSIONS (STATE C — conversational possibilities only; do NOT create Assessment entries or needs_clinician_review items; brief HPI mention is acceptable if clinically relevant):\n${normalized.exploratory_discussions.map(e => `- ${e}`).join('\n')}`
-    : "";
-
-  const treatmentRationaleContext = normalized.treatment_rationale?.length
-    ? `\nTREATMENT RATIONALE (use to build the clinical reasoning paragraph for each Assessment item — these are the WHY behind each treatment decision):\n${normalized.treatment_rationale.map(t =>
-        `- ${t.treatment}:\n    Symptoms addressed: ${t.symptoms_addressed.join(", ") || "not specified"}\n    Diagnosis/pattern: ${t.diagnosis_pattern || "not specified"}\n    Supporting labs: ${t.relevant_labs.join(", ") || "none cited"}\n    Prior treatment context: ${t.prior_treatment_context || "none"}\n    Provider reasoning: ${t.provider_reasoning || "not captured"}`
-      ).join('\n')}`
-    : "";
-
-  const planClassification = `
-PLAN DECISION CLASSIFICATION (use these states to determine note language — see DECISION-STATE DOCUMENTATION LANGUAGE rules):
-STATE A — Explicitly decided (include in Plan as definitive order): ${normalized.explicitly_decided_plan_items?.length ? normalized.explicitly_decided_plan_items.join("; ") : "none identified"}
-STATE B — Future consideration (MUST receive a numbered Assessment/Plan entry; Plan line must reflect the specific deferral reason and trigger): ${normalized.discussed_but_not_decided?.length ? normalized.discussed_but_not_decided.join("; ") : "none"}
-STATE C — Exploratory discussion (do NOT create Assessment entries; brief HPI mention only if relevant): ${normalized.exploratory_discussions?.length ? normalized.exploratory_discussions.join("; ") : "none"}
-STATE D — Clinically relevant follow-up (for needs_clinician_review only; never in Plan): ${normalized.clinically_relevant_followup?.length ? normalized.clinically_relevant_followup.join("; ") : "none"}`;
-
-  const hpiElements = normalized.enhanced_extraction?.hpi_chronological_elements?.length
-    ? `\nHPI CHRONOLOGICAL ELEMENTS (use these to reconstruct the clinical story in order):\n${normalized.enhanced_extraction.hpi_chronological_elements.map((e: string, i: number) => `${i + 1}. ${e}`).join('\n')}`
-    : "";
-
-  const patientPerspective = normalized.enhanced_extraction?.patient_perspective_statements?.length
-    ? `\nPATIENT PERSPECTIVE STATEMENTS (integrate into HPI as clinical paraphrases):\n${normalized.enhanced_extraction.patient_perspective_statements.map((s: string) => `- ${s}`).join('\n')}`
-    : "";
-
-  const providerReasoning = normalized.enhanced_extraction?.provider_reasoning_statements?.length
-    ? `\nPROVIDER REASONING (integrate into Assessment where relevant):\n${normalized.enhanced_extraction.provider_reasoning_statements.map((s: string) => `- ${s}`).join('\n')}`
-    : "";
-
-  const educationProvided = normalized.enhanced_extraction?.education_provided?.length
-    ? `\nEDUCATION PROVIDED (document fully in HPI + Assessment + Plan):\n${normalized.enhanced_extraction.education_provided.map((s: string) => `- ${s}`).join('\n')}`
-    : "";
-
-  const patientDecisions = normalized.enhanced_extraction?.patient_decisions?.length
-    ? `\nPATIENT DECISIONS (document in HPI + Plan):\n${normalized.enhanced_extraction.patient_decisions.map((s: string) => `- ${s}`).join('\n')}`
-    : "";
-
-  const decisionAttribution = normalized.enhanced_extraction?.decision_attribution?.length
-    ? `\nDECISION ATTRIBUTION (AUTHORITATIVE — who initiated each decision; the note MUST reflect this attribution and NEVER invert it):\n${normalized.enhanced_extraction.decision_attribution.map((d: any) =>
-        `- ${d.item} → ${d.initiated_by}${d.supporting_quote ? ` (evidence: "${d.supporting_quote}")` : ""}`
-      ).join('\n')}\nFor provider_initiated items: write the recommendation in provider voice ("Recommended...", "Decision made to...") — do NOT write that the patient expressed interest in, desired, requested, or believed in the treatment. For patient_requested items: the supporting quote must actually show an explicit request before attributing intent to the patient.`
-    : "";
-
-  const conditionalPlans = normalized.enhanced_extraction?.conditional_plans?.length
-    ? `\nCONDITIONAL (IF/THEN) PLANS (MANDATORY — each MUST appear in the relevant Assessment item's plan or Future Considerations AND in the Care Plan as a patient instruction; never drop or collapse into the unconditional plan):\n${normalized.enhanced_extraction.conditional_plans.map((c: any) =>
-        `- IF ${c.trigger_condition} → THEN ${c.action}${c.timeframe ? ` (timeframe: ${c.timeframe})` : ""}`
-      ).join('\n')}`
-    : "";
-
-  const explicitRefusalsContext = normalized.enhanced_extraction?.explicit_patient_refusals?.length
-    ? `\nPATIENT EXPLICIT REFUSALS (MEDICOLEGALLY REQUIRED — each must appear in Assessment/Plan for that topic with explicit refusal language; do NOT silently omit):\n${normalized.enhanced_extraction.explicit_patient_refusals.map((s: string) => `- ${s}`).join('\n')}`
-    : "";
-
-  const visitTerminationContext = normalized.enhanced_extraction?.visit_terminated_early
-    ? `\nVISIT TERMINATED EARLY — MEDICO-LEGAL FLAG: Patient ended the visit before all planned topics were addressed. Context: ${normalized.enhanced_extraction.visit_termination_context || "Visit ended abruptly at patient request; some topics may be incomplete."}\nApply SECTION 3E rules: document what was covered, flag what was not addressed, and add incomplete topics to needs_clinician_review.`
-    : "";
-
-  const extractionSummary = buildExtractionSummary(extraction);
-
-  // ── Topic inventory checklist ─────────────────────────────────────────────
-  // Injected at the end of the user prompt as a mandatory pre-output checklist.
-  // Every topic from the Step 3.5 inventory must appear in the note. This
-  // block is intentionally placed LAST so it is the final instruction the
-  // model reads before writing — maximizing its influence on coverage.
-  const topicInventoryChecklist = topicInventory?.length
-    ? `\n\n═══════════════════════════════════════
-MANDATORY TOPIC COVERAGE CHECKLIST — Step 3.5 Clinical Inventory
-═══════════════════════════════════════
-Every item below was identified by an INDEPENDENT READ of the full transcript before generation began.
-Every item MUST appear in this note (HPI, Assessment/Plan, Care Plan, or Follow-Up as appropriate).
-A topic is NOT documented by a vague category mention — it requires the specific detail, decision, or instruction listed below.
-Before returning output, verify each numbered item is present. If any is absent, add it now.
-
-${topicInventory.map((item: string, i: number) => `${i + 1}. ${item}`).join('\n')}
-
-RULE: No item on this list is optional. An encounter topic in this inventory that is absent from the note is a documentation failure.
-═══════════════════════════════════════`
-    : "";
-
+/**
+ * Returns the complete ClinIQ SOAP generation system prompt.
+ * Exported so the test endpoint can build a Mode B (transcript-direct, no
+ * extraction) prompt without running the full extraction pipeline.
+ */
+export function buildSoapCoreSystemPrompt(transcriptDirect: boolean): string {
   // ── TRANSCRIPT-DIRECT MODE framing block ─────────────────────────────────
   // Prepended to the system prompt when SOAP_TRANSCRIPT_DIRECT is enabled.
   // It does NOT override any existing clinical rules — it only reorders the
@@ -2322,6 +2177,161 @@ PATIENT vs. CLINICIAN IDENTITY (apply while drafting — never include this head
 - The PATIENT is the person being treated. Their name will be provided below. Use ONLY the patient's name (or "patient"/"she"/"he") when referring to the person receiving care.
 - The CLINICIAN/PROVIDER is the person conducting the visit. NEVER use the clinician's name as the patient. The transcript is often recorded from the clinician's perspective — do NOT confuse the speaker with the patient.
 - If the transcript is narrated in first person by the clinician (e.g., "I told her...", "we discussed..."), the "I" is the CLINICIAN, not the patient.`;
+  return systemPrompt;
+}
+
+export function buildSoapGenerationMessages(
+  extraction: any,
+  normalized: NormalizedExtraction,
+  transcriptText: string,
+  diarized: any[],
+  labContext: string,
+  patternContext: string,
+  medicationContext: string,
+  encounter: any,
+  patientName?: string,
+  historicalContext?: string,
+  diagnosisBundles?: Array<{ title: string; codes: { code: string; name: string }[]; aliases: string[] }>,
+  transcriptDirect?: boolean,
+  topicInventory?: string[]
+): { systemPrompt: string; userPrompt: string } {
+  // ── Speaker role normalization (additive preprocessing) ───────────────────
+  const { normalized: diarizedNorm2, conflicts: speakerConflicts2 } = normalizeSpeakerRoles(diarized);
+
+  const diarizedInput = diarizedNorm2.length > 0
+    ? diarizedNorm2.map((u: any) => `${u.speaker.toUpperCase()}${u.uncertain ? "[?]" : ""}: ${u.normalizedText ?? u.text}`).join('\n')
+    : transcriptText;
+
+  const speakerConflictContext2 = speakerConflicts2.length > 0
+    ? `\nSPEAKER ROLE CONFLICTS DETECTED — these segments have medication or lab content attributed to PATIENT; verify before using in Assessment/Plan:\n${speakerConflicts2.map(c => `  ⚠ ${c}`).join('\n')}\n`
+    : "";
+
+  const normalizedMedsContext = normalized.medications_normalized.length
+    ? `\nNORMALIZED MEDICATIONS:\n${normalized.medications_normalized.map(m => {
+        // For adjusted medications, show prior → new dose explicitly so the generation model
+        // never writes the old dose in the A/P or Care Plan.
+        let doseStr = "";
+        if (m.status === "adjusted" && m.previous_dose && m.new_dose) {
+          doseStr = ` ${m.previous_dose} → ${m.new_dose} (DOSE CHANGE: use ${m.new_dose} in A/P and Care Plan)`;
+        } else if (m.status === "adjusted" && m.new_dose) {
+          doseStr = ` → ${m.new_dose} (DOSE CHANGE: use ${m.new_dose} in A/P and Care Plan)`;
+        } else if (m.dose) {
+          doseStr = ` ${m.dose}`;
+        }
+        return `- ${m.name}${doseStr}${m.route ? ` ${m.route}` : ""}${m.frequency ? ` ${m.frequency}` : ""} [${m.status}] (${m.confidence})${m.indication ? ` — for: ${m.indication}` : ""}`;
+      }).join('\n')}`
+    : "";
+
+  const conditionsContext = normalized.conditions_inferred.length
+    ? `\nINFERRED CONDITIONS:\n${normalized.conditions_inferred.map(c =>
+        `- ${c.condition} [${c.confidence}]: ${c.basis}`
+      ).join('\n')}`
+    : "";
+
+  const preventativeContext = normalized.preventative_signals.length
+    ? `\nPREVENTATIVE MEDICINE SIGNALS:\n${normalized.preventative_signals.map(s =>
+        `- ${s.signal}: ${s.clinical_relevance}${Array.isArray(s.supporting_evidence) && s.supporting_evidence.length ? ` (evidence: ${s.supporting_evidence.join("; ")})` : ""}`
+      ).join('\n')}`
+    : "";
+
+  const symptomTimelineContext = normalized.symptom_timeline.length
+    ? `\nSYMPTOM TIMELINE:\n${normalized.symptom_timeline.map(s =>
+        `- ${s.symptom} [${s.trajectory}${s.causality ? ` / causality:${s.causality}` : ""}]${s.onset ? ` onset: ${s.onset}` : ""}${s.duration ? ` duration: ${s.duration}` : ""}${s.context ? ` — ${s.context}` : ""}`
+      ).join('\n')}`
+    : "";
+
+  const futureConsiderationsContext = normalized.future_considerations?.length
+    ? `\nFUTURE CONSIDERATIONS (STATE B — deferred with specific trigger; MUST receive a numbered Assessment/Plan entry; Plan line must name the deferral reason):\n${normalized.future_considerations.map(f => {
+        const lines = [`- ${f.item} | deferred because: ${f.deferred_reason} | trigger type: ${f.deferred_trigger}`];
+        if (f.education_summary) lines.push(`  education: ${f.education_summary}`);
+        if (f.patient_response_summary) lines.push(`  patient response: ${f.patient_response_summary}`);
+        if (f.provider_reasoning_summary) lines.push(`  provider reasoning: ${f.provider_reasoning_summary}`);
+        if (f.follow_up_or_reassessment_plan) lines.push(`  follow-up plan: ${f.follow_up_or_reassessment_plan}`);
+        return lines.join('\n');
+      }).join('\n')}`
+    : "";
+
+  const exploratoryContext = normalized.exploratory_discussions?.length
+    ? `\nEXPLORATORY DISCUSSIONS (STATE C — conversational possibilities only; do NOT create Assessment entries or needs_clinician_review items; brief HPI mention is acceptable if clinically relevant):\n${normalized.exploratory_discussions.map(e => `- ${e}`).join('\n')}`
+    : "";
+
+  const treatmentRationaleContext = normalized.treatment_rationale?.length
+    ? `\nTREATMENT RATIONALE (use to build the clinical reasoning paragraph for each Assessment item — these are the WHY behind each treatment decision):\n${normalized.treatment_rationale.map(t =>
+        `- ${t.treatment}:\n    Symptoms addressed: ${t.symptoms_addressed.join(", ") || "not specified"}\n    Diagnosis/pattern: ${t.diagnosis_pattern || "not specified"}\n    Supporting labs: ${t.relevant_labs.join(", ") || "none cited"}\n    Prior treatment context: ${t.prior_treatment_context || "none"}\n    Provider reasoning: ${t.provider_reasoning || "not captured"}`
+      ).join('\n')}`
+    : "";
+
+  const planClassification = `
+PLAN DECISION CLASSIFICATION (use these states to determine note language — see DECISION-STATE DOCUMENTATION LANGUAGE rules):
+STATE A — Explicitly decided (include in Plan as definitive order): ${normalized.explicitly_decided_plan_items?.length ? normalized.explicitly_decided_plan_items.join("; ") : "none identified"}
+STATE B — Future consideration (MUST receive a numbered Assessment/Plan entry; Plan line must reflect the specific deferral reason and trigger): ${normalized.discussed_but_not_decided?.length ? normalized.discussed_but_not_decided.join("; ") : "none"}
+STATE C — Exploratory discussion (do NOT create Assessment entries; brief HPI mention only if relevant): ${normalized.exploratory_discussions?.length ? normalized.exploratory_discussions.join("; ") : "none"}
+STATE D — Clinically relevant follow-up (for needs_clinician_review only; never in Plan): ${normalized.clinically_relevant_followup?.length ? normalized.clinically_relevant_followup.join("; ") : "none"}`;
+
+  const hpiElements = normalized.enhanced_extraction?.hpi_chronological_elements?.length
+    ? `\nHPI CHRONOLOGICAL ELEMENTS (use these to reconstruct the clinical story in order):\n${normalized.enhanced_extraction.hpi_chronological_elements.map((e: string, i: number) => `${i + 1}. ${e}`).join('\n')}`
+    : "";
+
+  const patientPerspective = normalized.enhanced_extraction?.patient_perspective_statements?.length
+    ? `\nPATIENT PERSPECTIVE STATEMENTS (integrate into HPI as clinical paraphrases):\n${normalized.enhanced_extraction.patient_perspective_statements.map((s: string) => `- ${s}`).join('\n')}`
+    : "";
+
+  const providerReasoning = normalized.enhanced_extraction?.provider_reasoning_statements?.length
+    ? `\nPROVIDER REASONING (integrate into Assessment where relevant):\n${normalized.enhanced_extraction.provider_reasoning_statements.map((s: string) => `- ${s}`).join('\n')}`
+    : "";
+
+  const educationProvided = normalized.enhanced_extraction?.education_provided?.length
+    ? `\nEDUCATION PROVIDED (document fully in HPI + Assessment + Plan):\n${normalized.enhanced_extraction.education_provided.map((s: string) => `- ${s}`).join('\n')}`
+    : "";
+
+  const patientDecisions = normalized.enhanced_extraction?.patient_decisions?.length
+    ? `\nPATIENT DECISIONS (document in HPI + Plan):\n${normalized.enhanced_extraction.patient_decisions.map((s: string) => `- ${s}`).join('\n')}`
+    : "";
+
+  const decisionAttribution = normalized.enhanced_extraction?.decision_attribution?.length
+    ? `\nDECISION ATTRIBUTION (AUTHORITATIVE — who initiated each decision; the note MUST reflect this attribution and NEVER invert it):\n${normalized.enhanced_extraction.decision_attribution.map((d: any) =>
+        `- ${d.item} → ${d.initiated_by}${d.supporting_quote ? ` (evidence: "${d.supporting_quote}")` : ""}`
+      ).join('\n')}\nFor provider_initiated items: write the recommendation in provider voice ("Recommended...", "Decision made to...") — do NOT write that the patient expressed interest in, desired, requested, or believed in the treatment. For patient_requested items: the supporting quote must actually show an explicit request before attributing intent to the patient.`
+    : "";
+
+  const conditionalPlans = normalized.enhanced_extraction?.conditional_plans?.length
+    ? `\nCONDITIONAL (IF/THEN) PLANS (MANDATORY — each MUST appear in the relevant Assessment item's plan or Future Considerations AND in the Care Plan as a patient instruction; never drop or collapse into the unconditional plan):\n${normalized.enhanced_extraction.conditional_plans.map((c: any) =>
+        `- IF ${c.trigger_condition} → THEN ${c.action}${c.timeframe ? ` (timeframe: ${c.timeframe})` : ""}`
+      ).join('\n')}`
+    : "";
+
+  const explicitRefusalsContext = normalized.enhanced_extraction?.explicit_patient_refusals?.length
+    ? `\nPATIENT EXPLICIT REFUSALS (MEDICOLEGALLY REQUIRED — each must appear in Assessment/Plan for that topic with explicit refusal language; do NOT silently omit):\n${normalized.enhanced_extraction.explicit_patient_refusals.map((s: string) => `- ${s}`).join('\n')}`
+    : "";
+
+  const visitTerminationContext = normalized.enhanced_extraction?.visit_terminated_early
+    ? `\nVISIT TERMINATED EARLY — MEDICO-LEGAL FLAG: Patient ended the visit before all planned topics were addressed. Context: ${normalized.enhanced_extraction.visit_termination_context || "Visit ended abruptly at patient request; some topics may be incomplete."}\nApply SECTION 3E rules: document what was covered, flag what was not addressed, and add incomplete topics to needs_clinician_review.`
+    : "";
+
+  const extractionSummary = buildExtractionSummary(extraction);
+
+  // ── Topic inventory checklist ─────────────────────────────────────────────
+  // Injected at the end of the user prompt as a mandatory pre-output checklist.
+  // Every topic from the Step 3.5 inventory must appear in the note. This
+  // block is intentionally placed LAST so it is the final instruction the
+  // model reads before writing — maximizing its influence on coverage.
+  const topicInventoryChecklist = topicInventory?.length
+    ? `\n\n═══════════════════════════════════════
+MANDATORY TOPIC COVERAGE CHECKLIST — Step 3.5 Clinical Inventory
+═══════════════════════════════════════
+Every item below was identified by an INDEPENDENT READ of the full transcript before generation began.
+Every item MUST appear in this note (HPI, Assessment/Plan, Care Plan, or Follow-Up as appropriate).
+A topic is NOT documented by a vague category mention — it requires the specific detail, decision, or instruction listed below.
+Before returning output, verify each numbered item is present. If any is absent, add it now.
+
+${topicInventory.map((item: string, i: number) => `${i + 1}. ${item}`).join('\n')}
+
+RULE: No item on this list is optional. An encounter topic in this inventory that is absent from the note is a documentation failure.
+═══════════════════════════════════════`
+    : "";
+
+  // ── System prompt ─────────────────────────────────────────────────────────
+  const systemPrompt = buildSoapCoreSystemPrompt(transcriptDirect ?? false);
 
   const patientLine = patientName ? `\nPatient Name: ${patientName}` : "";
   const historicalBlock = historicalContext
@@ -2506,6 +2516,33 @@ ${diarizedInput}
 Generate the complete medical record following all rules above.${patientName ? ` The patient's name is "${patientName}" — use this name (NOT the clinician's name) when referring to the patient in the note.` : ""} The HPI must be a complete clinical story reconstruction — not a compressed summary. Flag uncertain items and non-duplicate recommendations in needs_clinician_review.
 
 ${finalReconciliationBlock}${topicInventoryChecklist}`;
+
+  return { systemPrompt, userPrompt };
+}
+
+// Production SOAP generation wrapper — builds prompts via buildSoapGenerationMessages,
+// then dispatches to gpt-4o. Never changes the production model string.
+async function generateSoapSections(
+  openai: OpenAI,
+  extraction: any,
+  normalized: NormalizedExtraction,
+  transcriptText: string,
+  diarized: any[],
+  labContext: string,
+  patternContext: string,
+  medicationContext: string,
+  encounter: any,
+  patientName?: string,
+  historicalContext?: string,
+  diagnosisBundles?: Array<{ title: string; codes: { code: string; name: string }[]; aliases: string[] }>,
+  transcriptDirect?: boolean,
+  topicInventory?: string[]
+): Promise<PipelineOutput> {
+  const { systemPrompt, userPrompt } = buildSoapGenerationMessages(
+    extraction, normalized, transcriptText, diarized,
+    labContext, patternContext, medicationContext, encounter, patientName,
+    historicalContext, diagnosisBundles, transcriptDirect, topicInventory
+  );
 
   const completion = await retryOnRateLimit(() => openai.chat.completions.create({
     model: "gpt-4o",
@@ -3719,7 +3756,7 @@ function deterministicValidateNote(note: string, extraction: any): Deterministic
 // key property: the extraction phase must pick which facts fit into a schema;
 // the inventory just lists what was said, with no schema constraints.
 // ────────────────────────────────────────────────────────────────────────────────
-async function buildTopicInventory(
+export async function buildTopicInventory(
   openai: OpenAI,
   transcriptText: string,
   diarized: any[]
