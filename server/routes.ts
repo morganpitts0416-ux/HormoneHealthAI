@@ -29,6 +29,12 @@ import {
   buildTopicInventory, medicalNormalizationAndInference,
   type NormalizedExtraction,
 } from "./soap-pipeline";
+import {
+  buildModeBSolChatCompletionRequest,
+  MODE_B_SOL_MODEL,
+  MODE_B_SOL_SOAP_PRODUCTION_GENERATOR,
+  resolveProductionSoapGenerator,
+} from "./soap-production-generator";
 import { runJunePipeline, shouldJuneAcknowledge } from "./spruce-june";
 import { getSpruceAuthorId, invalidateSpruceAuthorCache } from "./spruce-author";
 import { PREVENTCalculator } from "./prevent-calculator";
@@ -11658,6 +11664,7 @@ async function buildSoapEncounterContext(params: {
   openai: OpenAI;
   persistPatternMatch: boolean;
   storedPatternMatch?: any;
+  onlyLabContext?: boolean;
 }): Promise<SoapEncounterContext> {
   const { encounter, encounterId, clinicianId, clinicId, extraction, transcriptText, diarized, wasNormalized, openai, persistPatternMatch } = params;
 
@@ -11787,6 +11794,22 @@ async function buildSoapEncounterContext(params: {
         ? `\n\nLINKED LAB RESULTS (${genderLabel} panel, drawn ${dateLabel}):\n${labLines}${clinicalInterpContext}`
         : "";
     }
+  }
+
+  // Mode B Sol uses linked-lab context, but deliberately excludes every
+  // extraction/pattern/medication-derived context source. Stop before those
+  // stages so this helper remains safe to share with the legacy path.
+  if (params.onlyLabContext) {
+    return {
+      labContext,
+      patternContext: "",
+      medicationContext: "",
+      historicalContext: "",
+      diagnosisBundles: [],
+      patientName: undefined,
+      autoMedMatches: [],
+      patternMatchRegenerated: false,
+    };
   }
 
   // ── Pattern context ────────────────────────────────────────────────────────
@@ -12077,6 +12100,194 @@ Return a JSON object:
 
   return { labContext, patternContext, medicationContext, historicalContext, diagnosisBundles, patientName, autoMedMatches, patternMatchRegenerated };
 }
+
+interface ModeBSolPrompt {
+  systemPrompt: string;
+  userPrompt: string;
+}
+
+interface ModeBSolSoapNote {
+  fullNote: string;
+  uncertain_items: string[];
+  needs_clinician_review: string[];
+  provider_review_flags: string[];
+}
+
+/**
+ * The shared Mode B prompt assembly. It intentionally uses only the raw/stored
+ * transcript, chart history, linked labs, and established SOAP writing rules.
+ * Do not add extraction, pattern, medication, normalization, or topic context.
+ */
+async function buildModeBSolPrompt(params: {
+  encounter: any;
+  encounterId: number;
+  clinicianId: number;
+  clinicId: number;
+  transcriptText: string;
+  diarized: any[];
+  wasNormalized: boolean;
+  openai: OpenAI;
+}): Promise<ModeBSolPrompt> {
+  const {
+    encounter,
+    encounterId,
+    clinicianId,
+    clinicId,
+    transcriptText,
+    diarized,
+    wasNormalized,
+    openai,
+  } = params;
+  const systemPrompt = buildSoapCoreSystemPrompt(/* transcriptDirect= */ true);
+
+  let historicalContext = "";
+  if (encounter.patientId) {
+    historicalContext = await buildPatientHistoricalContext(
+      encounter.patientId,
+      encounterId,
+      clinicianId,
+      clinicId,
+    );
+  }
+
+  let labContext = "";
+  if (encounter.linkedLabResultId) {
+    const labOnlyContext = await buildSoapEncounterContext({
+      encounter,
+      encounterId,
+      clinicianId,
+      clinicId,
+      extraction: null,
+      transcriptText,
+      diarized,
+      wasNormalized,
+      openai,
+      persistPatternMatch: false,
+      onlyLabContext: true,
+    });
+    labContext = labOnlyContext.labContext;
+  }
+
+  const diarizedInput = diarized.length > 0
+    ? diarized.map((u: any) => `${u.speaker.toUpperCase()}: ${u.normalizedText ?? u.text}`).join("\n")
+    : transcriptText;
+
+  const userPrompt = `Visit Type: ${encounter.visitType}
+Chief Complaint: ${encounter.chiefComplaint || "Not specified"}
+Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}
+${historicalContext}${labContext}
+
+TRANSCRIPT:
+${diarizedInput}
+
+Generate the complete medical record following all rules above. The HPI must be a complete clinical story reconstruction derived entirely from the transcript above.`;
+
+  return { systemPrompt, userPrompt };
+}
+
+function normalizeModeBSolSoapNote(raw: any): ModeBSolSoapNote {
+  if (typeof raw?.fullNote !== "string" || !raw.fullNote.trim()) {
+    throw new Error("Mode B Sol returned no complete SOAP note");
+  }
+
+  const stringArray = (value: unknown): string[] =>
+    Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      : [];
+
+  return {
+    fullNote: raw.fullNote,
+    uncertain_items: stringArray(raw.uncertain_items),
+    needs_clinician_review: stringArray(raw.needs_clinician_review),
+    provider_review_flags: stringArray(raw.provider_review_flags),
+  };
+}
+
+function addAudioGapReviewWarning(soapNote: ModeBSolSoapNote, transcriptText: string): ModeBSolSoapNote {
+  const gapCount = (transcriptText.match(/\[AUDIO GAP/g) || []).length;
+  if (gapCount === 0 || soapNote.needs_clinician_review.some(item => /AUDIO GAP|audio gap/i.test(item))) {
+    return soapNote;
+  }
+
+  return {
+    ...soapNote,
+    needs_clinician_review: [
+      ...soapNote.needs_clinician_review,
+      `TRANSCRIPT INCOMPLETE: ${gapCount} untranscribed audio gap${gapCount === 1 ? "" : "s"} in this encounter's recording — portions of the visit are not documented in this note. Review and amend before signing.`,
+    ],
+  };
+}
+
+function scheduleSocialHistoryEnrichment(params: {
+  encounter: any;
+  clinicianId: number;
+  openai: OpenAI;
+  transcriptText: string;
+}) {
+  const { encounter, clinicianId, openai, transcriptText } = params;
+  setImmediate(async () => {
+    if (!encounter.patientId) return;
+
+    try {
+      const shCompletion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: `You are a clinical documentation specialist. Extract social history items from a clinical encounter transcript.
+
+Extract ONLY items that are explicitly stated or very clearly implied. Categories to look for:
+- Occupation / career / employer / work status (employed, retired, disabled, etc.)
+- Living situation (lives alone, with spouse, with family, assisted living, etc.)
+- Relationship status / marital status
+- Children / dependents (ages if mentioned)
+- Education / schooling level
+- Tobacco use (current, former, never — include type and amount if stated)
+- Alcohol use (frequency, amount — e.g. "1-2 drinks/week")
+- Recreational drug / substance use
+- Exercise habits (type, frequency, duration)
+- Diet patterns (e.g. low-carb, vegetarian, intermittent fasting)
+- Significant stressors or life events mentioned clinically
+
+Return JSON: { "social_history_items": ["<item 1>", "<item 2>", ...] }
+Each item should be a concise, standalone clinical statement (e.g. "Employed as a nurse", "Lives with spouse and 2 children", "Former smoker — quit 2018", "Drinks 1-2 glasses of wine nightly", "Exercises 3x/week, resistance training").
+If nothing is found, return: { "social_history_items": [] }`,
+          },
+          {
+            role: "user",
+            content: `TRANSCRIPT:\n${transcriptText.slice(0, 8000)}`,
+          },
+        ],
+        response_format: { type: "json_object" },
+      });
+
+      const shParsed = JSON.parse(shCompletion.choices[0].message.content || "{}");
+      const extractedItems: string[] = shParsed.social_history_items ?? [];
+      if (extractedItems.length === 0) return;
+
+      const existingChart = await storage.getPatientChart(encounter.patientId, clinicianId);
+      const existing: string[] = (existingChart?.socialHistory as string[]) ?? [];
+      const existingLower = existing.map((s: string) => s.toLowerCase().trim());
+      const newItems = extractedItems.filter((item: string) => {
+        const lowerCaseItem = item.toLowerCase().trim();
+        return !existingLower.some(existingItem =>
+          existingItem.includes(lowerCaseItem.slice(0, 20)) ||
+          lowerCaseItem.includes(existingItem.slice(0, 20)),
+        );
+      });
+
+      if (newItems.length > 0) {
+        await storage.upsertPatientChart(encounter.patientId, clinicianId, {
+          socialHistory: [...existing, ...newItems],
+        });
+        console.log(`[SOAP Pipeline] Social history updated for patient ${encounter.patientId}: +${newItems.length} items`);
+      }
+    } catch (shErr) {
+      console.warn("[SOAP Pipeline] Background social history extraction failed:", shErr);
+    }
+  });
+}
+
   app.post("/api/encounters/:id/generate-soap", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
@@ -12111,6 +12322,71 @@ Return a JSON object:
         apiKey: process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
         ...(process.env.OPENAI_API_KEY ? {} : { baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL }),
       });
+
+      // ── Limited production trial: Mode B GPT-5.6 Sol ─────────────────────
+      // Branch before normalization and extraction. The trial intentionally
+      // operates on the stored diarized transcript (when available) or raw
+      // transcription, matching the read-only comparison endpoint's Mode B.
+      if (resolveProductionSoapGenerator() === MODE_B_SOL_SOAP_PRODUCTION_GENERATOR) {
+        const diarized = (encounter.diarizedTranscript as any[]) ?? [];
+        const wasNormalized = diarized.length > 0;
+        const transcriptText = wasNormalized
+          ? diarized.map((u: any) => `${u.speaker.toUpperCase()}: ${u.normalizedText ?? u.text}`).join("\n")
+          : (encounter.transcription ?? "");
+
+        if (!transcriptText.trim()) {
+          return res.status(400).json({ message: "No transcription available. Please record or add session notes first." });
+        }
+
+        const { systemPrompt, userPrompt } = await buildModeBSolPrompt({
+          encounter,
+          encounterId: id,
+          clinicianId,
+          clinicId,
+          transcriptText,
+          diarized,
+          wasNormalized,
+          openai,
+        });
+        const completion = await openai.chat.completions.create(
+          buildModeBSolChatCompletionRequest(systemPrompt, userPrompt),
+        );
+        const rawSoapNote = JSON.parse(completion.choices[0]?.message?.content ?? "{}");
+        const soapNote = addAudioGapReviewWarning(
+          normalizeModeBSolSoapNote(rawSoapNote),
+          transcriptText,
+        );
+
+        const updated = await storage.updateEncounter(id, clinicianId, {
+          soapNote,
+          soapGeneratedAt: new Date(),
+        }, clinicId);
+
+        if (encounter.patientId && soapNote.fullNote) {
+          persistVitalsFromNoteText(encounter.patientId, clinicianId, soapNote.fullNote, id);
+        }
+
+        console.log(`[SOAP] Generated with ${MODE_B_SOL_MODEL} Mode B production trial`);
+        res.json({
+          soapNote,
+          encounter: updated,
+          medicationMatches: [],
+          diarizedTranscript: diarized,
+          clinicalExtraction: (encounter as any).clinicalExtraction ?? null,
+          junePrefsApplied: [],
+          bundlesApplied: [],
+          fidelityRestoredDetail: false,
+          validationGate: null,
+          generator: MODE_B_SOL_SOAP_PRODUCTION_GENERATOR,
+        });
+        scheduleSocialHistoryEnrichment({
+          encounter,
+          clinicianId,
+          openai,
+          transcriptText,
+        });
+        return;
+      }
 
       // ── PIPELINE STEP 1: Normalize + diarize (always fresh) ───────────────
       // For transcripts longer than ~48k chars (≈30 min of speech), normalization
@@ -13002,7 +13278,7 @@ If nothing is found, return: { "social_history_items": [] }`,
       return res.status(400).json({ error: "mode must be 'A' or 'B'" });
     }
 
-    const TEST_MODEL = "gpt-5.6-sol";
+    const TEST_MODEL = MODE_B_SOL_MODEL;
 
     // Load encounter and verify clinic ownership
     const encounter = await storage.getEncounter(id, clinicianId, clinicId);
@@ -13146,62 +13422,23 @@ If nothing is found, return: { "social_history_items": [] }`,
       // ── MODE B: Transcript-direct — no extraction pipeline ──────────────
       // Same ClinIQ rules, same transcript, no structured extraction context.
       // Tests what gpt-5.6-sol does with raw transcript + chart context only.
-      const systemPromptB = buildSoapCoreSystemPrompt(/* transcriptDirect= */ true);
-
-      // Build historical and lab context (chart data — same as Mode A)
-      let historicalContextB = "";
-      if (encounter.patientId) {
-        historicalContextB = await buildPatientHistoricalContext(
-          encounter.patientId, id, clinicianId, clinicId
-        );
-      }
-
-      let labContextB = "";
-      if (encounter.linkedLabResultId) {
-        // Reuse the same labContext builder via buildSoapEncounterContext
-        // with a no-op extraction so only labContext is populated
-        const labCtx = await buildSoapEncounterContext({
-          encounter,
-          encounterId: id,
-          clinicianId,
-          clinicId,
-          extraction: null,
-          transcriptText,
-          diarized,
-          wasNormalized,
-          openai,
-          persistPatternMatch: false,
-          // Pass empty storedPatternMatch so pattern match is skipped entirely
-          storedPatternMatch: { matched_patterns: [], symptom_clusters: [], mode: "transcript_only", lab_context_used: false },
-        });
-        labContextB = labCtx.labContext;
-      }
-
-      const diarizedInput = diarized.length > 0
-        ? diarized.map((u: any) => `${u.speaker.toUpperCase()}: ${u.normalizedText ?? u.text}`).join('\n')
-        : transcriptText;
-
-      const userPromptB = `Visit Type: ${encounter.visitType}
-Chief Complaint: ${encounter.chiefComplaint || "Not specified"}
-Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}
-${historicalContextB}${labContextB}
-
-TRANSCRIPT:
-${diarizedInput}
-
-Generate the complete medical record following all rules above. The HPI must be a complete clinical story reconstruction derived entirely from the transcript above.`;
+      const { systemPrompt: systemPromptB, userPrompt: userPromptB } = await buildModeBSolPrompt({
+        encounter,
+        encounterId: id,
+        clinicianId,
+        clinicId,
+        transcriptText,
+        diarized,
+        wasNormalized,
+        openai,
+      });
 
       const t0B = Date.now();
       let completionB: any;
       try {
-        completionB = await openai.chat.completions.create({
-          model: TEST_MODEL,
-          messages: [
-            { role: "system", content: systemPromptB },
-            { role: "user", content: userPromptB },
-          ],
-          response_format: { type: "json_object" },
-        });
+        completionB = await openai.chat.completions.create(
+          buildModeBSolChatCompletionRequest(systemPromptB, userPromptB),
+        );
       } catch (apiErrB: any) {
         return res.status(500).json({
           error: apiErrB?.message ?? String(apiErrB),
