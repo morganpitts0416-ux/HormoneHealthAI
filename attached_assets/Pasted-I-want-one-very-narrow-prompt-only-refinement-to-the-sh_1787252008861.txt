@@ -1,0 +1,145 @@
+I want one very narrow prompt-only refinement to the shared ClinIQ SOAP system prompt. Do not change the Mode B architecture, model, routing, persistence, database/schema, Evidence Layer, June, lab evaluation pipeline, or add any new AI calls.
+
+The last prompt revision improved:
+
+treating-clinician voice
+intervention-vs-diagnosis separation
+optimization-target vs disease coding
+
+But it did not fully solve Final Plan Precedence in conversational transcripts.
+
+In the Jan Stewart regression case, the transcript initially discussed increasing an estradiol patch and separately compounding topical testosterone. Later, while discussing the compounded topical prescription, the provider stated:
+
+“I’m going to put your estrogen in there too.”
+
+The generated SOAP still documented:
+
+increased estradiol patch
+separate compounded testosterone
+
+rather than recognizing that the later statement modified the final plan to include estrogen in the compounded topical preparation.
+
+CHANGE 1 — Add conversational reference resolution to Final Plan Precedence
+
+Add the following rule immediately after the existing Final Plan Precedence section:
+
+CONVERSATIONAL REFERENCE RESOLUTION — FINAL TREATMENT PLAN
+
+Clinical conversations frequently use shorthand references after a medication, compound, prescription, test, or treatment has already been established in the immediately preceding discussion.
+
+When determining the final plan, resolve conversational references using the surrounding transcript context.
+
+Examples include:
+
+“put it in there”
+“add that to it”
+“put X in there too”
+“do that one instead”
+“send that one”
+“increase that”
+“keep that”
+“switch that”
+“hold that”
+
+Do not discard a later definitive treatment instruction merely because the clinician refers to the treatment conversationally rather than repeating the full medication or product name.
+
+If the referent can be resolved with high confidence from the immediately surrounding discussion, use that interpretation when determining the final treatment state.
+
+A later resolved decision supersedes an earlier tentative or provisional plan unless the clinician subsequently confirms that both plans remain active.
+
+If the referent genuinely cannot be resolved from context, do not guess. Preserve the ambiguity and add a provider_review_flags item.
+
+Regression example
+
+If the clinician and patient are discussing a compounded topical testosterone preparation and the clinician later says:
+
+“I’m going to put your estrogen in there too.”
+
+then, when the surrounding transcript supports that referent, interpret the final plan as a compounded preparation containing estrogen and testosterone.
+
+Do not continue documenting the earlier separate estradiol-patch plan as active unless the clinician later explicitly confirms that both the patch and compounded estrogen are intended.
+
+This is a reasoning example, not a hard-coded hormone rule. Apply the same logic to any medication, dose, route, compound, test, or treatment whose final state is clarified through conversational shorthand.
+
+CHANGE 2 — Tighten clinician-authored voice one more step
+
+The updated note still generated phrases such as:
+
+“below the discussed low-risk goal”
+“the range discussed”
+
+These still sound like an observer summarizing a conversation.
+
+Extend the existing narrator-language guardrail so that supported clinical conclusions should not be unnecessarily qualified by:
+
+“discussed”
+“reviewed”
+“stated”
+“described”
+
+when those words are being used only to distance the writer from the clinical conclusion.
+
+For example:
+
+Avoid:
+ApoB is 90 mg/dL, below the discussed low-risk goal of 130 mg/dL.
+
+Prefer:
+ApoB is 90 mg/dL, within goal for her current cardiovascular risk category.
+
+Avoid:
+Estradiol is below the range discussed for bone preservation.
+
+Prefer:
+Estradiol is below the target range used for bone preservation.
+
+Do not ban normal documentation phrases such as:
+
+“risks and benefits were discussed”
+“treatment options were reviewed”
+
+when they describe an actual counseling action.
+
+The distinction is:
+
+clinical conclusion → write directly
+
+actual counseling/discussion event → “discussed/reviewed” is appropriate
+
+IMPLEMENTATION CONSTRAINTS
+
+Do not:
+
+change gpt-5.6-sol
+change Mode B routing
+reintroduce extraction
+reintroduce normalization/inference
+reintroduce topic inventory
+reintroduce pattern matching
+add QA rewrite
+add another AI call
+change linked-lab context
+change persistence
+change database/schema
+change Evidence Layer
+change June
+change the lab evaluation pipeline
+change any unrelated prompt rules
+
+This should remain a shared prompt-only refinement in the authoritative core SOAP prompt.
+
+Before implementing:
+
+Show me exactly where the conversational-reference rule will be inserted.
+Identify any existing rule that conflicts with resolving later shorthand references.
+Confirm production Mode B and the test Mode B endpoint will both inherit the change automatically.
+Propose the minimal diff.
+
+After implementation:
+
+Add a regression test asserting the shared prompt contains the conversational-reference rule and the Jan-style example.
+Add a regression test for direct clinical voice versus “discussed goal” phrasing.
+Run the build and SOAP prompt tests.
+Confirm no non-prompt production behavior changed.
+
+Do not deploy automatically. Show me the findings, final diff summary, and test results first.
