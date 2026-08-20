@@ -1,0 +1,173 @@
+I want to refine the ClinIQ SOAP-writing rules based on review of real production GPT-5.6 Sol notes. Do not change the SOAP architecture, model routing, Mode B pipeline, API configuration, database, or any preprocessing/post-processing. This is a prompt-level refinement only.
+
+The current production architecture remains:
+
+raw transcript + historical/chart context + linked lab context + ClinIQ SOAP rules → gpt-5.6-sol
+
+I want these rules incorporated into the shared core SOAP system prompt used by production Mode B. Preferably these should live in buildSoapCoreSystemPrompt() or the underlying shared prompt constant/source so there is one authoritative version of the ClinIQ SOAP-writing rules.
+
+RULE 1 — WRITE IN THE TREATING CLINICIAN'S VOICE
+
+The SOAP note is the clinician's medical documentation. It must not sound like an AI observer summarizing what a provider said.
+
+Avoid distancing/observer language such as:
+
+“the provider stated”
+“the clinician recommended”
+“was described as low”
+“was described as elevated”
+“the stated goal”
+“the discussed goal”
+“the provider reviewed”
+
+Clinical interpretations should be documented directly when supported by the encounter.
+
+Examples:
+
+Avoid: “Testosterone was described as low.”
+
+Prefer: “Testosterone is low on current laboratory testing.”
+
+Avoid: “ApoB was below the discussed goal.”
+
+Prefer: “ApoB is 90, within goal for her current cardiovascular risk category.”
+
+Normal clinical documentation phrases such as “risks and benefits were discussed,” “treatment options were reviewed,” or “patient elected...” are acceptable. The goal is not to eliminate passive voice globally; it is to eliminate language that makes the note sound like a third-party narrator.
+
+RULE 2 — FINAL PLAN PRECEDENCE / RECONCILE EVOLVING DECISIONS
+
+The transcript is conversational and clinical decisions may evolve throughout the encounter. The provider may initially consider one treatment and later modify, replace, combine, clarify, or abandon it.
+
+The SOAP writer must read the entire transcript and determine the provider's final stated treatment decision for each problem.
+
+Later definitive decisions supersede earlier tentative or exploratory decisions unless the provider clearly intends both interventions to remain active.
+
+Do not simply collect every treatment statement made during the encounter and treat all of them as simultaneous active plans.
+
+Pay particular attention to later statements such as:
+
+“actually...”
+“instead...”
+“let's do...”
+“we'll do...”
+“I'm going to send...”
+“I'll put that in...”
+“I'm going to put X in there too...”
+“we'll switch...”
+“we'll hold off on...”
+“never mind...”
+other language indicating that the treatment plan has been finalized or changed.
+
+Before writing the final A&P, internally reconcile each medication/treatment into its final encounter state: continue, start, increase/decrease, combine, discontinue, defer, consider later, or unresolved.
+
+If the transcript genuinely does not establish the final plan, preserve that uncertainty rather than choosing one.
+
+This rule is particularly important for medication dose changes, route changes, compounded medications, prescriptions, and decisions that are revisited near the end of the encounter.
+
+RULE 3 — DIAGNOSE CONDITIONS, NOT INTERVENTIONS
+
+Assessment & Plan diagnoses/problems should represent actual clinical conditions, symptoms, risk states, or legitimate problems being assessed/managed.
+
+Do not create a separate diagnosis/problem merely because a medication, supplement, counseling topic, test, or intervention needs somewhere to go.
+
+Examples of things that generally should NOT become standalone diagnoses solely because they were discussed:
+
+“Cardiac health support”
+“Systemic inflammation support”
+“Berberine therapy”
+“Supplement management”
+“Medication reconciliation”
+“Nutritional supplement management”
+
+Instead, place the intervention under the most clinically relevant diagnosis.
+
+Examples:
+
+omega-3 / CoQ10 / cardiovascular counseling → dyslipidemia or appropriate cardiovascular-risk problem
+berberine / metabolic nutrition counseling → insulin resistance, prediabetes, metabolic dysfunction, etc., when supported
+iron supplementation → iron deficiency when supported
+hormone interventions → appropriate menopausal/hormonal problem
+
+If counseling or a supplement does not justify its own diagnosis and does not clearly belong under another problem, preserve it in the Care Plan rather than manufacturing a diagnosis.
+
+Do not omit an intervention simply because it does not warrant its own diagnosis. Preserve the information and place it appropriately.
+
+RULE 4 — OPTIMIZATION ABNORMALITY IS NOT AUTOMATICALLY A DISEASE
+
+ClinIQ may use optimized/functional targets that are intentionally narrower than conventional laboratory reference ranges. A laboratory value being outside a ClinIQ optimization target does not automatically establish an ICD-10 disease or deficiency diagnosis.
+
+Distinguish between:
+
+a value that is clinically optimized below/above the ClinIQ target,
+a conventional abnormality,
+and an actual diagnosed condition.
+
+Do not convert “suboptimal” into “deficient” merely to create an ICD-10 diagnosis.
+
+For example, if vitamin D is 36 and the clinician discusses an optimization goal of 60–80, document that it is below the desired optimization target if that reflects the encounter. Do not automatically diagnose vitamin D deficiency solely because it is below the ClinIQ target unless the provider diagnosed deficiency or the available clinical criteria support that diagnosis.
+
+The same principle applies to hormone optimization, ferritin targets, metabolic markers, thyroid optimization, and other ClinIQ-specific targets.
+
+IMPORTANT FIDELITY PRINCIPLE
+
+The ClinIQ rules help the model organize and document clinical reasoning. They must not override what actually occurred during the encounter.
+
+The raw transcript remains the primary source of truth for:
+
+what the provider diagnosed,
+what was prescribed,
+what was changed,
+what was continued,
+what was stopped,
+what was deferred,
+and what counseling occurred.
+
+The model may organize related information clinically, but it must not replace the provider's actual treatment decision with what it thinks the provider should have done.
+
+Completeness is also critical: correcting diagnosis grouping must never cause a medication, supplement recommendation, counseling point, follow-up instruction, or other clinically meaningful item from the encounter to disappear.
+
+REGRESSION CASE TO PROTECT
+
+We identified a real example that demonstrates why Final Plan Precedence is needed.
+
+During an encounter, the provider initially discussed increasing/continuing an estradiol patch and separately compounding topical testosterone. Later in the encounter, after discussing patch availability, the provider stated:
+
+“I'm going to put your estrogen in there too.”
+
+The generated SOAP continued to document a higher-strength estradiol patch plus separate compounded testosterone and failed to recognize that the later statement modified the final prescribing plan.
+
+The updated prompt should teach the model to reconcile this type of evolving decision and represent the final treatment plan, rather than remaining anchored to an earlier proposal.
+
+IMPLEMENTATION CONSTRAINTS
+
+Do NOT:
+
+change gpt-5.6-sol
+reintroduce GPT-4o extraction
+reintroduce normalization/inference
+reintroduce topic inventory
+reintroduce pattern matching
+add a QA rewrite
+add another AI call
+change Mode B prompt inputs
+change SOAP persistence
+change the Evidence Layer
+change June
+change the lab evaluation pipeline
+change database/schema
+change unrelated application behavior
+
+This should be a shared SOAP system-prompt refinement only.
+
+Before implementing, please:
+
+Identify the exact current source of the shared SOAP core rules used by production Mode B.
+Show me exactly where these four rules will be inserted.
+Confirm that the existing test Mode B endpoint will inherit the same rules automatically if it uses the shared prompt.
+Check for any existing prompt instructions that conflict with these rules or could cause the model to continue writing as a third-party observer.
+Check for existing instructions that might cause every intervention/supplement to become its own diagnosis.
+Check for existing instructions that may encourage the model to privilege an earlier treatment statement over a later final decision.
+Tell me whether there are existing prompt instructions around ICD coding/diagnosis inference that could cause “suboptimal” values to be converted into disease diagnoses.
+Propose the minimal diff.
+
+Do not implement yet. Show me your findings and proposed diff first.
