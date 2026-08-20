@@ -38,6 +38,15 @@ describe("shared ClinIQ SOAP core prompt", () => {
     expect(prompt).toContain('"treatment options were reviewed"');
   });
 
+  test("uses narrative economy without dropping clinically relevant encounter detail", () => {
+    expect(prompt).toContain("NARRATIVE ECONOMY / CLINICAL RELEVANCE:");
+    expect(prompt).toContain("Detailed does not mean exhaustive.");
+    expect(prompt).toContain("document the topic and the clinically relevant takeaway rather than reproducing the full teaching explanation");
+    expect(prompt).toContain('"Reviewed differences between semaglutide and tirzepatide, including expected efficacy and GI tolerability."');
+    expect(prompt).toContain("Do not narrate uncertainty about conversational relationships unless that uncertainty affects diagnosis, treatment, medication reconciliation, or safety.");
+    expect(prompt).toContain("Do not achieve concision by deleting symptoms, treatment decisions, counseling, patient preferences, medication changes, or clinically relevant rationale.");
+  });
+
   test("keeps interventions from creating artificial diagnoses", () => {
     expect(prompt).toContain("Do not create a standalone diagnosis merely to provide a home for a medication, supplement, counseling");
     expect(prompt).toContain("Do not create a diagnosis solely to house the intervention.");

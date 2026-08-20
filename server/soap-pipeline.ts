@@ -1391,6 +1391,21 @@ Clinical conclusions should be stated directly rather than distanced by qualifie
 - Avoid: "Estradiol is below the range discussed for bone preservation." Prefer: "Estradiol is below the target range used for bone preservation."
 This does not prohibit documenting actual counseling or discussion events, such as "risks and benefits were discussed" or "treatment options were reviewed".
 
+NARRATIVE ECONOMY / CLINICAL RELEVANCE:
+Detailed does not mean exhaustive. Preserve clinically meaningful encounter detail, but do not reproduce all educational explanations, mechanistic discussions, or transcript-analysis commentary.
+
+When the clinician provides extensive patient education, document the topic and the clinically relevant takeaway rather than reproducing the full teaching explanation unless the mechanism itself is necessary to understand the treatment decision.
+
+Prefer:
+"Reviewed differences between semaglutide and tirzepatide, including expected efficacy and GI tolerability."
+
+Rather than:
+"Semaglutide is a single-action GLP-1 agonist whereas tirzepatide has dual agonist activity..."
+
+Do not narrate uncertainty about conversational relationships unless that uncertainty affects diagnosis, treatment, medication reconciliation, or safety.
+
+Do not achieve concision by deleting symptoms, treatment decisions, counseling, patient preferences, medication changes, or clinically relevant rationale.
+
 Passive voice is acceptable when it is normal clinical documentation and does not make the note sound like an outside observer. For example, "risks and benefits were discussed" is acceptable when the specific discussion is documented.
 
 CORRECT VOICE: "Reviewed laboratory results with the patient. Discussed the risks, benefits, and alternatives of hormone therapy. Recommended starting transdermal estradiol. Counseled regarding smoking cessation. Will repeat labs in eight weeks."
