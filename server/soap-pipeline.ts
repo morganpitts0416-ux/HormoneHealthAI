@@ -1304,6 +1304,44 @@ Do not carry an earlier option forward as an active plan after a later statement
 
 If the transcript genuinely does not establish which decision is final, do not guess. Preserve the ambiguity and add a provider_review_flags item.
 
+CONVERSATIONAL REFERENCE RESOLUTION — FINAL TREATMENT PLAN
+
+Clinical conversations frequently use shorthand references after a medication, compound, prescription, test, or treatment has already been established in the immediately preceding discussion.
+
+When determining the final plan, resolve conversational references using the surrounding transcript context.
+
+Examples include:
+
+"put it in there"
+"add that to it"
+"put X in there too"
+"do that one instead"
+"send that one"
+"increase that"
+"keep that"
+"switch that"
+"hold that"
+
+Do not discard a later definitive treatment instruction merely because the clinician refers to the treatment conversationally rather than repeating the full medication or product name.
+
+If the referent can be resolved with high confidence from the immediately surrounding discussion, use that interpretation when determining the final treatment state.
+
+A later resolved decision supersedes an earlier tentative or provisional plan unless the clinician subsequently confirms that both plans remain active.
+
+If the referent genuinely cannot be resolved from context, do not guess. Preserve the ambiguity and add a provider_review_flags item.
+
+Regression example:
+
+If the clinician and patient are discussing a compounded topical testosterone preparation and the clinician later says:
+
+"I'm going to put your estrogen in there too."
+
+then, when the surrounding transcript supports that referent, interpret the final plan as a compounded preparation containing estrogen and testosterone.
+
+Do not continue documenting the earlier separate estradiol-patch plan as active unless the clinician later explicitly confirms that both the patch and compounded estrogen are intended.
+
+This is a reasoning example, not a hard-coded hormone rule. Apply the same logic to any medication, dose, route, compound, test, or treatment whose final state is clarified through conversational shorthand.
+
 D. SAFETY SCREENING: allergies; pregnancy possibility; contraception; cancer history; thromboembolic history; cardiovascular history; organ disease; controlled-substance risk; drug interactions; relevant baseline testing. Document only screening that actually occurred.
 
 E. SHARED DECISION-MAKING: treatment options reviewed; patient concerns expressed; patient preference stated; therapies accepted; therapies declined; decisions deferred with stated reason; financial or access considerations.
@@ -1347,6 +1385,11 @@ Write as the treating clinician documenting the encounter directly. Use standard
 Clinical interpretations should be documented directly when supported by the encounter:
 - Avoid: "Testosterone was described as low." Prefer: "Testosterone is low on current laboratory testing."
 - Avoid: "ApoB was below the discussed goal." Prefer: "ApoB is 90, within goal for her current cardiovascular risk category."
+
+Clinical conclusions should be stated directly rather than distanced by qualifiers such as "discussed," "reviewed," "stated," or "described" when those words add no clinical meaning:
+- Avoid: "ApoB is 90 mg/dL, below the discussed low-risk goal of 130 mg/dL." Prefer: "ApoB is 90 mg/dL, within goal for her current cardiovascular risk category."
+- Avoid: "Estradiol is below the range discussed for bone preservation." Prefer: "Estradiol is below the target range used for bone preservation."
+This does not prohibit documenting actual counseling or discussion events, such as "risks and benefits were discussed" or "treatment options were reviewed".
 
 Passive voice is acceptable when it is normal clinical documentation and does not make the note sound like an outside observer. For example, "risks and benefits were discussed" is acceptable when the specific discussion is documented.
 

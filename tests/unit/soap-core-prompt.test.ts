@@ -17,6 +17,27 @@ describe("shared ClinIQ SOAP core prompt", () => {
     expect(prompt).toContain("Do not carry an earlier option forward as an active plan after a later statement replaces it.");
   });
 
+  test("resolves conversational references when determining the final treatment plan", () => {
+    expect(prompt).toContain("CONVERSATIONAL REFERENCE RESOLUTION — FINAL TREATMENT PLAN");
+    expect(prompt).toContain('"put it in there"');
+    expect(prompt).toContain('"put X in there too"');
+    expect(prompt).toContain("A later resolved decision supersedes an earlier tentative or provisional plan");
+    expect(prompt).toContain("I'm going to put your estrogen in there too.");
+    expect(prompt).toContain("compounded preparation containing estrogen and testosterone");
+    expect(prompt).toContain("If the referent genuinely cannot be resolved from context, do not guess.");
+  });
+
+  test("states clinical conclusions directly while preserving valid counseling-event language", () => {
+    expect(prompt).toContain('Clinical conclusions should be stated directly rather than distanced by qualifiers such as "discussed," "reviewed," "stated," or "described"');
+    expect(prompt).toContain('Avoid: "ApoB is 90 mg/dL, below the discussed low-risk goal of 130 mg/dL."');
+    expect(prompt).toContain('Prefer: "ApoB is 90 mg/dL, within goal for her current cardiovascular risk category."');
+    expect(prompt).toContain('Avoid: "Estradiol is below the range discussed for bone preservation."');
+    expect(prompt).toContain('Prefer: "Estradiol is below the target range used for bone preservation."');
+    expect(prompt).toContain('This does not prohibit documenting actual counseling or discussion events');
+    expect(prompt).toContain('"risks and benefits were discussed"');
+    expect(prompt).toContain('"treatment options were reviewed"');
+  });
+
   test("keeps interventions from creating artificial diagnoses", () => {
     expect(prompt).toContain("Do not create a standalone diagnosis merely to provide a home for a medication, supplement, counseling");
     expect(prompt).toContain("Do not create a diagnosis solely to house the intervention.");
