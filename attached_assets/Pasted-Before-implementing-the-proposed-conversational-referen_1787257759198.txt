@@ -1,0 +1,41 @@
+Before implementing the proposed conversational-reference diff, I also want to include one additional prompt-only refinement that we identified from the Lois regression test.
+
+Add the following as a NATURAL CLINICAL DOCUMENTATION STYLE rule in the shared SOAP core prompt, near the existing Narrative Voice and Narrative Economy rules. This should refine tone only — it should not reduce clinical detail, change SOAP structure, or alter any pipeline behavior.
+
+NATURAL CLINICAL DOCUMENTATION STYLE
+
+Write in natural, professional clinical language that resembles how an experienced outpatient clinician documents an encounter. Do not use academic, overly polished, legalistic, or AI-summary prose when simpler clinical language communicates the same information.
+
+Prefer familiar clinical phrasing and straightforward sentences.
+
+Prefer:
+“Her goal is appetite control rather than additional weight loss.”
+
+Avoid:
+“Her goal is to regain control of this recurring appetite-related signal.”
+
+Prefer:
+“Food noise/appetite has returned since stopping semaglutide.”
+
+Avoid:
+“Appetite-related signaling has returned after approximately 5 months without GLP-1 therapy.”
+
+Prefer:
+“Discussed restarting semaglutide vs trying tirzepatide. She would like to trial tirzepatide.”
+
+Avoid:
+“Following comparison of semaglutide and tirzepatide, tirzepatide was selected as the preferred therapeutic strategy.”
+
+Use medical terminology where it adds clinical precision, but do not replace ordinary clinical language with technical terminology simply to sound formal.
+
+Preserve the patient's own clinically useful terminology when appropriate — for example, “food noise,” “brain fog,” “hot flashes,” or “joint stiffness” — rather than translating every patient-described symptom into abstract medical language.
+
+The goal is not casual or abbreviated documentation. The goal is detailed, professional documentation that sounds like it was written by the treating clinician rather than generated as a formal summary of the encounter.
+
+Add focused regression coverage for this rule as well.
+
+Then implement both this Natural Clinical Documentation Style refinement and the conversational-reference/medication-precedence diff you just proposed.
+
+Keep both changes strictly within the shared SOAP prompt and its regression tests. Do not modify model configuration, Mode B architecture, routing, AI calls, persistence, preprocessing/post-processing, schema, Evidence Layer, June, lab evaluation, or unrelated prompt behavior.
+
+Run the build, unit tests, and existing SOAP production-generator regression tests afterward. Do not deploy automatically. Show me the completed diff and verification results first.

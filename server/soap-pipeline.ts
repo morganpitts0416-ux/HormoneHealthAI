@@ -1324,11 +1324,15 @@ Examples include:
 
 Do not discard a later definitive treatment instruction merely because the clinician refers to the treatment conversationally rather than repeating the full medication or product name.
 
-If the referent can be resolved with high confidence from the immediately surrounding discussion, use that interpretation when determining the final treatment state.
+Treat a referent as resolved when the same contiguous treatment exchange provides a natural, clinically coherent antecedent, even if that antecedent was established earlier in the exchange rather than in the immediately preceding sentence.
 
-A later resolved decision supersedes an earlier tentative or provisional plan unless the clinician subsequently confirms that both plans remain active.
+Do not require the clinician to repeat the full medication or product name, or to use explicit "switch" or "stop" language, when ordinary conversational shorthand clearly modifies the treatment under discussion.
 
-If the referent genuinely cannot be resolved from context, do not guess. Preserve the ambiguity and add a provider_review_flags item.
+A later definitive instruction such as "put X in there too" or "add that to it" modifies or combines X with the preparation or treatment currently being discussed; it does not create a separate active plan for X or preserve X's earlier form or route.
+
+A later resolved decision supersedes an earlier tentative or provisional plan unless the clinician subsequently confirms that both plans remain active. For purposes of PLAN EVOLUTION and the MEDICATION STATUS GATE, a high-confidence shorthand resolution is the final treatment state: classify the earlier form or route as superseded or deferred, and apply the Four-Location Mandate only to the resolved active treatment.
+
+If no natural, clinically coherent antecedent exists, or two competing antecedents remain genuinely plausible, do not guess. Preserve the ambiguity and add a provider_review_flags item.
 
 Regression example:
 
@@ -1405,6 +1409,35 @@ Rather than:
 Do not narrate uncertainty about conversational relationships unless that uncertainty affects diagnosis, treatment, medication reconciliation, or safety.
 
 Do not achieve concision by deleting symptoms, treatment decisions, counseling, patient preferences, medication changes, or clinically relevant rationale.
+
+NATURAL CLINICAL DOCUMENTATION STYLE:
+Write in natural, professional clinical language that resembles how an experienced outpatient clinician documents an encounter. Do not use academic, overly polished, legalistic, or AI-summary prose when simpler clinical language communicates the same information.
+
+Prefer familiar clinical phrasing and straightforward sentences.
+
+Prefer:
+"Her goal is appetite control rather than additional weight loss."
+
+Avoid:
+"Her goal is to regain control of this recurring appetite-related signal."
+
+Prefer:
+"Food noise/appetite has returned since stopping semaglutide."
+
+Avoid:
+"Appetite-related signaling has returned after approximately 5 months without GLP-1 therapy."
+
+Prefer:
+"Discussed restarting semaglutide vs trying tirzepatide. She would like to trial tirzepatide."
+
+Avoid:
+"Following comparison of semaglutide and tirzepatide, tirzepatide was selected as the preferred therapeutic strategy."
+
+Use medical terminology where it adds clinical precision, but do not replace ordinary clinical language with technical terminology simply to sound formal.
+
+Preserve the patient's own clinically useful terminology when appropriate — for example, "food noise," "brain fog," "hot flashes," or "joint stiffness" — rather than translating every patient-described symptom into abstract medical language.
+
+The goal is not casual or abbreviated documentation. The goal is detailed, professional documentation that sounds like it was written by the treating clinician rather than generated as a formal summary of the encounter.
 
 Passive voice is acceptable when it is normal clinical documentation and does not make the note sound like an outside observer. For example, "risks and benefits were discussed" is acceptable when the specific discussion is documented.
 

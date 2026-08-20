@@ -21,10 +21,13 @@ describe("shared ClinIQ SOAP core prompt", () => {
     expect(prompt).toContain("CONVERSATIONAL REFERENCE RESOLUTION — FINAL TREATMENT PLAN");
     expect(prompt).toContain('"put it in there"');
     expect(prompt).toContain('"put X in there too"');
-    expect(prompt).toContain("A later resolved decision supersedes an earlier tentative or provisional plan");
+    expect(prompt).toContain("Treat a referent as resolved when the same contiguous treatment exchange provides a natural, clinically coherent antecedent");
+    expect(prompt).toContain('Do not require the clinician to repeat the full medication or product name, or to use explicit "switch" or "stop" language');
+    expect(prompt).toContain('A later definitive instruction such as "put X in there too" or "add that to it" modifies or combines X');
+    expect(prompt).toContain("apply the Four-Location Mandate only to the resolved active treatment.");
     expect(prompt).toContain("I'm going to put your estrogen in there too.");
     expect(prompt).toContain("compounded preparation containing estrogen and testosterone");
-    expect(prompt).toContain("If the referent genuinely cannot be resolved from context, do not guess.");
+    expect(prompt).toContain("If no natural, clinically coherent antecedent exists, or two competing antecedents remain genuinely plausible, do not guess.");
   });
 
   test("states clinical conclusions directly while preserving valid counseling-event language", () => {
@@ -45,6 +48,16 @@ describe("shared ClinIQ SOAP core prompt", () => {
     expect(prompt).toContain('"Reviewed differences between semaglutide and tirzepatide, including expected efficacy and GI tolerability."');
     expect(prompt).toContain("Do not narrate uncertainty about conversational relationships unless that uncertainty affects diagnosis, treatment, medication reconciliation, or safety.");
     expect(prompt).toContain("Do not achieve concision by deleting symptoms, treatment decisions, counseling, patient preferences, medication changes, or clinically relevant rationale.");
+  });
+
+  test("uses natural outpatient clinical documentation style", () => {
+    expect(prompt).toContain("NATURAL CLINICAL DOCUMENTATION STYLE:");
+    expect(prompt).toContain("Write in natural, professional clinical language that resembles how an experienced outpatient clinician documents an encounter.");
+    expect(prompt).toContain('"Her goal is appetite control rather than additional weight loss."');
+    expect(prompt).toContain('"Food noise/appetite has returned since stopping semaglutide."');
+    expect(prompt).toContain('"Discussed restarting semaglutide vs trying tirzepatide. She would like to trial tirzepatide."');
+    expect(prompt).toContain('Preserve the patient\'s own clinically useful terminology when appropriate');
+    expect(prompt).toContain("sounds like it was written by the treating clinician rather than generated as a formal summary of the encounter.");
   });
 
   test("keeps interventions from creating artificial diagnoses", () => {
