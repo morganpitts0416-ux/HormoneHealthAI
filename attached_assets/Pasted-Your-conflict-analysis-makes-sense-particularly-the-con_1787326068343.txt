@@ -1,0 +1,93 @@
+Your conflict analysis makes sense, particularly the conflict created by QA check 40. However, do not implement the proposed diff yet.
+
+Before changing FF-7, I want to refine the conceptual behavior we're trying to achieve because I do not want to overcorrect by requiring patient idioms to be reproduced verbatim.
+
+I do not want instructions such as “summarize the transcript,” “condense the conversation,” or simply “be concise,” because those have previously caused clinically meaningful details to disappear.
+
+The goal is clinical abstraction:
+
+The transcript is the source of truth, but the SOAP note documents the clinical encounter — it does not retell the conversation.
+
+The writer should read and reason over the entire conversation, determine its clinical meaning, and then document that meaning in natural provider language.
+
+The transformation should be:
+
+conversation → clinical meaning → natural provider documentation
+
+NOT:
+
+conversation → transcript recap
+
+and NOT:
+
+conversation → shortened summary
+
+For example, several minutes may be spent comparing semaglutide and tirzepatide, explaining mechanisms, expected efficacy, adverse effects, and answering questions. If the clinically meaningful outcome is that the options were reviewed and the patient selected tirzepatide, appropriate documentation may be:
+
+Discussed semaglutide vs tirzepatide, including expected benefits and potential adverse effects. Patient would like to trial tirzepatide.
+
+The note ordinarily does not need to recreate the entire teaching conversation or explain receptor pharmacology unless that mechanism is clinically necessary to understand the treatment decision.
+
+Likewise, patient language should be handled selectively rather than automatically preserved or automatically medicalized.
+
+If a patient's phrase is already natural and clinically useful, it may be preserved:
+
+Reports return of food noise/increased appetite since stopping semaglutide.
+
+But do not convert simple concepts into artificial language such as:
+
+recurring appetite-related signaling
+
+At the same time, do not require every colloquial expression to be quoted verbatim. For example, "old crazy" does not automatically belong in the note merely because the patient said it. Translate conversational speech into natural clinical documentation when doing so preserves its meaning.
+
+Use direct patient wording selectively when the wording itself adds clinical meaning — for example, it clarifies the patient's experience, severity, treatment preference, safety concern, or would lose important meaning if paraphrased.
+
+Otherwise, document the clinical meaning naturally.
+
+Example:
+
+Conversation:
+"I don't really want to lose any more weight. I just want that food noise gone."
+
+Documentation:
+Her goal is appetite/food-noise control rather than additional weight loss.
+
+Example:
+
+Conversation contains an extended medication comparison followed by the patient selecting medication B.
+
+Documentation:
+Discussed medication options, expected benefits, and potential adverse effects. Patient would like to trial medication B.
+
+Example:
+
+Provider gives an extended explanation of risks and benefits and the patient agrees.
+
+Documentation:
+Risks, benefits, and treatment options reviewed. Patient agrees with the plan.
+
+Similarly, clinically irrelevant conversational ambiguity should not become transcript-auditor commentary in the SOAP note. If "middle of the night wake up" establishes that the patient wakes during the night, document the clinically supported fact naturally. Do not write:
+
+the intended meaning and relationship to her treatment goal were unclear in the recorded discussion
+
+unless that ambiguity actually affects diagnosis, treatment, medication reconciliation, or safety.
+
+Clinical abstraction must never be used as justification to delete meaningful encounter content. Preserve symptoms and relevant descriptors; onset/duration/progression; medication history and response; adverse effects; relevant labs; patient goals/preferences; meaningful counseling; treatment decisions; medication changes/doses/routes/instructions; follow-up; clinically relevant uncertainty; and decision-relevant rationale.
+
+Now re-evaluate your proposed FF-7 and QA check 40 changes against this concept.
+
+I agree that QA check 40 appears to require narrowing to clinically consequential ambiguity.
+
+For FF-7, however, I do not want a blanket rule requiring functional idioms or colloquial phrases to be reproduced verbatim. The rule should allow natural clinical abstraction while prohibiting unsupported embellishment and unnecessary conversion into formal/abstract terminology.
+
+Also compare this concept against the existing Narrative Economy and Natural Clinical Documentation Style sections. I would prefer strengthening/reframing those existing concepts rather than adding another large independent rule if they substantially overlap.
+
+Do not implement yet.
+
+Show me:
+
+whether this changes your diagnosis of the FF-7 conflict;
+the smallest revised FF-7 language;
+the smallest revised QA check 40 language;
+whether Narrative Economy/Natural Clinical Documentation should be modified or consolidated to establish this clinical-abstraction principle;
+any other existing instruction that would still encourage transcript reconstruction after these changes.
