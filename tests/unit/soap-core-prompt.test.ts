@@ -1,8 +1,10 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import { buildSoapCoreSystemPrompt } from "../../server/soap-pipeline";
 
 describe("shared ClinIQ SOAP core prompt", () => {
   const prompt = buildSoapCoreSystemPrompt(true);
+  const pipelineSource = readFileSync("server/soap-pipeline.ts", "utf8");
 
   test("uses treating-clinician voice without third-person observer narration", () => {
     expect(prompt).toContain("Write as the treating clinician documenting the encounter directly.");
@@ -43,6 +45,8 @@ describe("shared ClinIQ SOAP core prompt", () => {
 
   test("uses narrative economy without dropping clinically relevant encounter detail", () => {
     expect(prompt).toContain("NARRATIVE ECONOMY / CLINICAL RELEVANCE:");
+    expect(prompt).toContain("The note documents the clinical meaning of the encounter in natural provider language — not a recap of the conversation.");
+    expect(prompt).toContain("Read and reason over the full transcript; document the clinical picture.");
     expect(prompt).toContain("Detailed does not mean exhaustive.");
     expect(prompt).toContain("document the topic and the clinically relevant takeaway rather than reproducing the full teaching explanation");
     expect(prompt).toContain('"Reviewed differences between semaglutide and tirzepatide, including expected efficacy and GI tolerability."');
@@ -57,7 +61,27 @@ describe("shared ClinIQ SOAP core prompt", () => {
     expect(prompt).toContain('"Food noise/appetite has returned since stopping semaglutide."');
     expect(prompt).toContain('"Discussed restarting semaglutide vs trying tirzepatide. She would like to trial tirzepatide."');
     expect(prompt).toContain('Preserve the patient\'s own clinically useful terminology when appropriate');
+    expect(prompt).toContain("Adding clinical precision means increasing specificity or reducing ambiguity");
+    expect(prompt).toContain('"appetite-related signaling has returned" is more abstract, not more precise.');
     expect(prompt).toContain("sounds like it was written by the treating clinician rather than generated as a formal summary of the encounter.");
+  });
+
+  test("abstracts symptoms into natural clinical language without embellishment or unnecessary medicalization", () => {
+    expect(prompt).toContain("FF-7. SYMPTOM FIDELITY — NO EMBELLISHMENT:");
+    expect(prompt).toContain("Document symptoms in natural clinical language reflecting what the patient reported.");
+    expect(prompt).toContain("Never attach anatomical detail, mechanism, sensory description, cause, or location that the patient did not explicitly state.");
+    expect(prompt).toContain("Preserve a patient's own wording when it adds clinical meaning");
+    expect(prompt).toContain("Do not abstract a patient's simple functional description into formal or medicalized language");
+    expect(prompt).not.toContain("FF-7. VERBATIM SYMPTOM MINIMUM:");
+  });
+
+  test("limits ambiguity QA to clinically consequential decision states", () => {
+    expect(pipelineSource).toContain("40. SILENTLY RESOLVED AMBIGUITY — CLINICALLY CONSEQUENTIAL DECISION-STATE ONLY:");
+    expect(pipelineSource).toContain("a treatment, medication, procedure, diagnostic test, referral, follow-up decision, or other clinically consequential plan item");
+    expect(pipelineSource).toContain("This check governs clinical decision-state ambiguity only.");
+    expect(pipelineSource).toContain("It does NOT apply to patient-reported symptoms, conversational references, or incidental transcript statements");
+    expect(pipelineSource).toContain("Uncertainty that does not affect a clinical decision must not be narrated in the note body.");
+    expect(pipelineSource).not.toContain("40. SILENTLY RESOLVED AMBIGUITY: Identify decisions where the transcript is genuinely ambiguous or contradictory");
   });
 
   test("keeps interventions from creating artificial diagnoses", () => {
