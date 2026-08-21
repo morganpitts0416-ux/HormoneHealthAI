@@ -66,13 +66,47 @@ describe("shared ClinIQ SOAP core prompt", () => {
     expect(prompt).toContain("sounds like it was written by the treating clinician rather than generated as a formal summary of the encounter.");
   });
 
-  test("abstracts symptoms into natural clinical language without embellishment or unnecessary medicalization", () => {
+  test("preserves clear functional symptom language without embellishment or unnecessary medicalization", () => {
     expect(prompt).toContain("FF-7. SYMPTOM FIDELITY — NO EMBELLISHMENT:");
     expect(prompt).toContain("Document symptoms in natural clinical language reflecting what the patient reported.");
     expect(prompt).toContain("Never attach anatomical detail, mechanism, sensory description, cause, or location that the patient did not explicitly state.");
     expect(prompt).toContain("Preserve a patient's own wording when it adds clinical meaning");
-    expect(prompt).toContain("Do not abstract a patient's simple functional description into formal or medicalized language");
+    expect(prompt).toContain("use that wording or a close natural paraphrase that preserves the same level of concreteness");
+    expect(prompt).toContain("Do not replace it with a more abstract synonym merely because the synonym sounds more medical.");
+    expect(prompt).toContain('"appetite signal," "appetite drive," or a similar abstract construct');
     expect(prompt).not.toContain("FF-7. VERBATIM SYMPTOM MINIMUM:");
+  });
+
+  test("defines section ownership without weakening clinical completeness", () => {
+    expect(prompt).toContain("SECTION FUNCTION — REQUIRED NON-REDUNDANCY:");
+    expect(prompt).toContain("HPI owns the detailed patient story, chronology, symptoms, prior treatment response, substantive discussion, and patient perspective.");
+    expect(prompt).toContain("Overall Clinical Impression owns a focused synthesis of the current clinical picture and principal treatment outcome; it must not retell the HPI.");
+    expect(prompt).toContain("Clinical Rationale owns the diagnosis- or treatment-specific evidence and provider reasoning.");
+    expect(prompt).toContain("Plan owns the actions, exact medication details, orders, monitoring, and follow-up.");
+    expect(prompt).toContain("Care Plan owns patient-actionable instructions and safety information.");
+    expect(prompt).toContain("Repeat action details required for safe execution");
+    expect(prompt).toContain("Do not duplicate narrative merely to satisfy a coverage rule.");
+  });
+
+  test("uses section-specific routing for clinical abstraction, counseling, and treatment reasoning", () => {
+    expect(prompt).toContain("HPI-D9. CLINICAL ABSTRACTION:");
+    expect(prompt).toContain("Do not replace a clear functional description with a more abstract or medicalized equivalent.");
+    expect(prompt).toContain("Do not restate the full HPI or reproduce the complete counseling narrative.");
+    expect(prompt).toContain("Overall Clinical Impression — 3–5 sentence paragraph providing a focused synthesis");
+    expect(pipelineSource).toContain("PATIENT PERSPECTIVE STATEMENTS (use to preserve the patient's meaning in the HPI");
+    expect(pipelineSource).toContain("EDUCATION PROVIDED (document the substantive education in the HPI as part of the encounter story");
+    expect(pipelineSource).toContain("PATIENT DECISIONS (document the decision context in the HPI and the resulting action or deferral");
+    expect(pipelineSource).toContain("Supplement decisions (document the clinical context in HPI");
+  });
+
+  test("makes QA verify coverage by section function without changing QA check 40", () => {
+    expect(pipelineSource).toContain("7. EDUCATION OMISSIONS: Was patient education provided but not represented according to section function");
+    expect(pipelineSource).toContain("15. COUNSELING AND SDM INTEGRATION: When the transcript contains specific counseling content");
+    expect(pipelineSource).toContain("16. SHARED DECISION-MAKING VISIBILITY: When the transcript shows the patient and provider weighed options");
+    expect(pipelineSource).toContain("18. TREATMENT RATIONALE COMPLETENESS: For each new medication initiated or dose changed");
+    expect(pipelineSource).toContain("27. CLINICAL REASONING PRESERVATION: For each new medication initiated");
+    expect(pipelineSource).toContain("30. STATE B COVERAGE — DISCUSSED-BUT-DEFERRED ITEMS MUST HAVE A/P ENTRIES WITH FUTURE CONSIDERATIONS");
+    expect(pipelineSource).toContain("40. SILENTLY RESOLVED AMBIGUITY — CLINICALLY CONSEQUENTIAL DECISION-STATE ONLY:");
   });
 
   test("limits ambiguity QA to clinically consequential decision states", () => {

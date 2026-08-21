@@ -1,0 +1,54 @@
+I approve this direction with one wording adjustment before implementation.
+
+I do not want “concise” to become another indirect instruction to shorten or summarize clinically meaningful content.
+
+In the proposed Section Function rule, change:
+
+Overall Clinical Impression owns a concise synthesis...
+
+to:
+
+Overall Clinical Impression owns a focused synthesis of the current clinical picture and principal treatment outcome; it must not retell the HPI.
+
+In Treatment Rationale Linking, change:
+
+Use concise evidence specific to this Assessment item.
+
+to:
+
+Use the decision-relevant evidence needed to support that Assessment item. Do not restate the full HPI or reproduce the complete counseling narrative.
+
+Then implement the proposed targeted changes:
+
+Clinical abstraction / language
+
+Finalize the revised FF-7 language.
+Change HPI-D9 from CLINICAL TRANSLATION to the proposed CLINICAL ABSTRACTION wording.
+Narrow the Patient Perspective injection language as proposed.
+Preserve the existing Natural Clinical Documentation clarification that greater abstraction is not the same as greater clinical precision.
+
+Section ownership / non-redundancy
+
+Add the proposed SECTION FUNCTION — REQUIRED NON-REDUNDANCY rule with the wording adjustment above.
+Align Treatment Rationale Linking with section ownership.
+Align Overall Clinical Impression with section ownership.
+Replace the existing education/patient-decision multi-section mandates with the proposed section-specific routing.
+Align QA checks 15, 16, 18, 27, and 30 so QA verifies appropriate coverage according to section function rather than requiring the complete narrative to be duplicated across sections.
+
+Important: Do not weaken completeness safeguards. The HPI should remain detailed and should preserve the full clinically meaningful encounter story. Medication actions, doses/routes/frequencies, safety-critical information, patient decisions affecting treatment, orders, monitoring, and follow-up must still appear wherever clinically required.
+
+The goal is not fewer clinical facts. The goal is that each section performs its own job:
+
+HPI → detailed clinical story and encounter context
+Overall Clinical Impression → focused synthesis of the clinical picture and principal outcome
+Clinical Rationale → decision-relevant evidence and reasoning for that specific problem
+Plan → clinical actions, medications, orders, monitoring, follow-up
+Care Plan → patient-actionable instructions and safety information
+
+A fact may appropriately appear in more than one section, but the full narrative should not be repeated merely to satisfy a coverage requirement.
+
+QA check 40 is working as intended and should not be changed.
+
+Add/update focused regression tests for these changes. Do not change architecture, model configuration, Mode B routing, AI calls, persistence, schema, Evidence Layer, June, linked-lab context, or lab-evaluation behavior.
+
+Run the build, unit tests, and existing SOAP production-generator regression tests. Do not deploy. Show me the completed diff and verification results first.

@@ -1079,6 +1079,16 @@ SOAP SECTION RESPONSIBILITIES — CONTROLLING FRAMEWORK FOR NOTE GENERATION
 ═══════════════════════════════════════
 All section-specific rules in this prompt operate within the boundaries defined here. When any instruction appears to conflict with these section responsibilities, these definitions take precedence.
 
+SECTION FUNCTION — REQUIRED NON-REDUNDANCY:
+Required presence in multiple sections does not mean the same encounter narrative should be retold in each section.
+
+- HPI owns the detailed patient story, chronology, symptoms, prior treatment response, substantive discussion, and patient perspective.
+- Overall Clinical Impression owns a focused synthesis of the current clinical picture and principal treatment outcome; it must not retell the HPI.
+- Clinical Rationale owns the diagnosis- or treatment-specific evidence and provider reasoning. Include the decision-relevant facts needed to support that Assessment item, but do not replay the full HPI, medication history, counseling conversation, or alternatives discussion.
+- Plan owns the actions, exact medication details, orders, monitoring, and follow-up.
+- Care Plan owns patient-actionable instructions and safety information. Repeat action details required for safe execution, but do not repeat clinical history or rationale.
+- When a fact is required in multiple locations, repeat only the form needed by that section's function. Do not duplicate narrative merely to satisfy a coverage rule.
+
 HPI
 Document the clinical story of why the patient presented and what was discussed during the encounter.
 
@@ -1522,7 +1532,7 @@ HPI-D7. PATIENT GOALS: When the patient states what they want from treatment, do
 
 HPI-D8. PRESERVE UNCERTAINTY: When the transcript reflects uncertainty about causality, preserve it. Do not convert "we're not sure" into a definitive causal statement.
 
-HPI-D9. CLINICAL TRANSLATION: Translate patient language into clinical documentation — do not erase meaningful detail by replacing it with vague shorthand.
+HPI-D9. CLINICAL ABSTRACTION: Convert patient language into natural provider documentation when needed for clarity. If the patient's wording is already clear and clinically useful, preserve it or use a close natural paraphrase. Do not replace a clear functional description with a more abstract or medicalized equivalent.
 
 HPI-D10. CHART FOR A FUTURE PROVIDER: The completed HPI must give a future clinician the full clinical picture without needing the transcript. If a clinician reading this note six months from now would not understand what happened, when it happened, what was tried, what changed, and why the patient is distressed — the HPI is clinically incomplete.
 
@@ -1595,7 +1605,7 @@ FF-3. NO FABRICATED CAUSALITY: Do not create causal relationships unless the pro
 FF-4. NO NARRATIVE LANGUAGE: Avoid figurative or editorial phrasing — "systemic shift," "historic struggle," "marked by," "compounded by" — unless those exact words were used.
 FF-5. DISCUSSED ≠ STARTED: When a treatment was discussed but not started, document as a consideration — not an active plan.
 FF-6. COMPLETENESS IS FACTUAL: Complete because it captures all clinically relevant facts that were actually discussed — not because it adds inferred context. When source data is sparse, a shorter accurate note is preferred over a longer embellished one.
-FF-7. SYMPTOM FIDELITY — NO EMBELLISHMENT: Document symptoms in natural clinical language reflecting what the patient reported. Never attach anatomical detail, mechanism, sensory description, cause, or location that the patient did not explicitly state. Preserve a patient's own wording when it adds clinical meaning — for example, when it clarifies their experience, severity, or preference in a way that paraphrase would lose ("food noise," "brain fog"). Do not abstract a patient's simple functional description into formal or medicalized language when the original already communicates the meaning clearly: "food noise/appetite has returned" does not become "appetite-related signaling has returned."
+FF-7. SYMPTOM FIDELITY — NO EMBELLISHMENT: Document symptoms in natural clinical language reflecting what the patient reported. Never attach anatomical detail, mechanism, sensory description, cause, or location that the patient did not explicitly state. Preserve a patient's own wording when it adds clinical meaning — for example, when it clarifies their experience, severity, or preference in a way that paraphrase would lose ("food noise," "brain fog"). When a patient uses a clear ordinary functional description, use that wording or a close natural paraphrase that preserves the same level of concreteness. Do not replace it with a more abstract synonym merely because the synonym sounds more medical. "Food noise/increased appetite" may be documented as return of food noise/increased appetite or as the goal of appetite control; it must not become "appetite signal," "appetite drive," or a similar abstract construct.
 FF-8. SYMPTOM DETAIL EMBARGO: Any qualifier attached to a patient-reported symptom — cause, location, timing, frequency, mechanism — MUST be traceable to a direct patient utterance. Plausibility is not a source.
 FF-9. ANATOMICAL SPECIFICITY — REQUIRED: When a patient names a specific anatomical site for a symptom (hip, right shoulder, left knee, lower back, jaw, tooth, tailbone, wrist), document that exact site in the HPI and the corresponding ROS row. Never substitute a system-level generalization ("joint aches," "musculoskeletal discomfort," "pain") when the patient provided a named location. If the provider references the same specific site in clinical reasoning, preserve the named site in the A/P rationale as well. This rule applies equally to side-of-body specificity (left vs. right) when stated.
 
@@ -1689,13 +1699,14 @@ SECTION 3 — ASSESSMENT & PLAN
 ═══════════════════════════════════════
 
 OVERALL CLINICAL IMPRESSION — REQUIRED BEFORE ALL NUMBERED ITEMS:
-Write one paragraph (3–5 sentences) that captures the overall clinical picture and rationale for this visit's treatment decisions. This paragraph:
+Write one paragraph (3–5 sentences) that provides a focused synthesis of the current clinical picture and principal treatment outcome. This paragraph is not a retelling of the HPI. It:
 - Connects the patient's symptom pattern to the underlying hormonal, metabolic, or clinical picture
 - Names key lab findings or clinical patterns driving decisions
 - States treatment rationale at the pattern level — WHY, in this patient's context
 - Preserves chronology and causality — if symptoms evolved over time or were triggered by a prior event, the synthesis reflects that sequence
 - Reflects diagnostic nuance and uncertainty when appropriate — if the diagnosis is evolving, say so rather than projecting false certainty
 - Reads like a clinician who has synthesized the full picture — not like an introduction to a list
+- Uses only the pattern-level rationale needed to explain the principal outcome; do not replay the detailed HPI, medication history, or full counseling exchange
 
 EXAMPLE OF CORRECT SYNTHESIS VOICE:
 "Presentation is consistent with female androgen insufficiency compounded by suboptimal thyroid conversion, producing the triad of fatigue, low libido, and cognitive slowing she describes. Free testosterone remains below the therapeutic range despite her current regimen; fT3/fT4 ratio is narrow, suggesting conversion inefficiency rather than insufficient T4. Treatment approach this visit focuses on optimizing androgen levels and improving thyroid conversion, with close monitoring given the interplay between these axes."
@@ -1951,14 +1962,14 @@ PRIOR-PROVIDER DISCONTINUATION: If the transcript says a prior provider stopped 
 ═══════════════════════════════════════
 TREATMENT RATIONALE LINKING — REQUIRED FOR ALL NEW TREATMENTS AND DOSE CHANGES
 ═══════════════════════════════════════
-When a treatment is being INITIATED or CHANGED, the Clinical Rationale for that item MUST explicitly link ALL of the following that are available:
+When a treatment is being INITIATED or CHANGED, the Clinical Rationale for that item MUST include the decision-relevant evidence needed to support that Assessment item:
 1. SYMPTOMS → name the specific symptoms this treatment addresses
 2. DIAGNOSIS/PATTERN → state the clinical pattern being treated
 3. SUPPORTING LABS → cite the specific values driving the decision with actual numbers
 4. PRIOR TREATMENT CONTEXT → what was tried before, if relevant
 5. PROVIDER REASONING → WHY this specific treatment, dose, or approach
 
-Never reduce a treatment initiation to a single generic sentence when the provider's actual reasoning is available.
+Do not restate the full HPI or reproduce the complete counseling narrative. Never reduce a treatment initiation to a single generic sentence when the provider's actual reasoning is available.
 
 EXAMPLE OF COMPLETE TREATMENT RATIONALE:
 "Semaglutide 0.25 mg SQ weekly initiated for obesity management (BMI 34.2) in the setting of fatigue, cravings, and metabolic dysregulation. Fasting insulin 22 mIU/L with HOMA-IR 4.8 and A1c 5.9% confirm insulin resistance as the primary driver. Patient previously attempted caloric restriction with 6-lb loss over 6 months, plateauing without further progress. GLP-1 initiated to target the insulin resistance mechanism directly, with expectation of improved satiety, glycemic stabilization, and progressive weight loss."
@@ -2231,7 +2242,7 @@ Physical Examination: [if performed; "Physical examination not performed at this
 
 ASSESSMENT & PLAN
 
-[Overall Clinical Impression — 3–5 sentence paragraph synthesizing the clinical picture, key findings, treatment rationale, and what was accomplished at this visit. This is NOT an introduction to a list. It is an independent clinical impression. Every sentence must be grounded in evidence from the transcript, structured extraction, chart data, or provider statements — no speculative reasoning or unsupported conclusions.]
+[Overall Clinical Impression — 3–5 sentence paragraph providing a focused synthesis of the current clinical picture and principal treatment outcome. This is NOT an introduction to a list or a retelling of the HPI. It is an independent clinical impression. Include only the pattern-level rationale needed to explain the principal outcome. Every sentence must be grounded in evidence from the transcript, structured extraction, chart data, or provider statements — no speculative reasoning or unsupported conclusions.]
 
 1. Diagnosis Name (ICD-10 code)
 Clinical Rationale: [3–5 sentences establishing WHY this diagnosis exists, grounded in clinical evidence: symptoms, labs with actual numbers, history, prior treatment responses. NEVER open with a treatment action. Weave counseling, titration plans, and education naturally into the reasoning — never as sub-section headers.]
@@ -2389,7 +2400,7 @@ STATE D — Clinically relevant follow-up (for needs_clinician_review only; neve
     : "";
 
   const patientPerspective = normalized.enhanced_extraction?.patient_perspective_statements?.length
-    ? `\nPATIENT PERSPECTIVE STATEMENTS (integrate into HPI as clinical paraphrases):\n${normalized.enhanced_extraction.patient_perspective_statements.map((s: string) => `- ${s}`).join('\n')}`
+    ? `\nPATIENT PERSPECTIVE STATEMENTS (use to preserve the patient's meaning in the HPI; paraphrase naturally only when needed for clarity, and do not formalize clear functional language):\n${normalized.enhanced_extraction.patient_perspective_statements.map((s: string) => `- ${s}`).join('\n')}`
     : "";
 
   const providerReasoning = normalized.enhanced_extraction?.provider_reasoning_statements?.length
@@ -2397,11 +2408,11 @@ STATE D — Clinically relevant follow-up (for needs_clinician_review only; neve
     : "";
 
   const educationProvided = normalized.enhanced_extraction?.education_provided?.length
-    ? `\nEDUCATION PROVIDED (document fully in HPI + Assessment + Plan):\n${normalized.enhanced_extraction.education_provided.map((s: string) => `- ${s}`).join('\n')}`
+    ? `\nEDUCATION PROVIDED (document the substantive education in the HPI as part of the encounter story, the decision-relevant takeaway in the affected Clinical Rationale, and only the resulting patient instruction in the Plan or Care Plan; do not copy the full explanation into every section):\n${normalized.enhanced_extraction.education_provided.map((s: string) => `- ${s}`).join('\n')}`
     : "";
 
   const patientDecisions = normalized.enhanced_extraction?.patient_decisions?.length
-    ? `\nPATIENT DECISIONS (document in HPI + Plan):\n${normalized.enhanced_extraction.patient_decisions.map((s: string) => `- ${s}`).join('\n')}`
+    ? `\nPATIENT DECISIONS (document the decision context in the HPI and the resulting action or deferral in the Plan or Future Considerations; include decision-relevant preference in the affected Clinical Rationale when it explains why the option was selected or deferred; do not copy the full exchange into every section):\n${normalized.enhanced_extraction.patient_decisions.map((s: string) => `- ${s}`).join('\n')}`
     : "";
 
   const decisionAttribution = normalized.enhanced_extraction?.decision_attribution?.length
@@ -2826,7 +2837,7 @@ CHECK FOR:
 4. SIDE EFFECT OMISSIONS: Were side effects or tolerability issues discussed but not documented?
 5. PRIOR TREATMENT OMISSIONS: Were prior medication trials or failed treatments mentioned but not captured?
 6. DIAGNOSIS OMISSIONS: Are medication-implied conditions documented in PMH and Assessment?
-7. EDUCATION OMISSIONS: Was patient education provided but not documented in all three required places?
+7. EDUCATION OMISSIONS: Was patient education provided but not represented according to section function — substantive education in the HPI encounter story, the decision-relevant takeaway in the affected Clinical Rationale, and the resulting patient instruction in the Plan or Care Plan when applicable? Do not require the full explanation to be copied into every section.
 8. PATIENT DECISION OMISSIONS: Did the patient state decisions/preferences that were not documented?
 9. CONTRADICTIONS: Does the note contradict any transcript facts? (e.g., "denies nausea" when patient reported nausea)
 10. TENSE ERRORS: Are recommended medications incorrectly presented as current medications?
@@ -2834,8 +2845,8 @@ CHECK FOR:
 12. PREVENTATIVE SIGNALS LOST: Were clinically relevant "between the lines" clues identified in normalization but not reflected in the Assessment?
 13. RECOMMENDATION DUPLICATES: Does needs_clinician_review contain items that duplicate the explicit Plan?
 14. MISCLASSIFIED SUGGESTIONS: Does needs_clinician_review contain "SUGGESTED (awaiting clinician approval):" items for actions that were EXPLICITLY DISCUSSED AND DECIDED during the encounter? If so, move them to the Plan and remove from needs_clinician_review.
-15. COUNSELING AND SDM INTEGRATION: When the transcript contains specific counseling content (named side effects, titration steps reviewed, administration instructions, alternatives weighed, return precautions stated) — is this content preserved in the note? It should appear woven into the clinical reasoning paragraph for each affected Assessment item — NOT as a separate "Counseling / Education:" sub-line. If meaningful counseling content from the transcript is collapsed into a vague phrase ("risks and benefits discussed," "patient educated"), flag as important and integrate it naturally into the clinical reasoning. Do NOT add "Counseling / Education:" or "Monitoring / Follow-up:" sub-section headers — that format is forbidden.
-16. SHARED DECISION-MAKING VISIBILITY: When the transcript shows the patient and provider weighed options or the patient stated a preference, the note should make that visible through the specifics of the reasoning — what alternatives were considered, why the chosen option was selected, what the patient preferred. This belongs in the clinical reasoning paragraph, not in boilerplate consent language.
+15. COUNSELING AND SDM INTEGRATION: When the transcript contains specific counseling content (named side effects, titration steps reviewed, administration instructions, alternatives weighed, return precautions stated) — is this content preserved according to section function? The HPI should retain the substantive counseling exchange as encounter context; each affected Clinical Rationale should include only the decision-relevant counseling takeaway; the Plan or Care Plan should include the resulting instructions or safety information. If meaningful counseling content is collapsed into a vague phrase ("risks and benefits discussed," "patient educated"), flag as important and restore the missing detail in the section that owns it. Do NOT copy the full counseling narrative into every section or add "Counseling / Education:" or "Monitoring / Follow-up:" sub-section headers — that format is forbidden.
+16. SHARED DECISION-MAKING VISIBILITY: When the transcript shows the patient and provider weighed options or the patient stated a preference, the note should make that visible according to section function: preserve the substantive exchange in the HPI; include the decision-relevant alternatives, selection rationale, and preference in the affected Clinical Rationale; and state the resulting action or deferral in the Plan or Future Considerations. Do not use boilerplate consent language or repeat the full exchange in every section.
 17. ROS FORMAT AND CONTENT COMPLIANCE: Evaluate the Review of Systems on two dimensions:
 
 FORMAT: Is it rendered as the required 13-row two-column chart, with each of these systems on its own line in this exact order — Constitutional, HEENT, Cardiovascular, Respiratory, Gastrointestinal, Genitourinary, Musculoskeletal, Skin, Neurological, Psychiatric, Endocrine, Hematologic/Lymphatic, Allergic/Immunologic — each in "System Name: findings." format (colon required)? If the ROS was instead written as a paragraph, a comma-separated list, a bulleted list, a partial subset, or any other format — REVISE to the strict 13-row chart. Use "Not addressed at this visit." for any system not addressed. This rule applies to the ROS section ONLY.
@@ -2849,7 +2860,7 @@ CONTENT: Does every ROS row contain ONLY patient-reported symptoms or explicit p
   - Provider conclusions or clinical impressions (e.g., "Anxiety discussed and addressed") → Assessment/Plan only
   - Fabricated denials: "Denies X" written for a symptom the patient never explicitly addressed → remove; silence is not a denial
 After removing prohibited content, if a row has no remaining patient-reported symptom or explicit denial, replace its content with "Not addressed at this visit."
-18. TREATMENT RATIONALE COMPLETENESS: For each new medication initiated or dose changed at this visit — does the Assessment item's clinical reasoning paragraph explicitly connect: (a) the specific symptoms it addresses, (b) the diagnosis or clinical pattern driving the decision, (c) relevant lab values or findings (cited numerically if available), and (d) the provider's reasoning for choosing this treatment at this dose? A reasoning paragraph that only says "testosterone initiated for low testosterone levels" when specific symptoms, labs, and provider reasoning are present in the transcript is an important omission. If the rationale is present in the transcript but not reflected in the note, revise the clinical reasoning paragraph to include it.
+18. TREATMENT RATIONALE COMPLETENESS: For each new medication initiated or dose changed at this visit — does the Assessment item's clinical reasoning paragraph include the decision-relevant evidence needed to support it: the specific symptoms it addresses, diagnosis or clinical pattern, relevant lab values or findings (cited numerically if available), prior treatment context when relevant, and the provider's reasoning for choosing this treatment at this dose? A reasoning paragraph that only says "testosterone initiated for low testosterone levels" when specific symptoms, labs, and provider reasoning are present in the transcript is an important omission. If the rationale is absent, revise the Clinical Rationale to include the needed evidence without restating the full HPI or complete counseling narrative.
 19. CAUSAL LANGUAGE ACCURACY: Does the note correctly distinguish confirmed causation from temporal association and coincidence? Specifically: (a) are symptoms that pre-date a medication incorrectly attributed to that medication? (b) does the note say a medication "is causing" a symptom when the provider only expressed uncertainty or possibility? (c) are temporally associated symptoms described without appropriate hedging language ("appears to worsen," "may be contributing," "temporally associated with")? If the note makes overconfident causal claims unsupported by the transcript, flag as important and revise to use nuanced causal language matching the provider's actual certainty level.
 20. ICD-10 CODE ACCURACY FOR RULE-OUT AND EVALUATION ITEMS: When an Assessment item is labeled as "potential," "possible," "rule out," "evaluating for," or uses similar hedged language, the ICD-10 code assigned MUST reflect the presenting symptom or sign — NOT the confirmed disease code. Specific disease codes are only appropriate when the provider has confirmed or strongly implied the diagnosis. Examples of incorrect coding: using K85.80 (acute pancreatitis) for a visit where the plan is to order enzyme labs to rule it out; using J45.x (asthma) for "possible reactive airway disease under evaluation"; using K50.x (Crohn's) for "rule out inflammatory bowel disease." For unconfirmed diagnoses being evaluated, use the appropriate symptom or sign code (e.g., R10.13 for epigastric pain, R19.7 for diarrhea, K59.9 for intestinal disorder unspecified). If the note assigns a confirmed disease ICD-10 code to an item explicitly described as a rule-out, possible, or under-evaluation diagnosis, flag as important and revise to use the appropriate symptom or sign code.
 21. STATE C ELEVATION CHECK: Does the Assessment contain numbered items for treatments or interventions that were discussed only as contingencies — "if needed," "if the current approach fails," "pending evaluation," "as an alternative if X doesn't work"? These are STATE C exploratory discussions and must NOT appear as numbered Assessment entries. They belong as a single clause in the HPI: "Alternative [treatment] was discussed as a contingency option if [current approach] proves insufficient." If a numbered Assessment item contains a treatment that was framed only as a contingency (never committed to, no specific deferral trigger the provider intends to act on), flag as important and remove that item from the Assessment, integrating it as an HPI clause instead.
@@ -2903,7 +2914,7 @@ After removing prohibited content, if a row has no remaining patient-reported sy
    ✅ GOOD: "She reports recurrent dizzy spells and brain fog. Reviewed declining estrogen as a contributing factor; patient was not previously aware of this connection."
    If found: flag as CRITICAL and revise every instance. Remove the patient attribution and move the clinical reasoning to provider voice.
 
-27. CLINICAL REASONING PRESERVATION: For each new medication initiated, dose changed, or route changed at this visit — does the Assessment item's clinical reasoning paragraph capture the provider's stated WHY when it was present in the transcript? A reasoning paragraph that only states what was done ("estradiol initiated," "dose reduced," "route switched") without explaining the provider's stated rationale is a documentation failure when that reasoning was captured in the transcript. Specifically check: (a) when the provider used an analogy or patient-facing explanation (e.g., estrogen "cushion" for fluctuating drops), is the underlying clinical reasoning documented in appropriate clinical language? (b) when a route or formulation was selected over alternatives the provider named, is the selection rationale documented? (c) when a dose was changed due to a specific side effect or inadequate response, is that specific reason stated? If reasoning is present in the transcript but absent from the Assessment, flag as important and integrate it into the clinical reasoning paragraph using TYPE 1 (explicit) or TYPE 2 (obvious inference) language only — do not fabricate reasoning not in the transcript.
+27. CLINICAL REASONING PRESERVATION: For each new medication initiated, dose changed, or route changed at this visit — does the Assessment item's clinical reasoning paragraph capture the provider's stated decision-relevant WHY when it was present in the transcript? A reasoning paragraph that only states what was done ("estradiol initiated," "dose reduced," "route switched") without explaining the provider's stated rationale is a documentation failure when that reasoning was captured in the transcript. Specifically check: (a) when the provider used an analogy or patient-facing explanation (e.g., estrogen "cushion" for fluctuating drops), is the underlying clinical reasoning documented in appropriate clinical language? (b) when a route or formulation was selected over alternatives the provider named, is the selection rationale documented? (c) when a dose was changed due to a specific side effect or inadequate response, is that specific reason stated? If reasoning is present in the transcript but absent from the Assessment, flag as important and integrate the necessary reasoning into the Clinical Rationale using TYPE 1 (explicit) or TYPE 2 (obvious inference) language only. Do not fabricate reasoning or repeat the full HPI or complete counseling exchange.
 
 28. ANTI-BOILERPLATE COMPLIANCE: Does the Assessment/Plan contain long generic legal/compliance language, standard template text, or boilerplate consent phrases that dominate entries at the expense of clinical reasoning? Entries that primarily consist of "Risks and benefits reviewed. Patient agrees. Continue as prescribed." or similar generic language without clinical specificity must be revised — the clinical reasoning must be prominent and specific, and any required compliance language must be compacted to 1-2 sentences. An Assessment/Plan entry that reads like "Start medication. Follow up." when the transcript contains clear provider reasoning is an important omission. If boilerplate language has displaced clinical reasoning, flag as important and revise to restore the provider's actual reasoning with compliance language compacted.
 
@@ -2919,7 +2930,7 @@ After removing prohibited content, if a row has no remaining patient-reported sy
 When a generalized phrase has replaced specific clinical content from the transcript, flag as important and revise to restore the substance of what was actually said.
 
 30. STATE B COVERAGE — DISCUSSED-BUT-DEFERRED ITEMS MUST HAVE A/P ENTRIES WITH FUTURE CONSIDERATIONS: Does the note contain a numbered Assessment/Plan entry for EVERY item listed in "Discussed but not decided" in the NORMALIZED INTELLIGENCE? Each STATE B item MUST have:
-   (a) A numbered Assessment entry with a full clinical reasoning paragraph explaining why this treatment was considered for this patient, the substance of the clinical discussion (education provided, patient response/hesitation/preference, provider rationale for deferral), and the specific deferral trigger.
+   (a) A numbered Assessment entry with the decision-relevant reasoning for why this treatment was considered and deferred, including the provider rationale, patient response/hesitation/preference when it affected the decision, and the specific deferral trigger. The HPI owns the substantive discussion and education; do not reproduce the full discussion in the Assessment entry.
    (b) A Plan line using deferred language — naming the specific trigger: "Deferred pending [X]; patient to follow up when [condition]."
    (c) A "Future Considerations:" sub-section on its own line immediately after the Plan line, documenting the deferred option, what was discussed, the deferral trigger, and any patient-expressed preference.
    If any STATE B item from "discussed_but_not_decided" is missing its numbered A/P entry, OR has an A/P entry but is missing the "Future Considerations:" sub-section, flag as CRITICAL and add the missing components before returning the revised note. Do NOT reduce a STATE B item to an HPI-only mention — it must have a numbered Assessment entry regardless of whether treatment was initiated.
@@ -3534,7 +3545,7 @@ function buildExtractionSummary(extraction: any): string {
     const decided = extraction.supplement_discussions.filter((s: any) => s.decided !== false);
     const discussedOnly = extraction.supplement_discussions.filter((s: any) => s.decided === false);
     if (decided.length) {
-      lines.push(`Supplement decisions (MUST appear in HPI + A/P + Care Plan): ${decided.map((s: any) => {
+      lines.push(`Supplement decisions (document the clinical context in HPI, the decision-relevant rationale and action in A/P, and patient-actionable instructions in Care Plan; do not repeat the full discussion in every section): ${decided.map((s: any) => {
         const parts = [`[${(s.action ?? 'START').toUpperCase()}] ${s.supplement_name}`];
         if (s.dose) parts.push(s.dose);
         if (s.timing) parts.push(s.timing);
