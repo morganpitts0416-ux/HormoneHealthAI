@@ -1,0 +1,54 @@
+The new Jan regression passed the major final-plan reasoning test, so do not modify the conversational-reference or Final Plan Precedence rules.
+
+The Lois regression improved somewhat with Narrative Economy/Natural Clinical Documentation Style, but two specific behaviors remain:
+
+1. Patient language is still being unnecessarily translated into technical/AI language.
+
+The patient described return of food-related thoughts/“old crazy,” but the note repeatedly uses phrases such as:
+
+appetite-related "signal"
+
+appetite-related food preoccupation
+
+control of the recurring appetite signal
+
+We specifically instructed the writer to preserve useful natural clinical/patient terminology such as “food noise” rather than converting it into abstract terminology.
+
+2. Transcript-auditor commentary is still appearing despite Narrative Economy.
+
+The HPI says:
+
+She also referenced a "middle night wake up," although the intended meaning and relationship to her treatment goal were unclear in the recorded discussion.
+
+This is exactly the kind of transcript-analysis commentary we intended to eliminate when the uncertainty does not affect diagnosis, medication reconciliation, treatment, or safety.
+
+Do not implement another style rule yet.
+
+First inspect the complete assembled buildSoapCoreSystemPrompt(true) and identify any existing instructions that could be overriding or competing with:
+
+Natural Clinical Documentation Style
+Narrative Economy / Clinical Relevance
+preservation of useful patient terminology
+the instruction not to narrate clinically irrelevant transcript ambiguity
+
+Specifically look for instructions requiring:
+
+conversion of patient language into formal/medical terminology
+formal or highly technical documentation style
+documentation of every uncertainty or ambiguity
+explicit commentary about unclear transcript relationships
+preservation of transcript uncertainty regardless of clinical relevance
+wording such as “do not infer,” “do not assume,” or similar safeguards that may be interpreted too broadly
+
+Determine whether this is another instruction hierarchy/conflict problem, similar to what we found with Jan.
+
+Do not change any code yet.
+
+Show me:
+
+the exact conflicting or competing prompt instructions you find;
+why they could produce the Lois wording;
+whether the existing Natural Clinical Documentation/Narrative Economy rules need stronger precedence or whether an older rule should be narrowed;
+the smallest proposed prompt-only diff.
+
+Do not change architecture, model configuration, Mode B routing, AI calls, persistence, schema, Evidence Layer, June, lab evaluation, or any other behavior.
