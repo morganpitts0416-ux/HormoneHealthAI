@@ -1,0 +1,58 @@
+The latest Lois regression shows that the clinically irrelevant transcript-ambiguity commentary has been successfully eliminated, so do not modify QA check 40 again.
+
+However, two behaviors remain.
+
+1. Clinical abstraction is still incomplete.
+
+The note repeatedly uses artificial phrases such as:
+
+recurring appetite signal
+recurrent appetite drive
+appetite-related "signal" and intrusive drive
+
+despite the new instruction to translate conversation into natural provider documentation.
+
+A more natural result would be:
+
+Reports return of food noise/increased appetite since stopping semaglutide.
+
+or:
+
+Her goal is appetite control rather than significant additional weight loss.
+
+2. The same clinical narrative is being repeated across HPI → Overall Clinical Impression → Clinical Rationale.
+
+The HPI documents prior semaglutide use, response, nausea, medication comparison, selection of tirzepatide, and titration strategy. The Overall Clinical Impression then substantially retells those facts, and Clinical Rationale repeats them again.
+
+I do NOT want to solve this by globally telling the writer to “summarize,” “shorten,” “be concise,” or remove detail.
+
+Instead, investigate the complete assembled SOAP prompt for instructions that explicitly or implicitly require the same clinical facts to be repeated across multiple sections, particularly:
+
+HPI
+Overall Clinical Impression
+Clinical Rationale
+Plan
+Care Plan
+
+Pay particular attention to:
+
+the Four-Location Mandate;
+medication-action coverage rules;
+fact-fidelity rules;
+requirements that medications/treatment decisions appear in multiple locations;
+any section-specific completeness rules;
+any instruction requiring rationale to restate history already documented in the HPI.
+
+Also determine why the revised FF-7/Natural Clinical Documentation rules still permit "food noise" or the patient's simple description to become "recurrent appetite signal" / "recurrent appetite drive".
+
+Do not change anything yet.
+
+Show me the exact competing instructions, explain which instruction is likely producing each behavior, and propose the smallest prompt-only correction.
+
+The goal remains:
+
+conversation → clinical meaning → natural provider documentation
+
+Each SOAP section should then perform its own clinical function rather than retelling the same encounter narrative.
+
+Do not reduce meaningful clinical detail, and do not modify architecture, model configuration, Mode B routing, AI calls, persistence, Evidence Layer, June, linked-lab context, or lab-evaluation behavior.
