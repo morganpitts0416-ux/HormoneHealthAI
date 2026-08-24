@@ -1,0 +1,76 @@
+import { describe, expect, test } from "vitest";
+import type { SupplementRecommendation } from "@shared/schema";
+import { resolvePatientVisibleSupplementProtocol } from "@shared/patient-visible-supplement-protocol";
+import { buildPatientVisibleSupplementProtocolPromptBlock } from "../../server/patient-communication-context";
+
+const brainSupplement: SupplementRecommendation = {
+  name: "Brain Metabolic Support",
+  dose: "1 capsule twice daily",
+  indication: "Fasting glucose 102 mg/dL",
+  rationale: "Supports insulin sensitivity.",
+  priority: "high",
+  category: "metabolic",
+  supportingFindings: ["Fasting glucose 102 mg/dL", "TG:HDL pattern"],
+  phenotypes: ["Insulin Resistance / Visceral Adiposity"],
+  continuationNote: "Patient is currently taking a lower dose.",
+};
+
+const clinicianSupplement: SupplementRecommendation = {
+  name: "Clinician Added Support",
+  dose: "2 capsules with dinner",
+  indication: "Supports the selected metabolic plan",
+  rationale: "Added by clinician after reviewing the complete evaluation.",
+  priority: "medium",
+  category: "probiotic",
+  supportingFindings: ["Bloating reported"],
+  phenotypes: ["Gut-Microbiome Support"],
+};
+
+describe("patient-visible Supplement Protocol", () => {
+  test("removes hidden Brain supplements, preserves structured fields, and includes clinician additions", () => {
+    const resolved = resolvePatientVisibleSupplementProtocol(
+      [brainSupplement, { ...brainSupplement, name: "Hidden Product" }],
+      {
+        hiddenSupplementNames: ["hidden product"],
+        addedSupplements: [clinicianSupplement],
+      },
+    );
+
+    expect(resolved).toEqual([brainSupplement, clinicianSupplement]);
+    expect(resolved[0]).toMatchObject({
+      supportingFindings: brainSupplement.supportingFindings,
+      phenotypes: brainSupplement.phenotypes,
+      continuationNote: brainSupplement.continuationNote,
+    });
+  });
+
+  test("lets an explicitly clinician-added product replace a matching Brain product", () => {
+    const clinicianVersion = {
+      ...brainSupplement,
+      dose: "1 capsule with dinner",
+      rationale: "Clinician-adjusted plan.",
+    };
+
+    const resolved = resolvePatientVisibleSupplementProtocol(
+      [brainSupplement],
+      { addedSupplements: [clinicianVersion] },
+    );
+
+    expect(resolved).toEqual([clinicianVersion]);
+  });
+
+  test("passes structured protocol context and fidelity rules to the writer", () => {
+    const block = buildPatientVisibleSupplementProtocolPromptBlock([
+      brainSupplement,
+      clinicianSupplement,
+    ]);
+
+    expect(block).toContain("RESOLVED PATIENT-VISIBLE SUPPLEMENT PROTOCOL");
+    expect(block).toContain('"supportingFindings"');
+    expect(block).toContain('"phenotypes"');
+    expect(block).toContain('"continuationNote"');
+    expect(block).toContain("Do not reproduce this as a separate product list");
+    expect(block).toContain("use the exact selected product name");
+    expect(block).toContain("absent from this resolved protocol");
+  });
+});

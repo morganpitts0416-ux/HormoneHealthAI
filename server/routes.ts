@@ -54,6 +54,7 @@ import { applySupplementContinuation } from "./supplement-continuation";
 import { PHENOTYPE_KEYS, detectedPhenotypeKeys } from "./phenotype-registry";
 import { screenInsulinResistance } from "./insulin-resistance";
 import { calculateMitoScore } from "./mito-score";
+import { resolvePatientVisibleSupplementProtocol } from "@shared/patient-visible-supplement-protocol";
 import { normalizeTranscript, enrichWithRxNorm, parseCSV, parseArrayField } from "./medication-normalizer";
 import {
   forwardMessageToExternalProvider,
@@ -1801,7 +1802,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           redFlags,
           aiRecommendations,
           recheckWindow,
-          supplements,
+          supplements: resolvePatientVisibleSupplementProtocol(supplements, {}),
           insulinResistance,
           maleHormonePatterns,
           mitoScore: mitoScore as any,
@@ -2229,7 +2230,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           redFlags,
           aiRecommendations,
           recheckWindow,
-          supplements,
+          supplements: resolvePatientVisibleSupplementProtocol(supplements, {}),
           insulinResistance,
           clinicalPhenotypes,
           mitoScore: mitoScore as any,
@@ -5689,21 +5690,16 @@ Return ONLY this JSON structure:
         const hiddenPhenotypeNames: string[] = ov.hiddenPhenotypeNames || [];
         const hiddenPatternNames: string[] = ov.hiddenPatternNames || [];
         const hiddenHormonePatternCats: string[] = ov.hiddenHormonePatternCategories || [];
-        const hiddenSuppNames: string[] = ov.hiddenSupplementNames || [];
-        const addedSupplements: any[] = ov.addedSupplements || [];
-
         const allInterpretations: any[] = interp.interpretations || [];
         // Apply per-row interpretation hiding
         const visibleInterps = allInterpretations.filter(
           (i: any) => !hiddenInterpCats.includes(i.category || '')
         );
 
-        // Build effective supplement list: auto-generated minus hidden, plus provider-added
-        const autoSupps: any[] = interp.supplements || [];
-        const effectiveSupplements = [
-          ...autoSupps.filter((s: any) => !hiddenSuppNames.includes(s.name || '')),
-          ...addedSupplements,
-        ];
+        const effectiveSupplements = resolvePatientVisibleSupplementProtocol(
+          interp.supplements || [],
+          ov,
+        );
 
         return {
           id: lab.id,
@@ -5774,6 +5770,82 @@ Return ONLY this JSON structure:
     } catch (error) {
       console.error("Error updating provider overrides:", error);
       res.status(500).json({ message: "Failed to update provider overrides" });
+    }
+  });
+
+  // ── Clinician: Explicitly regenerate the canonical Patient Communication ───
+  // Uses the persisted, completed Brain evaluation plus the current final
+  // patient-visible protocol. This is deliberately clinician-triggered: normal
+  // override saves never overwrite authored communication.
+  app.post("/api/patients/:id/labs/:labId/regenerate-patient-summary", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const patientId = parseInt(req.params.id);
+      const labId = parseInt(req.params.labId);
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+
+      const labResult = await storage.getLabResult(labId);
+      if (!labResult || labResult.patientId !== patientId) {
+        return res.status(404).json({ message: "Lab result not found" });
+      }
+
+      const interpretation = labResult.interpretationResult as InterpretationResult | null;
+      if (!interpretation) {
+        return res.status(400).json({ message: "No completed Brain evaluation is available for this lab result" });
+      }
+
+      const resolvedProtocol = resolvePatientVisibleSupplementProtocol(
+        interpretation.supplements ?? [],
+        labResult.providerOverrides,
+      );
+
+      const chart = await storage.getPatientChart(patientId, clinicianId);
+      const currentMedications = Array.isArray(chart?.currentMedications)
+        ? chart.currentMedications as unknown[]
+        : [];
+      const therapyContext = currentMedications.length > 0
+        ? inferPatientTherapies(currentMedications)
+        : null;
+      const gender: "male" | "female" = patient.gender === "female" ? "female" : "male";
+      const labs = (labResult.labValues ?? {}) as LabValues | FemaleLabValues;
+
+      const patientSummary = await AIService.generatePatientSummary(
+        labs,
+        interpretation.interpretations ?? [],
+        (interpretation.redFlags?.length ?? 0) > 0,
+        interpretation.preventRisk ?? interpretation.ascvdRisk ?? null,
+        gender,
+        therapyContext,
+        {
+          redFlags: interpretation.redFlags,
+          aiRecommendations: interpretation.aiRecommendations,
+          recheckWindow: interpretation.recheckWindow,
+          supplements: resolvedProtocol,
+          insulinResistance: interpretation.insulinResistance,
+          clinicalPhenotypes: interpretation.clinicalPhenotypes,
+          maleHormonePatterns: interpretation.maleHormonePatterns,
+          mitoScore: interpretation.mitoScore,
+          adjustedRisk: interpretation.adjustedRisk,
+          stopBangRisk: interpretation.stopBangRisk,
+        },
+      );
+
+      await storage.updateLabResult(labId, {
+        patientCommunicationSummary: patientSummary,
+        patientCommunicationSummaryClinicianEdited: false,
+      });
+
+      res.json({
+        message: "Patient Communication regenerated",
+        patientSummary,
+        clinicianEdited: false,
+        supplementCount: resolvedProtocol.length,
+      });
+    } catch (error) {
+      console.error("Error regenerating patient communication:", error);
+      res.status(500).json({ message: "Failed to regenerate Patient Communication" });
     }
   });
 
@@ -5930,8 +6002,10 @@ Return ONLY this JSON structure:
   app.post("/api/protocols/publish", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
-      const { patientId, labResultId, supplements, clinicianNotes, dietaryGuidance, patientSummary, labDate } = req.body;
-      if (!patientId || !supplements) return res.status(400).json({ message: "patientId and supplements are required" });
+      const { patientId, labResultId, supplements: requestedSupplements, clinicianNotes, dietaryGuidance, patientSummary, labDate } = req.body;
+      if (!patientId || (!labResultId && !requestedSupplements)) {
+        return res.status(400).json({ message: "patientId and supplements are required" });
+      }
 
       // Verify clinician can access this patient (clinic-scoped)
       const clinicId = getEffectiveClinicId(req);
@@ -5949,6 +6023,25 @@ Return ONLY this JSON structure:
         }
       }
       if (!portalAccount) return res.status(400).json({ message: "Patient does not have a portal account. Please invite them first." });
+
+      // For lab-backed protocols, resolve server-side from the persisted Brain
+      // output and clinician overrides. The browser-provided array is retained
+      // only for legacy protocols that do not have a lab result.
+      let supplements = requestedSupplements;
+      if (labResultId) {
+        const labResult = await storage.getLabResult(parseInt(labResultId));
+        if (!labResult || labResult.patientId !== parseInt(patientId)) {
+          return res.status(404).json({ message: "Lab result not found" });
+        }
+        const interpretation = labResult.interpretationResult as InterpretationResult | null;
+        if (!interpretation) {
+          return res.status(400).json({ message: "No completed Brain evaluation is available for this lab result" });
+        }
+        supplements = resolvePatientVisibleSupplementProtocol(
+          interpretation.supplements ?? [],
+          labResult.providerOverrides,
+        );
+      }
 
       const protocol = await storage.publishProtocol({
         patientId: parseInt(patientId),

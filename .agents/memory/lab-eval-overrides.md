@@ -11,6 +11,17 @@ override: it has dedicated canonical columns on `lab_results`.
 
 **Why:** Keeps the override contract narrow — one write path, one read path.
 
+## Final patient-visible Supplement Protocol
+All patient-facing protocol consumers must use the shared resolver: Brain
+recommendations minus hidden names, plus clinician-added products, with
+case-insensitive de-duplication and stable order. A clinician-added product wins on a
+name collision.
+
+**Why:** Portal, publishing, Patient Communication, PDFs, and curated note generation
+must not independently compute a different protocol. Patient Communication
+regeneration first persists the editor's override choices, then resolves from the
+stored lab result so its canonical draft cannot mention a transient product choice.
+
 ## Shape (ProviderOverrides interface in shared/schema.ts)
 - `hiddenSections` — section keys: `labResults`, `preventRisk`, `adjustedRisk`,
   `stopBang`, `insulinResistance`, `hormonePatterns`, `clinicalPhenotypes`, `maleHormonePatterns`

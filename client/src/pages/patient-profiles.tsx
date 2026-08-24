@@ -42,6 +42,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import type { Patient, LabResult, InterpretationResult, LabValues, FemaleLabValues, ClinicalEncounter, PatientChart, PatientChartDraft, ExtractedMedication, Appointment, SimpleLabUpload, ProviderOverrides, SupplementRecommendation, ClinicianSupplement, PatientVital, EvidenceOverlay } from "@shared/schema";
+import { resolvePatientVisibleSupplementProtocol } from "@shared/patient-visible-supplement-protocol";
 import { ResultsDisplay } from "@/components/results-display";
 import { LabComparisonDialog } from "@/components/lab-comparison-dialog";
 import {
@@ -760,6 +761,48 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
     onError: () => setSaveStatus('unsaved'),
   });
 
+  const regeneratePatientSummaryMutation = useMutation({
+    mutationFn: async () => {
+      // Persist the current editor state before rebuilding the canonical draft.
+      // The server then resolves from the stored protocol, so a regenerated
+      // communication can never refer to a transient browser-only selection.
+      const overridesResponse = await apiRequest(
+        "PATCH",
+        `/api/patients/${patient.id}/labs/${lab.id}/provider-overrides`,
+        overrides,
+      );
+      if (!overridesResponse.ok) {
+        throw new Error("Could not save the current supplement protocol");
+      }
+      const res = await apiRequest(
+        "POST",
+        `/api/patients/${patient.id}/labs/${lab.id}/regenerate-patient-summary`,
+        {},
+      );
+      if (!res.ok) {
+        throw new Error("Could not regenerate Patient Communication");
+      }
+      return res.json() as Promise<{ patientSummary: string }>;
+    },
+    onSuccess: (data) => {
+      setCommunicationSummary(data.patientSummary);
+      setSaveStatus('saved');
+      queryClient.invalidateQueries({ queryKey: ['/api/patients', patient.id, 'labs'] });
+      toast({
+        title: "Patient Communication regenerated",
+        description: "The refreshed AI draft uses the current patient-visible Supplement Protocol.",
+      });
+    },
+    onError: () => {
+      setSaveStatus('unsaved');
+      toast({
+        title: "Generation failed",
+        description: "Could not regenerate the Patient Communication. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const updateOverrides = useCallback((updater: (prev: ProviderOverrides) => ProviderOverrides) => {
     setOverrides(prev => {
       const next = updater(prev);
@@ -783,6 +826,20 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
     }, 900);
   }, []);
 
+  const regeneratePatientSummary = useCallback(() => {
+    if (
+      communicationSummary.trim() &&
+      !window.confirm(
+        "Regenerate the Patient Communication from the completed lab evaluation? This replaces the current text with a new AI draft.",
+      )
+    ) {
+      return;
+    }
+    if (summarySaveTimerRef.current) clearTimeout(summarySaveTimerRef.current);
+    setSaveStatus('saving');
+    regeneratePatientSummaryMutation.mutate();
+  }, [communicationSummary, regeneratePatientSummaryMutation]);
+
   useEffect(() => () => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     if (summarySaveTimerRef.current) clearTimeout(summarySaveTimerRef.current);
@@ -800,12 +857,8 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
   };
 
   const effectiveSupplements = useMemo((): SupplementRecommendation[] => {
-    const autoSupps: SupplementRecommendation[] = interp?.supplements || [];
-    return [
-      ...autoSupps.filter(s => !isSuppHidden(s.name)),
-      ...(overrides.addedSupplements || []),
-    ];
-  }, [interp?.supplements, overrides.hiddenSupplementNames, overrides.addedSupplements]);
+    return resolvePatientVisibleSupplementProtocol(interp?.supplements || [], overrides);
+  }, [interp?.supplements, overrides]);
 
   const hiddenCount = useMemo(() => [
     overrides.hiddenSections,
@@ -1184,6 +1237,8 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
                 labValues={vals}
                 onSummaryChange={updatePatientSummary}
                 saveStatus={saveStatus}
+                onRegenerate={regeneratePatientSummary}
+                isRegenerating={regeneratePatientSummaryMutation.isPending}
               />
 
               {/* Provider SOAP Note — generated from curated eval */}
@@ -3583,13 +3638,10 @@ export default function PatientProfiles() {
     mutationFn: async ({ lab, notes, dietaryGuidance, patientSummary }: { lab: LabResult; notes: string; dietaryGuidance: string; patientSummary: string }) => {
       const interp = lab.interpretationResult as any;
       const ov = (lab.providerOverrides as ProviderOverrides) || {};
-      const hiddenSuppNames: string[] = ov.hiddenSupplementNames || [];
-      const addedSupplements: SupplementRecommendation[] = ov.addedSupplements || [];
-      const autoSupps: any[] = interp?.supplements || [];
-      const supplements = [
-        ...autoSupps.filter((s: any) => !hiddenSuppNames.includes(s.name || '')),
-        ...addedSupplements,
-      ];
+      const supplements = resolvePatientVisibleSupplementProtocol(
+        interp?.supplements || [],
+        ov,
+      );
       // An edit made in the publish dialog is an explicit clinician save. Persist
       // it before publication so the portal, PDFs, and history snapshot agree.
       if (patientSummary !== publishPatientSummaryInitial) {

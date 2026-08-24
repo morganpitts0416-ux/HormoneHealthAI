@@ -9,6 +9,7 @@ import {
   annotateRecommendationMarkdown,
   annotatePatientSummary,
 } from "./therapy-context";
+import { buildPatientVisibleSupplementProtocolPromptBlock } from "./patient-communication-context";
 
 // Using gpt-5-mini for faster responses - smaller model but still capable
 // Production-safe: prefer OPENAI_API_KEY (GCP/direct); fall back to AI_INTEGRATIONS_* (Replit dev)
@@ -179,14 +180,14 @@ ${cvRiskSection}
 REQUIREMENTS:
 1. Always use specific numeric values — say "Your LDL is 160 mg/dL" not "your cholesterol is elevated."
 2. When two or more findings point in the same direction, group them as a pattern rather than listing each marker separately.
-3. Give 3–5 concrete, actionable next steps tied directly to the findings above:
+3. Give a focused set of concrete next steps tied directly to the findings above. Aim for 3–5 actions when that covers the major actionable clinical domains; include additional material only when needed to avoid dropping an important Brain-selected intervention or major treatment domain:
    - Cholesterol (elevated LDL, low HDL, or high triglycerides): fiber intake, omega-3 rich foods, reducing saturated fat, daily movement
    - Blood sugar (A1c or fasting glucose elevated): protein with each meal, reducing refined carbs, post-meal walks
    - Liver markers (elevated AST/ALT): limit alcohol, review medications/supplements, weight management
    - Testosterone (suboptimal): sleep quality, resistance training, stress management
    - Cardiovascular risk: tailor the intensity of lifestyle recommendations to the risk category and explain the percentage in plain terms
 4. If all or most findings are normal, say so clearly and specifically — mention key values that look good and what that means for the patient.
-5. Keep it 250–350 words. No fluff, no filler sentences.
+5. Keep the communication focused and readable, typically 300–500 words. Do not reproduce the full evaluation or a supplement catalog, but use enough space to explain every major actionable clinical domain.
 6. Do not close with a generic sign-off or "thank you for trusting us" — end on the next steps.
 
 Write the summary now:`;
@@ -206,9 +207,9 @@ This patient is actively on female Hormone Replacement Therapy. Apply these rule
       : '';
 
     const finalPrompt = [hrtSummaryBlock, therapyBlock, prompt].filter(Boolean).join('\n\n');
-    const visibleSupplements = brainContext?.supplements
-      ?.map(s => `- ${s.name}${s.dose ? ` ${s.dose}` : ''}: ${s.patientExplanation || s.indication || s.rationale || ''}`)
-      .join('\n');
+    const visibleSupplements = buildPatientVisibleSupplementProtocolPromptBlock(
+      brainContext?.supplements,
+    );
     const phenotypeDetails = [
       ...(brainContext?.clinicalPhenotypes ?? []).map(p => `${p.name || 'Pattern'}: ${p.patientExplanation || p.description || ''}`),
       ...(brainContext?.maleHormonePatterns ?? []).map(p => `${p.name || 'Hormone pattern'}: ${p.patientExplanation || p.description || ''}`),

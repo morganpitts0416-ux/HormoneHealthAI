@@ -1,0 +1,147 @@
+I approve the minimal design for the Patient Communication / Health Assessment supplement integration.
+
+Implement this problem only.
+
+Do not work on the Provider Chart Note yet. I will return to that separately.
+
+Also do not change the OmegaGenics/omega-3 Brain algorithm as part of this task. Your root-cause analysis is helpful, but since we do not yet have the patient-specific stored record needed to determine exactly why it did not fire, leave the Brain rule unchanged for now. The Patient Communication writer must not independently add omega-3 if the final resolved Supplement Protocol does not contain it.
+
+Implement the shared final patient-visible protocol resolver
+
+Create one server-side resolver for the final patient-visible Supplement Protocol:
+
+Brain-generated recommendations
+− hidden/provider-only recommendations
++ clinician-added recommendations
++ continuation state
++ final deduplication/order
+
+This resolver is not a new supplement-selection engine. It only resolves the recommendations already selected by the ClinIQ Brain plus explicit clinician decisions.
+
+Use this same resolution logic anywhere ClinIQ needs to know what the patient’s current final Supplement Protocol actually contains, so the portal/publish/communication paths cannot independently disagree.
+
+Pass the resolved protocol to Patient Communication as structured Brain context
+
+Do not flatten supplement objects into a one-line string before the writer sees them.
+
+Preserve the available structured fields:
+
+product name
+priority
+dose/SIG
+indication
+rationale
+supporting findings
+phenotype / Brain pattern
+category
+continuation status
+continuation note
+
+The communication writer needs to understand why each selected supplement belongs in the treatment plan, not merely that the product exists.
+
+Treatment-plan integration — not another supplement list
+
+The Patient Communication / Health Assessment must not reproduce the Supplement Protocol as another list of products.
+
+The patient already receives the complete itemized Supplement Protocol elsewhere in the lab evaluation, portal, and PDF.
+
+The Patient Communication should instead bring the entire evaluation together using the general pattern:
+
+finding / clinical pattern
+→ what it means
+→ what I recommend
+→ relevant treatment and supplement support
+→ monitoring / next step
+
+Relevant supplements should be incorporated naturally into the clinical domain they support.
+
+For example:
+
+metabolic/insulin-resistance findings may naturally incorporate the selected metabolic, oxidative-stress, gut/metabolic, or insulin-sensitivity supplements;
+hormone/bone findings may naturally incorporate selected bone/connective-tissue support;
+cardiometabolic findings may naturally incorporate selected cardiovascular supplements.
+
+These are reasoning examples only. Do not hard-code products or domains into the prompt.
+
+The writer should use each supplement’s supportingFindings, indication, phenotype/pattern, rationale, and category to understand where it belongs.
+
+Clinical importance should drive inclusion
+
+Do not simply require every high-priority supplement to appear.
+
+Priority is one input. The writer should communicate supplements that materially help explain the plan for the major clinical findings/patterns.
+
+A medium-priority product may deserve mention because it is central to an important clinical domain. A high-priority supportive product may not require individual discussion if mentioning it would turn the Health Assessment into a supplement catalog.
+
+The full Supplement Protocol remains the authoritative itemized source for every recommended product.
+
+Brain fidelity
+
+If a supplement is mentioned in the Patient Communication:
+
+use the exact final selected product;
+preserve the Brain-selected dose/SIG when a dose is stated;
+do not substitute a generic alternative;
+do not independently change the dose;
+do not add a product absent from the resolved protocol;
+do not contradict the final resolved protocol.
+
+This same principle applies to other structured ClinIQ Brain recommendations: structured Brain conclusions are authoritative where they exist, while the writer may provide nuanced evidence-based explanation for clinically relevant findings not covered by existing Brain logic.
+
+Therapy-state reconciliation
+
+Use therapy/continuation context correctly:
+
+already taking the recommended regimen → continue
+taking a lower regimen than recommended → increase
+not taking the recommendation → start
+treatment status unknown → do not invent start/continue/increase wording
+
+Avoid contradictions such as:
+
+Start D3 5,000 IU daily (you're already on this).
+
+Do not let arbitrary length rules suppress the clinical plan
+
+Inspect the current Patient Communication rules that emphasize 3–5 actions and/or the current fixed word target.
+
+I do not want the writer to become excessively long or reproduce the full lab evaluation, but those limits must not force omission of a major treatment domain or an important Brain-selected intervention.
+
+Preserve a focused, readable patient communication, but allow enough space to explain all major actionable clinical domains from that evaluation.
+
+Do not solve this by simply making the output very long. Adjust only whatever existing hard limit is directly causing clinically important treatment-plan content to be dropped.
+
+Preserve the canonical Health Assessment behavior already implemented
+Initial AI generation may populate the canonical Patient Communication.
+Clinician edits remain protected from automatic replacement.
+An explicit clinician-triggered regeneration can rebuild the draft using the current completed Brain evaluation plus the current resolved Supplement Protocol.
+Portal and PDFs continue to render the canonical Patient Communication exactly as already implemented.
+
+Do not change the canonical-summary architecture again.
+
+Scope exclusions
+
+Do not modify:
+
+Provider Chart Note generation
+SOAP generation
+June
+Evidence Layer
+encounter Visit Summary
+OmegaGenics/omega-3 scoring rules
+other supplement-selection algorithms
+unrelated lab algorithms
+
+After implementation, test and show me:
+
+that the Patient Communication writer receives the resolved final patient-visible protocol;
+that supplement objects remain structured rather than flattened;
+that major supplements are integrated into their relevant clinical findings rather than rendered as a separate product list;
+that exact product/dose fidelity is preserved;
+that hidden supplements cannot appear;
+that clinician-added supplements can be included when clinically relevant;
+that continuation/start/increase wording uses therapy state correctly;
+that clinician-edited canonical communication remains protected;
+build and relevant regression-test results.
+
+Do not deploy automatically.

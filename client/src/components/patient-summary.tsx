@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import type { LabValues } from "@shared/schema";
@@ -12,12 +12,25 @@ interface PatientSummaryProps {
   labValues: LabValues;
   onSummaryChange?: (val: string) => void;
   saveStatus?: 'saved' | 'saving' | 'unsaved';
+  onRegenerate?: () => void;
+  isRegenerating?: boolean;
 }
 
-export function PatientSummary({ summary, labValues, onSummaryChange, saveStatus }: PatientSummaryProps) {
+export function PatientSummary({
+  summary,
+  labValues,
+  onSummaryChange,
+  saveStatus,
+  onRegenerate,
+  isRegenerating = false,
+}: PatientSummaryProps) {
   const [editableSummary, setEditableSummary] = useState(summary);
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
+
+  useEffect(() => {
+    setEditableSummary(summary);
+  }, [summary]);
 
   const handleCopy = async () => {
     try {
@@ -84,6 +97,17 @@ export function PatientSummary({ summary, labValues, onSummaryChange, saveStatus
               </>
             )}
           </Button>
+          {onRegenerate && (
+            <Button
+              onClick={onRegenerate}
+              variant="outline"
+              disabled={isRegenerating}
+              data-testid="button-regenerate-patient-communication"
+            >
+              <RefreshCw className={cn("w-4 h-4 mr-2", isRegenerating && "animate-spin")} />
+              {isRegenerating ? "Regenerating..." : "Regenerate AI Draft"}
+            </Button>
+          )}
         </div>
 
         <div className="p-4 rounded-md bg-muted/50 border">
