@@ -444,6 +444,8 @@ export async function generatePatientWellnessPDF(
   hiddenHormonePatternCategories?: string[],
   /** Optional custom footer text. Replaces "Powered by ClinIQ" when set. */
   footerText?: string | null,
+  /** Canonical Health Assessment. Never generate a second patient summary here. */
+  patientCommunicationSummary?: string | null,
 ): Promise<void> {
   const sectionHidden = (key: string) => hiddenSections?.includes(key) ?? false;
   const interpHidden = (cat: string) => hiddenInterpretationCategories?.includes(cat) ?? false;
@@ -2074,7 +2076,7 @@ export async function generatePatientWellnessPDF(
   yPosition += 10;
 
   yPosition = addSectionHeader('UNDERSTANDING YOUR RESULTS', yPosition);
-  yPosition = addTextSection(wellnessPlan.educationalContent, yPosition, contentWidth);
+  yPosition = addTextSection(patientCommunicationSummary || interpretation.patientSummary || '', yPosition, contentWidth);
   yPosition += 8;
 
   yPosition = ensureSpace(30, yPosition);

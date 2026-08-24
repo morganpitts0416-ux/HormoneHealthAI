@@ -698,8 +698,12 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
   const [overrides, setOverrides] = useState<ProviderOverrides>(() =>
     (lab.providerOverrides as ProviderOverrides) || {}
   );
+  const [communicationSummary, setCommunicationSummary] = useState(
+    lab.patientCommunicationSummary || ''
+  );
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const summarySaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showAddSuppDialog, setShowAddSuppDialog] = useState(false);
   const [suppDialogSearch, setSuppDialogSearch] = useState('');
 
@@ -744,6 +748,18 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
     onError: () => setSaveStatus('unsaved'),
   });
 
+  const savePatientSummaryMutation = useMutation({
+    mutationFn: async (patientSummary: string) => {
+      const res = await apiRequest("PATCH", `/api/patients/${patient.id}/labs/${lab.id}/patient-summary`, { patientSummary });
+      return res.json();
+    },
+    onSuccess: () => {
+      setSaveStatus('saved');
+      queryClient.invalidateQueries({ queryKey: ['/api/patients', patient.id, 'labs'] });
+    },
+    onError: () => setSaveStatus('unsaved'),
+  });
+
   const updateOverrides = useCallback((updater: (prev: ProviderOverrides) => ProviderOverrides) => {
     setOverrides(prev => {
       const next = updater(prev);
@@ -757,7 +773,20 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
     });
   }, []);
 
-  useEffect(() => () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); }, []);
+  const updatePatientSummary = useCallback((value: string) => {
+    setCommunicationSummary(value);
+    setSaveStatus('unsaved');
+    if (summarySaveTimerRef.current) clearTimeout(summarySaveTimerRef.current);
+    summarySaveTimerRef.current = setTimeout(() => {
+      setSaveStatus('saving');
+      savePatientSummaryMutation.mutate(value);
+    }, 900);
+  }, []);
+
+  useEffect(() => () => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    if (summarySaveTimerRef.current) clearTimeout(summarySaveTimerRef.current);
+  }, []);
 
   // Helpers
   const isSectionHidden = (key: string) => (overrides.hiddenSections || []).includes(key);
@@ -818,10 +847,23 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
   const wellnessPlanMutation = useMutation({
     mutationFn: async () => {
       if (!interp) throw new Error('No interpretation available');
+      // The wellness-plan service must only receive material the clinician has
+      // allowed into patient-facing output. Its educationalContent is not used
+      // for the Health Assessment, and filtered inputs prevent hidden findings
+      // from reappearing in the other plan sections.
+      const hiddenSections = new Set(overrides.hiddenSections || []);
+      const visibleInterpretations = hiddenSections.has('labResults')
+        ? []
+        : (interp.interpretations || []).filter(i =>
+            !(overrides.hiddenInterpretationCategories || []).includes(i.category || '')
+          );
+      const visibleSupplements = effectiveSupplements as any[];
+      const visibleLabs = hiddenSections.has('labResults') ? {} : vals;
+      const visibleRisk = hiddenSections.has('preventRisk') ? null : interp.preventRisk;
       if (isFemale) {
-        return femaleLabsApi.generateWellnessPlan(vals as FemaleLabValues, interp.interpretations, interp.supplements, interp.preventRisk);
+        return femaleLabsApi.generateWellnessPlan(visibleLabs as FemaleLabValues, visibleInterpretations, visibleSupplements, visibleRisk);
       } else {
-        return labsApi.generateWellnessPlan(vals as LabValues, interp.interpretations, interp.supplements, interp.preventRisk);
+        return labsApi.generateWellnessPlan(visibleLabs as LabValues, visibleInterpretations, visibleSupplements, visibleRisk);
       }
     },
     onSuccess: async (wellnessPlan: WellnessPlan) => {
@@ -833,9 +875,9 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
         const hiddenSections = overrides.hiddenSections || [];
         const hiddenInterpCats = overrides.hiddenInterpretationCategories || [];
         if (isFemale) {
-          await generatePatientWellnessPDF(vals as FemaleLabValues, interp, wellnessPlan, patientName, patientLabs, pdfSupps, user?.clinicName, clinicBranding, clinicLogo, hiddenSections, hiddenInterpCats, overrides.hiddenHormonePatternCategories || [], footerText);
+          await generatePatientWellnessPDF(vals as FemaleLabValues, interp, wellnessPlan, patientName, patientLabs, pdfSupps, user?.clinicName, clinicBranding, clinicLogo, hiddenSections, hiddenInterpCats, overrides.hiddenHormonePatternCategories || [], footerText, communicationSummary);
         } else {
-          await generateMalePatientWellnessPDF(vals as LabValues, interp, wellnessPlan as MaleWellnessPlan, patientName, patientLabs, pdfSupps, user?.clinicName, clinicBranding, clinicLogo, hiddenSections, hiddenInterpCats, footerText);
+          await generateMalePatientWellnessPDF(vals as LabValues, interp, wellnessPlan as MaleWellnessPlan, patientName, patientLabs, pdfSupps, user?.clinicName, clinicBranding, clinicLogo, hiddenSections, hiddenInterpCats, footerText, communicationSummary);
         }
         toast({ title: "Patient Report Generated", description: "The personalized wellness report has been downloaded." });
       }
@@ -848,7 +890,7 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
   const handleProviderPDF = () => {
     if (interp) {
       const historyForPdf = allLabs.length >= 2 ? allLabs : undefined;
-      generateLabReportPDF(vals as LabValues, interp, patientName, user?.clinicName, historyForPdf, clinicBranding, clinicBrandingFull?.clinicLogo ?? null);
+      generateLabReportPDF(vals as LabValues, interp, patientName, user?.clinicName, historyForPdf, clinicBranding, clinicBrandingFull?.clinicLogo ?? null, communicationSummary);
       toast({ title: "Provider Report Generated", description: "The provider report has been downloaded." });
     }
   };
@@ -869,9 +911,7 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
     }
   };
 
-  const summaryText = typeof overrides.patientSummaryDraft === 'string'
-    ? overrides.patientSummaryDraft
-    : (interp?.patientSummary || '');
+  const summaryText = communicationSummary;
 
   // ── Draggable / minimizable panel state ───────────────────────────────────
   const { panelPos, minimized, setMinimized, panelRef, startDrag, floating, zIndex, bringToFront } = useFloatingPanel();
@@ -1142,7 +1182,7 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
               <PatientSummary
                 summary={summaryText}
                 labValues={vals}
-                onSummaryChange={(val) => updateOverrides(prev => ({ ...prev, patientSummaryDraft: val }))}
+                onSummaryChange={updatePatientSummary}
                 saveStatus={saveStatus}
               />
 
@@ -2768,6 +2808,7 @@ export default function PatientProfiles() {
   const [publishNotes, setPublishNotes] = useState("");
   const [publishDietaryGuidance, setPublishDietaryGuidance] = useState("");
   const [publishPatientSummary, setPublishPatientSummary] = useState("");
+  const [publishPatientSummaryInitial, setPublishPatientSummaryInitial] = useState("");
   const [isDietaryGenerating, setIsDietaryGenerating] = useState(false);
   const [isDietaryError, setIsDietaryError] = useState(false);
   const [messageDraft, setMessageDraft] = useState("");
@@ -3549,6 +3590,14 @@ export default function PatientProfiles() {
         ...autoSupps.filter((s: any) => !hiddenSuppNames.includes(s.name || '')),
         ...addedSupplements,
       ];
+      // An edit made in the publish dialog is an explicit clinician save. Persist
+      // it before publication so the portal, PDFs, and history snapshot agree.
+      if (patientSummary !== publishPatientSummaryInitial) {
+        const summaryRes = await apiRequest("PATCH", `/api/patients/${lab.patientId}/labs/${lab.id}/patient-summary`, {
+          patientSummary,
+        });
+        if (!summaryRes.ok) throw new Error("Failed to save the Health Assessment");
+      }
       const res = await apiRequest("POST", "/api/protocols/publish", {
         patientId: lab.patientId,
         labResultId: lab.id,
@@ -3567,6 +3616,7 @@ export default function PatientProfiles() {
       setPublishNotes("");
       setPublishDietaryGuidance("");
       setPublishPatientSummary("");
+      setPublishPatientSummaryInitial("");
       toast({
         title: "Protocol published",
         description: `${((variables.lab.interpretationResult as any)?.supplements?.length || 0)} supplements are now visible to the patient in their portal.`,
@@ -3583,11 +3633,9 @@ export default function PatientProfiles() {
     setPublishNotes("");
     setPublishDietaryGuidance("");
     setIsDietaryError(false);
-    const interp = (lab.interpretationResult as any) || {};
-    const ov = (lab.providerOverrides as ProviderOverrides) || {};
-    setPublishPatientSummary(
-      typeof ov.patientSummaryDraft === 'string' ? ov.patientSummaryDraft : (interp.patientSummary || "")
-    );
+    const summary = lab.patientCommunicationSummary || "";
+    setPublishPatientSummary(summary);
+    setPublishPatientSummaryInitial(summary);
   };
 
   const filteredPatients = useMemo(() => {

@@ -281,7 +281,7 @@ export default function LabInterpretation() {
 
   const handleExportPDF = () => {
     if (interpretationResult) {
-      generateLabReportPDF(labValues, interpretationResult, selectedPatient ? `${selectedPatient.firstName} ${selectedPatient.lastName}` : undefined, user?.clinicName, patientLabs, clinicBranding, clinicBrandingFull?.clinicLogo ?? null);
+      generateLabReportPDF(labValues, interpretationResult, selectedPatient ? `${selectedPatient.firstName} ${selectedPatient.lastName}` : undefined, user?.clinicName, patientLabs, clinicBranding, clinicBrandingFull?.clinicLogo ?? null, interpretationResult.patientSummary);
     }
   };
 
@@ -422,7 +422,7 @@ export default function LabInterpretation() {
           })),
           ...customSupplements.map(c => ({ name: c.name, dose: c.dose, indication: c.indication })),
         ];
-        await generateMalePatientWellnessPDF(labValues, interpretationResult, wellnessPlan, patientName, patientLabs, curatedSupplements, user?.clinicName, undefined, clinicBrandingFull?.clinicLogo ?? null, undefined, undefined, clinicBrandingFull?.footerText ?? null);
+        await generateMalePatientWellnessPDF(labValues, interpretationResult, wellnessPlan, patientName, patientLabs, curatedSupplements, user?.clinicName, undefined, clinicBrandingFull?.clinicLogo ?? null, undefined, undefined, clinicBrandingFull?.footerText ?? null, interpretationResult.patientSummary);
         toast({
           title: "Patient Report Generated",
           description: "The personalized wellness report has been downloaded.",

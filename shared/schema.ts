@@ -368,6 +368,7 @@ export interface ProviderOverrides {
   hiddenHormonePatternCategories?: string[];
   hiddenSupplementNames?: string[];
   addedSupplements?: SupplementRecommendation[];
+  /** @deprecated Migrated into lab_results.patient_communication_summary. */
   patientSummaryDraft?: string | null;
 }
 
@@ -706,6 +707,11 @@ export const labResults = pgTable("lab_results", {
   labValues: jsonb("lab_values").$type<LabValues | FemaleLabValues>().notNull(),
   interpretationResult: jsonb("interpretation_result").$type<InterpretationResult>(),
   providerOverrides: jsonb("provider_overrides").$type<ProviderOverrides>(),
+  // The only current patient-facing Health Assessment for this lab evaluation.
+  patientCommunicationSummary: text("patient_communication_summary"),
+  // False means the canonical text is an AI draft and may be refreshed by a
+  // re-evaluation. This flips only when a clinician explicitly saves an edit.
+  patientCommunicationSummaryClinicianEdited: boolean("patient_communication_summary_clinician_edited").notNull().default(false),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

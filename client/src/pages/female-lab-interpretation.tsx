@@ -332,7 +332,7 @@ export default function FemaleLabInterpretation() {
           })),
           ...customSupplements.map(c => ({ name: c.name, dose: c.dose, indication: c.indication })),
         ];
-        await generatePatientWellnessPDF(labValues, interpretationResult, wellnessPlan, patientName, patientLabs, curatedSupplements, user?.clinicName, clinicBranding, clinicBrandingFull?.clinicLogo ?? null, undefined, undefined, undefined, clinicBrandingFull?.footerText ?? null);
+        await generatePatientWellnessPDF(labValues, interpretationResult, wellnessPlan, patientName, patientLabs, curatedSupplements, user?.clinicName, clinicBranding, clinicBrandingFull?.clinicLogo ?? null, undefined, undefined, undefined, clinicBrandingFull?.footerText ?? null, interpretationResult.patientSummary);
         toast({
           title: "Patient Report Generated",
           description: "The personalized wellness report has been downloaded.",
@@ -367,7 +367,7 @@ export default function FemaleLabInterpretation() {
 
   const handleExportPDF = () => {
     if (interpretationResult) {
-      generateLabReportPDF(labValues as unknown as LabValues, interpretationResult, selectedPatient ? `${selectedPatient.firstName} ${selectedPatient.lastName}` : undefined, user?.clinicName, patientLabs, clinicBranding, clinicBrandingFull?.clinicLogo ?? null);
+      generateLabReportPDF(labValues as unknown as LabValues, interpretationResult, selectedPatient ? `${selectedPatient.firstName} ${selectedPatient.lastName}` : undefined, user?.clinicName, patientLabs, clinicBranding, clinicBrandingFull?.clinicLogo ?? null, interpretationResult.patientSummary);
     }
   };
 

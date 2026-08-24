@@ -873,6 +873,30 @@ CREATE TABLE IF NOT EXISTS lab_results (
   updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 ALTER TABLE lab_results ADD COLUMN IF NOT EXISTS provider_overrides JSONB;
+ALTER TABLE lab_results ADD COLUMN IF NOT EXISTS patient_communication_summary TEXT;
+ALTER TABLE lab_results ADD COLUMN IF NOT EXISTS patient_communication_summary_clinician_edited BOOLEAN NOT NULL DEFAULT false;
+
+-- Backfill the canonical Health Assessment without treating generated text as
+-- clinician-authored. The former profile-editor draft is the only legacy value
+-- that reliably proves a clinician saved an edit. Published protocol values are
+-- retained as a best available initial value, but remain refreshable AI drafts.
+UPDATE lab_results lr
+SET
+  patient_communication_summary = COALESCE(
+    NULLIF(lr.provider_overrides->>'patientSummaryDraft', ''),
+    (
+      SELECT NULLIF(pp.patient_summary, '')
+      FROM published_protocols pp
+      WHERE pp.lab_result_id = lr.id
+        AND NULLIF(pp.patient_summary, '') IS NOT NULL
+      ORDER BY pp.published_at DESC
+      LIMIT 1
+    ),
+    NULLIF(lr.interpretation_result->>'patientSummary', '')
+  ),
+  patient_communication_summary_clinician_edited =
+    NULLIF(lr.provider_overrides->>'patientSummaryDraft', '') IS NOT NULL
+WHERE lr.patient_communication_summary IS NULL;
 
 -- ── saved_interpretations ────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS saved_interpretations (

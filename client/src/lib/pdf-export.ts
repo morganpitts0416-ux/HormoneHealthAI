@@ -48,6 +48,8 @@ export async function generateLabReportPDF(
   branding?: PartialBranding | null,
   /** Clinic logo data URL or remote URL; shown top-left when provided. */
   clinicLogo?: string | null,
+  /** Canonical clinician-facing Patient Communication Summary for this lab. */
+  patientCommunicationSummary?: string | null,
 ): Promise<void> {
   const displayClinicName = clinicName || "Your Health Clinic";
   // Effective heading color: clinic primary if set, else historic navy.
@@ -380,7 +382,8 @@ export async function generateLabReportPDF(
     yPosition += 4;
   }
 
-  if (interpretation.patientSummary) {
+  const patientSummary = patientCommunicationSummary ?? interpretation.patientSummary;
+  if (patientSummary) {
     if (yPosition > 240) {
       doc.addPage();
       yPosition = 20;
@@ -393,7 +396,7 @@ export async function generateLabReportPDF(
 
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
-    const sanitizedSummary = sanitizeForPdf(interpretation.patientSummary);
+    const sanitizedSummary = sanitizeForPdf(patientSummary);
     const summaryLines = doc.splitTextToSize(sanitizedSummary, pageWidth - 28);
     
     // Handle pagination for long text

@@ -1771,21 +1771,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
       interpretations = orderInterpretationsByPanel(interpretations);
 
-      // Steps 4 & 5: Generate AI recommendations and patient summary in parallel
-      // (deferred until here so the AI sees the fully enriched, ordered array
-      // — including IR Screening and any passthrough markers).
-      const [aiRecommendations, patientSummary] = await Promise.all([
-        AIService.generateRecommendations(labs, redFlags, interpretations, 'male', trendContext || undefined, therapyContext),
-        AIService.generatePatientSummary(labs, interpretations, redFlags.length > 0, preventRisk, 'male', therapyContext),
-      ]);
-
-      // Step 9: Generate SOAP note
-      const soapNote = await AIService.generateSOAPNote(
-        labs, redFlags, interpretations, aiRecommendations, recheckWindow,
-        'male', preventRisk, supplements, insulinResistance, trendContext || undefined,
-        therapyContext,
-      );
-
       const maleHormonePatterns = detectMaleHormonePatterns(labs);
       console.log('[API] Male hormone patterns detected:', maleHormonePatterns.map(p => p.name).join(', ') || 'None');
 
@@ -1803,6 +1788,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
       }
+
+      // Complete every deterministic Brain output before drafting patient
+      // communication. Brain recommendations are generated first so the writer
+      // can explain—not override—the final structured clinical context.
+      const aiRecommendations = await AIService.generateRecommendations(
+        labs, redFlags, interpretations, 'male', trendContext || undefined, therapyContext,
+      );
+      const patientSummary = await AIService.generatePatientSummary(
+        labs, interpretations, redFlags.length > 0, preventRisk, 'male', therapyContext,
+        {
+          redFlags,
+          aiRecommendations,
+          recheckWindow,
+          supplements,
+          insulinResistance,
+          maleHormonePatterns,
+          mitoScore: mitoScore as any,
+          adjustedRisk,
+          stopBangRisk: stopBangRisk as any,
+          trendContext: trendContext || undefined,
+        },
+      );
+
+      // Step 9: Generate SOAP note
+      const soapNote = await AIService.generateSOAPNote(
+        labs, redFlags, interpretations, aiRecommendations, recheckWindow,
+        'male', preventRisk, supplements, insulinResistance, trendContext || undefined,
+        therapyContext,
+      );
 
       const result: InterpretationResult = {
         redFlags,
@@ -2190,21 +2204,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           'Not calculated');
       }
 
-      // Steps 4 & 5: Generate AI recommendations and patient summary in parallel
-      // (deferred until here so the AI sees the fully enriched, ordered array
-      // — including IR Screening and any passthrough markers).
-      const [aiRecommendations, patientSummary] = await Promise.all([
-        AIService.generateRecommendations(labs, redFlags, interpretations, 'female', trendContext || undefined, therapyContext),
-        AIService.generatePatientSummary(labs, interpretations, redFlags.length > 0, preventRisk, 'female', therapyContext),
-      ]);
-
-      // Step 12: Generate SOAP note
-      const soapNote = await AIService.generateSOAPNote(
-        labs, redFlags, interpretations, aiRecommendations, recheckWindow,
-        'female', preventRisk, supplements, insulinResistance, trendContext || undefined,
-        therapyContext,
-      );
-
       const mitoScore = calculateMitoScore(labs, 'female', insulinResistance) || undefined;
 
       // Merge mito-identified supplements into the main list (dedup by name).
@@ -2219,6 +2218,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
       }
+
+      // Finish the full Brain evaluation before drafting patient communication.
+      const aiRecommendations = await AIService.generateRecommendations(
+        labs, redFlags, interpretations, 'female', trendContext || undefined, therapyContext,
+      );
+      const patientSummary = await AIService.generatePatientSummary(
+        labs, interpretations, redFlags.length > 0, preventRisk, 'female', therapyContext,
+        {
+          redFlags,
+          aiRecommendations,
+          recheckWindow,
+          supplements,
+          insulinResistance,
+          clinicalPhenotypes,
+          mitoScore: mitoScore as any,
+          adjustedRisk,
+          stopBangRisk: stopBangRisk as any,
+          trendContext: trendContext || undefined,
+        },
+      );
+
+      // Step 12: Generate SOAP note
+      const soapNote = await AIService.generateSOAPNote(
+        labs, redFlags, interpretations, aiRecommendations, recheckWindow,
+        'female', preventRisk, supplements, insulinResistance, trendContext || undefined,
+        therapyContext,
+      );
 
       const result: InterpretationResult = {
         redFlags,
@@ -4382,12 +4408,43 @@ Return ONLY this JSON structure:
       if (!patient) {
         return res.status(404).json({ error: "Patient not found" });
       }
-      const { labValues: bodyLabValues, interpretationResult: bodyInterpretation, notes, labDate: bodyLabDate } = req.body;
+      const {
+        labValues: bodyLabValues,
+        interpretationResult: bodyInterpretation,
+        notes,
+        labDate: bodyLabDate,
+        // Evaluation UIs may pass this when re-running the same saved panel.
+        // Its canonical summary is refreshable only until a clinician edit.
+        labResultId: existingLabResultId,
+      } = req.body;
+      const generatedSummary = typeof bodyInterpretation?.patientSummary === "string"
+        ? bodyInterpretation.patientSummary
+        : null;
+      if (Number.isInteger(existingLabResultId)) {
+        const existingLab = await storage.getLabResult(existingLabResultId);
+        if (!existingLab || existingLab.patientId !== patientId) {
+          return res.status(404).json({ error: "Lab result not found" });
+        }
+        const clinicianEdited = existingLab.patientCommunicationSummaryClinicianEdited === true;
+        const updatedLab = await storage.updateLabResult(existingLabResultId, {
+          labDate: bodyLabDate ? new Date(bodyLabDate) : new Date(),
+          labValues: bodyLabValues as LabValues | FemaleLabValues,
+          interpretationResult: bodyInterpretation as InterpretationResult,
+          patientCommunicationSummary: clinicianEdited
+            ? existingLab.patientCommunicationSummary
+            : generatedSummary,
+          patientCommunicationSummaryClinicianEdited: clinicianEdited,
+          notes,
+        } as Partial<InsertLabResult>);
+        return res.json(updatedLab);
+      }
       const labResult = await storage.createLabResult({
         patientId,
         labDate: bodyLabDate ? new Date(bodyLabDate) : new Date(),
         labValues: bodyLabValues as LabValues | FemaleLabValues,
         interpretationResult: bodyInterpretation as InterpretationResult,
+        patientCommunicationSummary: generatedSummary,
+        patientCommunicationSummaryClinicianEdited: false,
         notes,
       } as InsertLabResult);
       await storage.updatePatient(patientId, {}, clinicianId, clinicId);
@@ -5623,17 +5680,7 @@ Return ONLY this JSON structure:
       const HORMONE_PATTERN_PREFIXES = ['Testosterone Pattern', 'Perimenopause Assessment:', 'Hormone Pattern:'];
       const isHormonePattern = (cat: string) => HORMONE_PATTERN_PREFIXES.some(p => cat.startsWith(p));
 
-      // Return labs with patient-safe fields (no raw clinical scoring text)
-      // Build per-lab maps for all published-protocol fields
-      const summaryByLabId = new Map<number, string | null>();
-      for (const p of protocols) {
-        if (p.labResultId) {
-          if (p.patientSummary && !summaryByLabId.has(p.labResultId)) {
-            summaryByLabId.set(p.labResultId, p.patientSummary);
-          }
-        }
-      }
-
+      // Return labs with patient-safe fields (no raw clinical scoring text).
       const safeLabs = labs.map((lab) => {
         const interp = (lab.interpretationResult as any) || {};
         const ov = (lab.providerOverrides as any) || {};
@@ -5675,10 +5722,9 @@ Return ONLY this JSON structure:
                 .filter((i: any) => isHormonePattern(i.category || ''))
                 .filter((i: any) => !hiddenHormonePatternCats.includes(i.category || '')),
           supplements: effectiveSupplements,
-          // Health Assessment: provider draft > published summary > AI-generated fallback
-          patientSummary: (typeof ov.patientSummaryDraft === 'string')
-            ? ov.patientSummaryDraft
-            : (summaryByLabId.get(lab.id) ?? interp.patientSummary ?? null),
+          // Health Assessment: one canonical current value per lab evaluation.
+          // Published protocol values are historical snapshots only.
+          patientSummary: lab.patientCommunicationSummary ?? null,
           preventRisk: hiddenSections.includes('preventRisk') ? null : (interp.preventRisk || null),
           insulinResistance: hiddenSections.includes('insulinResistance') ? null : (interp.insulinResistance || null),
           mitoScore: hiddenSections.includes('insulinResistance') ? null : ((interp as any).mitoScore || null),
@@ -5759,11 +5805,8 @@ Return ONLY this JSON structure:
       const bodyOverrides = req.body?.overrides && typeof req.body.overrides === 'object' ? req.body.overrides : null;
       const overrides = bodyOverrides || (labResult.providerOverrides as any) || {};
 
-      // Effective patient summary: use the edited draft if present, otherwise the original
-      const effectivePatientSummary: string =
-        typeof overrides.patientSummaryDraft === 'string'
-          ? overrides.patientSummaryDraft
-          : (interp.patientSummary || '');
+      // The canonical Health Assessment is the only patient-facing source.
+      const effectivePatientSummary = labResult.patientCommunicationSummary || '';
 
       // Effective interpretations: filter out provider-hidden categories
       const hiddenInterpCats: string[] = overrides.hiddenInterpretationCategories || [];
@@ -5841,12 +5884,11 @@ Return ONLY this JSON structure:
       if (!labResult || labResult.patientId !== patientId) {
         return res.status(404).json({ message: "Lab result not found" });
       }
-      // Merge updated patientSummary into the stored interpretationResult JSON
-      const existing = (labResult.interpretationResult as any) || {};
-      const updated = await storage.updateLabResult(labId, {
-        interpretationResult: { ...existing, patientSummary } as any,
+      await storage.updateLabResult(labId, {
+        patientCommunicationSummary: patientSummary,
+        patientCommunicationSummaryClinicianEdited: true,
       });
-      res.json({ message: "Patient summary updated", patientSummary });
+      res.json({ message: "Patient summary updated", patientSummary, clinicianEdited: true });
     } catch (error) {
       console.error("Error updating patient summary:", error);
       res.status(500).json({ message: "Failed to update patient summary" });

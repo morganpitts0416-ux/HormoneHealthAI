@@ -111,6 +111,19 @@ ${gender === 'female' ? `- Consider menstrual cycle phase when interpreting horm
     riskResult?: ASCVDRiskResult | PREVENTRiskResult | null,
     gender: 'male' | 'female' = 'male',
     therapyContext?: TherapyContext | null,
+    brainContext?: {
+      redFlags?: RedFlag[];
+      aiRecommendations?: string;
+      recheckWindow?: string;
+      supplements?: SupplementRecommendation[];
+      insulinResistance?: InsulinResistanceScreening;
+      clinicalPhenotypes?: Array<{ name?: string; description?: string; patientExplanation?: string }>;
+      maleHormonePatterns?: Array<{ name?: string; patientExplanation?: string; description?: string }>;
+      mitoScore?: { patientExplanation?: string; summary?: string; interpretation?: string };
+      adjustedRisk?: { adjustedCategory?: string; riskCategory?: string; summary?: string };
+      stopBangRisk?: { riskDescription?: string; recommendations?: string };
+      trendContext?: string;
+    },
   ): Promise<string> {
     // Categorize findings
     const abnormalFindings = interpretations.filter(i => i.status === 'abnormal' || i.status === 'critical');
@@ -193,6 +206,26 @@ This patient is actively on female Hormone Replacement Therapy. Apply these rule
       : '';
 
     const finalPrompt = [hrtSummaryBlock, therapyBlock, prompt].filter(Boolean).join('\n\n');
+    const visibleSupplements = brainContext?.supplements
+      ?.map(s => `- ${s.name}${s.dose ? ` ${s.dose}` : ''}: ${s.patientExplanation || s.indication || s.rationale || ''}`)
+      .join('\n');
+    const phenotypeDetails = [
+      ...(brainContext?.clinicalPhenotypes ?? []).map(p => `${p.name || 'Pattern'}: ${p.patientExplanation || p.description || ''}`),
+      ...(brainContext?.maleHormonePatterns ?? []).map(p => `${p.name || 'Hormone pattern'}: ${p.patientExplanation || p.description || ''}`),
+    ].filter(Boolean).join('\n');
+    const completedBrainBlock = [
+      brainContext?.redFlags?.length ? `RED FLAGS:\n${brainContext.redFlags.map(f => `- ${f.category}: ${f.message}. Action: ${f.action}`).join('\n')}` : '',
+      brainContext?.aiRecommendations ? `CLINIQ BRAIN MANAGEMENT RECOMMENDATIONS (authoritative where present):\n${brainContext.aiRecommendations}` : '',
+      visibleSupplements ? `PATIENT-VISIBLE SUPPLEMENTS:\n${visibleSupplements}` : '',
+      phenotypeDetails ? `PATIENT-VISIBLE PATTERNS:\n${phenotypeDetails}` : '',
+      brainContext?.insulinResistance ? `INSULIN-RESISTANCE SCREENING:\n${brainContext.insulinResistance.patientExplanation || brainContext.insulinResistance.providerSummary || ''}\nMonitoring: ${brainContext.insulinResistance.monitoringPlan || ''}` : '',
+      brainContext?.mitoScore ? `MITO FINDING:\n${brainContext.mitoScore.patientExplanation || brainContext.mitoScore.summary || brainContext.mitoScore.interpretation || ''}` : '',
+      brainContext?.adjustedRisk ? `ADJUSTED CARDIOVASCULAR RISK:\n${brainContext.adjustedRisk.summary || brainContext.adjustedRisk.adjustedCategory || brainContext.adjustedRisk.riskCategory || ''}` : '',
+      brainContext?.stopBangRisk ? `SLEEP-APNEA SCREENING:\n${brainContext.stopBangRisk.riskDescription || ''}\n${brainContext.stopBangRisk.recommendations || ''}` : '',
+      brainContext?.trendContext ? `LAB TREND CONTEXT:\n${brainContext.trendContext}` : '',
+      brainContext?.recheckWindow ? `RECHECK WINDOW: ${brainContext.recheckWindow}` : '',
+    ].filter(Boolean).join('\n\n');
+    const communicationPrompt = `${finalPrompt}${completedBrainBlock ? `\n\nCOMPLETED PATIENT-VISIBLE CLINIQ BRAIN CONTEXT:\n${completedBrainBlock}\n\nAUTHORITATIVE CONTEXT RULES:\n- When ClinIQ Brain has supplied an interpretation, management recommendation, dose, target, classification, or treatment, preserve it; do not substitute a conflicting conclusion.\n- You may explain clinically relevant findings not covered by Brain rules only when directly supported by the supplied data. Do not manufacture diagnoses, certainty, treatment decisions, or causal relationships.\n- Select what matters most. Do not mechanically narrate every marker or algorithm.\n- Do not include content that is not in this patient-visible context.` : ''}`;
 
     try {
       console.log('[AI Service] Generating patient summary with prompt length:', finalPrompt.length);
@@ -222,7 +255,7 @@ CONTENT
           },
           {
             role: "user",
-            content: finalPrompt
+            content: communicationPrompt
           }
         ],
         max_completion_tokens: 2500,
