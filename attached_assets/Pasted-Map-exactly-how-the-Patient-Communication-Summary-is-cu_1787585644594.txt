@@ -1,0 +1,45 @@
+Map exactly how the Patient Communication Summary is currently generated, what inputs it receives, where the edited/saved value is stored, how the patient portal retrieves it, and separately how the PDF “Understanding Your Results” section is generated.
+
+Then map what structured outputs from the lab evaluation/ClinIQ Brain already exist at generation time:
+
+marker assessments
+management recommendations
+phenotype results
+hormone-pattern results
+cardiovascular/PREVENT outputs
+supplement recommendations including product, dose, and rationale
+monitoring/follow-up recommendations
+any hidden/provider-only findings
+
+Identify which of those Brain outputs are currently passed to the Patient Communication generator and which are not.
+
+Also identify whether the PDF “Understanding Your Results” is:
+
+generated independently,
+generated from raw lab data,
+generated from another AI prompt,
+or populated from stored text.
+
+Do not change code yet.
+
+Propose the smallest architecture that makes:
+
+Provider-side Patient Communication Summary = the single editable source of truth
+
+after it is saved, with that exact saved content used for:
+
+Patient Portal → Health Assessment
+Patient Report PDF → Understanding Your Results
+
+For initial AI generation of that Patient Communication Summary, propose how to provide the writer with the complete ClinIQ Brain output for that evaluation as authoritative context for Brain-covered findings, while allowing evidence-based reasoning for findings not covered by an existing ClinIQ rule.
+
+The communication writer must:
+
+not contradict ClinIQ Brain recommendations for covered findings;
+include clinically important Brain-derived recommendations and relevant screening/pattern findings in patient-friendly language;
+be additive for uncovered findings using evidence-based reasoning;
+write in first-person treating-provider-to-patient voice;
+never say “ask your provider,” “discuss with your provider,” “consult your clinician,” or similar third-party language;
+never regenerate over or override provider-edited saved communication.
+
+Do not implement yet. Show me the current data flow, the exact duplication points, the Brain outputs currently available, and the smallest proposed architecture/diff.
