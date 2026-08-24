@@ -1,0 +1,157 @@
+I approve the root-cause analysis, with an important clarification about the intended role of the Supplement Protocol within the Patient Communication / Health Assessment.
+
+Do not implement yet. First show me the minimal design and root-cause findings described below.
+
+Core issue
+
+The correction needs to address both problems you identified:
+
+Context-construction loss: the Patient Communication writer is receiving a lossy/flattened version of the supplement recommendations rather than the final resolved patient-visible Supplement Protocol with its clinical hierarchy and supporting reasoning.
+Writer-instruction gap: the writer is not being told how to use those recommendations as part of the patient's overall treatment plan.
+
+However, I do not want the Patient Communication Summary to become another list of supplements.
+
+The patient already receives the complete itemized Supplement Protocol in the portal and in the patient PDF. The Patient Communication has a different purpose: it should bring the entire lab evaluation, clinical reasoning, and treatment plan together in a cohesive provider-to-patient explanation.
+
+What the Patient Communication writer should receive
+
+The writer should receive the resolved final patient-visible Supplement Protocol, not the earlier raw/pre-publication supplement array.
+
+That context should reflect:
+
+hidden/provider-only supplements removed;
+clinician-added supplements included;
+final patient-visible product selection;
+continuation status preserved;
+any other final resolution that determines what the patient actually sees in the Supplement Protocol.
+
+For each supplement, preserve structured information rather than collapsing it into:
+
+name + dose + one explanation field
+
+Preserve the available:
+
+product name;
+priority;
+dose/SIG;
+indication;
+rationale;
+supporting findings;
+phenotype / Brain pattern;
+category;
+continuation status.
+
+I want the communication writer to understand why the Brain recommended the supplement and which clinical problem/domain it belongs to, not merely know that the supplement exists.
+
+How the writer should use the Supplement Protocol
+
+Do not generate a separate supplement list inside the Patient Communication.
+
+Instead, weave relevant supplement recommendations into the clinical domain they are helping address.
+
+The communication should generally follow:
+
+finding/pattern → what it means → what I recommend → relevant treatment/supplement support → what happens next
+
+rather than:
+
+lab findings → treatment recommendations → separate supplement list
+
+For example:
+
+Metabolic / insulin-resistance assessment
+
+If the Brain identifies early insulin resistance / visceral metabolic dysfunction, explain that finding and the lifestyle/treatment plan. If the final Supplement Protocol recommends Berberine GT for insulin resistance, GlutaClear for the associated oxidative/metabolic burden, and UltraFlora Night Rest & Digest as part of the gut/sleep/metabolic strategy, those recommendations should be naturally incorporated into the metabolic discussion.
+
+The communication should convey the idea that these are components of the plan for the metabolic pattern—not simply repeat three products from the Supplement Protocol.
+
+Hormone / bone assessment
+
+Explain the clinically important hormone findings and what we plan to do about HRT. If the final protocol recommends StayStrong+ 4-in-1 Collagen Whole Body Chews because of estrogen decline and its bone/connective-tissue implications, incorporate that recommendation naturally into the hormone/bone discussion.
+
+Cardiometabolic assessment
+
+Explain LDL, ApoB, PREVENT/ASCVD or other relevant cardiovascular reasoning and the resulting treatment plan. If CoQ10 is recommended by the final protocol, integrate it into that plan. If an omega-3 product is recommended, integrate the actual selected product and dose rather than independently recommending generic “fish oil.”
+
+The same principle should generalize to other domains and future Brain algorithms. Do not hard-code these specific supplements or these three domains into the writer. They are examples of the reasoning behavior I want.
+
+Clinical hierarchy matters more than supplement priority alone
+
+Do not simply tell the writer to mention every “high-priority” supplement.
+
+Priority is useful context, but the writer should decide what belongs in the Health Assessment based on the major clinical findings/patterns and their resulting treatment plan.
+
+A medium-priority supplement may be important to mention because it is directly relevant to a major issue being explained. Conversely, a high-priority product does not necessarily need its own sentence if doing so would turn the communication into a supplement catalog.
+
+The goal is treatment-plan integration, not supplement coverage.
+
+Lower-priority/supportive products can remain in the full Supplement Protocol without being explicitly discussed unless they materially contribute to understanding the patient's plan.
+
+Brain fidelity
+
+Wherever ClinIQ Brain has a structured finding, interpretation, target, management recommendation, supplement recommendation, dose, or other treatment logic, that structured output should be authoritative for the Patient Communication.
+
+The writer may explain, organize, prioritize, and add nuanced evidence-based interpretation for clinically relevant findings that the Brain does not cover.
+
+It must not:
+
+contradict an existing Brain recommendation;
+independently substitute a different treatment;
+independently change a supplement dose;
+replace a Brain-selected branded product with a generic alternative;
+create a competing target/range;
+invent a diagnosis or causal relationship.
+
+When a supplement is mentioned in the communication, preserve the actual final Brain/protocol product and dose when a dose is clinically useful in the communication.
+
+The full Supplement Protocol remains the authoritative itemized source for every product, SIG, priority, and detailed rationale. The Patient Communication is the integrated explanation of the patient's evaluation and plan.
+
+Therapy-state reconciliation
+
+Also preserve treatment state.
+
+For example, the current generated communication said:
+
+Start D3 5,000 IU daily (you're already on this)
+
+That is internally inconsistent.
+
+If the available structured context establishes treatment state:
+
+already taking the recommended regimen → continue;
+currently taking a lower dose and Brain recommends higher → increase;
+not currently taking it → start;
+uncertain treatment state → do not invent start/continue/increase language.
+Investigate the missing omega-3 recommendation separately
+
+In this patient's evaluation, I expected an omega-3/fish-oil recommendation based on the cardiometabolic assessment, but the final Supplement Protocol did not contain one.
+
+Do not fix that by having the Patient Communication writer independently add fish oil. That would defeat the entire architecture we're building.
+
+Trace why the Brain/Supplement Protocol did not recommend the expected omega-3 product.
+
+Determine whether:
+
+the applicable supplement rule did not fire;
+the patient's values did not meet the configured rule;
+another Brain rule intentionally excluded it;
+therapy/continuation logic suppressed it;
+visibility/resolution logic removed it;
+or there is another algorithm/configuration issue.
+
+If this is a Brain-rule problem, it should be corrected in the Brain so every downstream consumer receives the same corrected treatment plan, rather than patched in the Patient Communication writer.
+
+What I want from you before implementation
+
+Show me the smallest architecture change needed to:
+
+Resolve the final patient-visible Supplement Protocol before Patient Communication generation.
+Pass that resolved protocol to the writer as structured clinical treatment context without flattening away its reasoning.
+Allow the writer to associate relevant supplements with the findings/patterns/domains they address.
+Preserve the current rule that the Patient Communication is generated only after the completed ClinIQ Brain evaluation.
+Preserve clinician-edit protection and the canonical Patient Communication architecture we just implemented.
+Avoid creating another independent supplement-selection or treatment-reasoning pipeline inside the communication writer.
+
+Also show me the root cause of the missing omega-3 recommendation for this patient's cardiometabolic pattern.
+
+Do not implement yet. Do not deploy. Do not add product-specific hard-coded rules to the Patient Communication prompt. Show me the proposed minimal design and omega-3 root-cause analysis first.
