@@ -1,0 +1,46 @@
+Before we investigate the remaining Patient Communication selection behavior, I want to add one small but important provider-control layer to the resolved Supplement Protocol.
+
+Currently the Brain assigns each supplement a priority (high/medium/low), but the provider should be able to override that priority while curating the patient's Supplement Protocol.
+
+Please analyze the smallest architecture change needed to allow provider priority overrides. Do not implement yet.
+
+Desired behavior:
+
+The Brain continues assigning the initial/default priority.
+In the provider Supplement Protocol UI, the provider can change any recommendation between High, Medium, and Low priority.
+The provider-selected priority becomes part of the persisted protocol decision for that patient/lab evaluation.
+The shared resolved patient-visible Supplement Protocol should expose the provider-selected priority when one exists; otherwise use the Brain priority.
+This final resolved priority should be the priority received by the Patient Communication writer and any other consumer of the resolved protocol.
+Hiding/unhiding a supplement remains independent from changing its priority.
+Clinician-added supplements should also support High/Medium/Low priority.
+Do not change the underlying Brain supplement-selection/scoring algorithms.
+
+Priority semantics for Patient Communication:
+
+High: Core component of the provider's treatment plan. When there is a clinically relevant treatment domain in the Health Assessment, the writer should integrate the product naturally into that discussion. High priority should strongly favor inclusion, not create a separate supplement list.
+Medium: Recommended and clinically relevant. Include when it materially helps explain the treatment plan, but narrative inclusion is not required.
+Low: Supportive/optional protocol recommendation. Usually leave it to the full Supplement Protocol unless it is particularly important to understanding the plan.
+
+High priority does not mean mechanically listing every high-priority supplement. The writer should integrate it into the finding/pattern it addresses:
+
+finding/pattern → meaning → treatment plan → relevant high-priority supplement → monitoring/follow-up
+
+The existing fidelity rules remain:
+
+exact resolved product and dose when mentioned;
+no generic substitutions;
+no independently changed doses;
+no supplement absent from the resolved protocol;
+no contradiction of the provider-curated protocol.
+
+Also preserve the current provider-to-patient narrative goal: this is a cohesive explanation of the treatment plan, not another copy of the Supplement Protocol.
+
+Before implementing, show me:
+
+where priority is currently generated and stored;
+whether provider supplement overrides already have a suitable place to persist a priority override;
+the smallest schema/data/UI/resolver changes needed;
+how the final provider-selected priority would reach the Patient Communication writer;
+whether this can be added without changing Brain supplement-selection logic.
+
+Do not implement or deploy yet.
