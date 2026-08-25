@@ -1,0 +1,76 @@
+I have two additional SOAP-output behaviors I want to refine, but analyze the existing shared Mode B SOAP prompt for conflicts before implementing anything.
+
+1. Care Plan section function
+
+The Care Plan is still too long and often repeats the detailed Plan.
+
+I want the section distinction to be:
+
+Plan: complete clinician-facing management details, including treatment decisions, relevant administration details, monitoring, safety information, and follow-up.
+Care Plan: practical actions the patient needs to carry out after the visit.
+
+The Care Plan should not become another abbreviated A&P or repeat rationale, Future Considerations, extensive counseling, or every detail already documented in the Plan.
+
+It should retain clinically necessary patient actions such as:
+
+medications to start/stop/change;
+essential administration instructions;
+testing or imaging the patient needs to complete;
+monitoring/follow-up;
+safety-critical precautions.
+
+Closely related actions may be combined when doing so does not lose clinically meaningful or safety-critical information.
+
+Do not solve this with a generic instruction such as “be concise” or an arbitrary item/word limit. This should be a section-function rule based on what belongs in Care Plan versus Plan.
+
+2. Do not narrate missing prescription details
+
+When a treatment decision is clearly established but the transcript does not verbalize every prescription-level detail, document the treatment using only the details that were established.
+
+Do not add transcript-auditor or reconciliation language such as:
+
+“dose to be verified”
+“exact dose requires confirmation”
+“exact dose not captured”
+“exact ingredient concentrations require confirmation from the prescription record”
+“verify dose before initiation”
+similar language merely because a dose, concentration, quantity, or complete SIG was not spoken aloud.
+
+The SOAP note does not need to reproduce every field that will appear on the prescription.
+
+Example:
+
+Transcript establishes that testosterone injections will be initiated twice weekly but does not establish the mg dose.
+
+Prefer:
+Initiate testosterone IM twice weekly.
+
+Do not write:
+Initiate testosterone IM twice weekly; exact dose requires confirmation from the prescription record.
+
+And never infer or invent the missing dose.
+
+Similarly, if a compounded estrogen/testosterone preparation is clearly being initiated but the exact concentrations are not verbalized, document the established treatment/route/frequency without adding a warning that the concentrations need to be confirmed.
+
+Important safety distinction: This rule applies when the treatment decision itself is clear and only prescription-level details are absent from the transcript. It must NOT suppress a provider_review_flag or appropriate uncertainty documentation when there is a genuine clinically consequential ambiguity—for example:
+
+conflicting doses are stated;
+two routes remain genuinely possible;
+it is unclear whether the medication was started versus merely discussed;
+the final treatment decision cannot be resolved;
+an ambiguity could materially affect patient safety.
+
+In other words:
+
+missing detail ≠ clinical ambiguity.
+
+Document the known treatment without inventing the missing detail. Reserve review/verification language for genuine unresolved clinical decisions.
+
+Before implementing, identify:
+
+which existing prompt/QA rules are currently causing the verbose Care Plan;
+which existing rules are causing “dose requires confirmation” / “exact concentration requires confirmation” language;
+whether either proposed change conflicts with medication fidelity, Four-Location, Final Plan Precedence, or QA safeguards;
+the smallest prompt-only changes needed to correct both behaviors without reducing clinical completeness or safety.
+
+Do not implement or deploy yet.
