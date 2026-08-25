@@ -83,9 +83,42 @@ describe("shared ClinIQ SOAP core prompt", () => {
     expect(prompt).toContain("Overall Clinical Impression owns a focused synthesis of the current clinical picture and principal treatment outcome; it must not retell the HPI.");
     expect(prompt).toContain("Clinical Rationale owns the diagnosis- or treatment-specific evidence and provider reasoning.");
     expect(prompt).toContain("Plan owns the actions, exact medication details, orders, monitoring, and follow-up.");
-    expect(prompt).toContain("Care Plan owns patient-actionable instructions and safety information.");
+    expect(prompt).toContain("Care Plan owns patient execution/next-step instructions and safety information");
     expect(prompt).toContain("Repeat action details required for safe execution");
     expect(prompt).toContain("Do not duplicate narrative merely to satisfy a coverage rule.");
+  });
+
+  test("limits Care Plan to patient execution and next steps", () => {
+    expect(prompt).toContain("Care Plan is a patient execution/next-steps list, not an abbreviated Assessment & Plan.");
+    expect(prompt).toContain("relevant clinic/provider actions that affect the patient's next steps");
+    expect(prompt).toContain("Do not repeat clinical rationale, diagnostic interpretation, Future Considerations merely because they were discussed, or extensive counseling.");
+    expect(prompt).toContain("Do not list unchanged medications unless they create a patient-facing action.");
+    expect(prompt).toContain("Closely related actions may be combined when doing so preserves clinically meaningful and safety-critical information.");
+    expect(prompt).toContain("Keep declined, deferred, and pending decisions in the HPI, Assessment/Plan, or Future Considerations");
+    expect(pipelineSource).toContain("An unchanged medication with no patient-facing action may remain in Current Medications");
+    expect(pipelineSource).toContain("Starts, stops, changes, essential administration instructions, testing, follow-up, relevant clinic/provider actions, and safety-critical precautions remain required in the Care Plan");
+  });
+
+  test("does not turn unspoken prescription fields into artificial uncertainty", () => {
+    expect(prompt).toContain("PRESCRIPTION DETAIL COMPLETENESS IS NOT DECISION UNCERTAINTY:");
+    expect(prompt).toContain("Missing detail alone does not create a provider review flag.");
+    expect(prompt).toContain('write "Initiate testosterone IM twice weekly."');
+    expect(prompt).toContain("Do not append a dose-verification warning.");
+    expect(prompt).toContain('Do not add "dose requires confirmation," "exact concentration not captured," "verify before initiation,"');
+    expect(prompt).toContain("This rule does not suppress safeguards for conflicting doses or routes, unclear medication identity, unclear start-versus-discussion state");
+    expect(pipelineSource).toContain("If a prescription-level field was simply not spoken, document only the known details and do not flag or narrate the field's absence.");
+    expect(pipelineSource).toContain('Missing prescription detail alone is not a provider review flag and must not be rewritten as "requires confirmation."');
+  });
+
+  test("preserves spoken medication details and true ambiguity safeguards", () => {
+    expect(pipelineSource).toContain("MISSING ROUTE / DOSE / FREQUENCY WHEN TRANSCRIPT PROVIDES THEM");
+    expect(pipelineSource).toContain("verify the note includes the route, dose, and frequency when the transcript stated them.");
+    expect(pipelineSource).toContain("If the transcript provides conflicting values or another genuine clinically consequential ambiguity");
+    expect(pipelineSource).toContain("conflicting details, unclear identity/route, unclear start-versus-discussion status");
+    expect(prompt).toContain("Every medication START in the A/P must appear as a Care Plan bullet");
+    expect(prompt).toContain("Every STOP or HOLD in the A/P must appear in the Care Plan");
+    expect(prompt).toContain("Every lab order, referral, and follow-up from the A/P must appear in the Care Plan");
+    expect(prompt).toContain("Every safety-critical precaution, essential administration instruction, or relevant clinic/provider action affecting the patient's next steps must appear in the Care Plan");
   });
 
   test("uses section-specific routing for clinical abstraction, counseling, and treatment reasoning", () => {

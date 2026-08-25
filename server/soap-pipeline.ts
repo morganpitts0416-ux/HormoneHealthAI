@@ -1027,8 +1027,8 @@ The Assessment & Plan does not simply list diagnoses and treatments. Another pro
 CORE PRINCIPLE 4 — FUTURE PLANNING IS PART OF TODAY'S DOCUMENTATION:
 Whenever future treatment options are discussed — even if NOT initiated — they must be documented under "Future Considerations:" as a permanent sub-section of the relevant Assessment item. These discussions are medically valuable when reviewing prior notes and must never be lost. Examples: "If vasomotor symptoms fail to improve, will consider increasing estradiol dose." / "If insulin resistance remains uncontrolled, metformin may be initiated." OMIT the "Future Considerations:" label entirely if no future discussions occurred for that item — never write "Future Considerations: None."
 
-CORE PRINCIPLE 5 — THE CARE PLAN FUNCTIONS AS PRINTABLE PATIENT INSTRUCTIONS:
-The Care Plan contains actionable bullet points detailed enough that, if requested, it could be printed and handed directly to the patient. It covers: current medications; medication changes; medication discontinuations; supplement recommendations; lifestyle modifications; exercise; diet; laboratory testing; imaging; referrals; monitoring instructions; expected side effects; follow-up timing; and patient responsibilities.
+CORE PRINCIPLE 5 — THE CARE PLAN FUNCTIONS AS A PATIENT EXECUTION / NEXT-STEPS LIST:
+The Care Plan is a patient execution/next-steps list, not an abbreviated Assessment & Plan. Include practical next steps the patient needs to know or act on after the visit: medication starts/stops/changes; essential administration instructions; testing or imaging to complete; referrals; monitoring/follow-up; relevant clinic/provider actions that affect the patient's next steps; and safety-critical precautions. Do not repeat clinical rationale, diagnostic interpretation, Future Considerations merely because they were discussed, or extensive counseling. Do not list unchanged medications unless they create a patient-facing action. Closely related actions may be combined when doing so preserves clinically meaningful and safety-critical information.
 
 CORE PRINCIPLE 6 — PRESERVE DIAGNOSTIC JOURNEY:
 Previous evaluations — prior specialists seen, prior imaging, prior laboratory work — are medically important and must be incorporated into the HPI. They demonstrate what has already been investigated and what conditions have been reasonably excluded. This protects the provider by accurately documenting prior diagnostic workup. This includes EVERY prior test or evaluation mentioned in the visit with its result when stated: coronary calcium scores, carotid artery evaluations, ENT workups, prior bloodwork, imaging. If the patient says a test was done, it belongs in the HPI timeline — even when the exact result is not recalled.
@@ -1086,7 +1086,7 @@ Required presence in multiple sections does not mean the same encounter narrativ
 - Overall Clinical Impression owns a focused synthesis of the current clinical picture and principal treatment outcome; it must not retell the HPI.
 - Clinical Rationale owns the diagnosis- or treatment-specific evidence and provider reasoning. Include the decision-relevant facts needed to support that Assessment item, but do not replay the full HPI, medication history, counseling conversation, or alternatives discussion.
 - Plan owns the actions, exact medication details, orders, monitoring, and follow-up.
-- Care Plan owns patient-actionable instructions and safety information. Repeat action details required for safe execution, but do not repeat clinical history or rationale.
+- Care Plan owns patient execution/next-step instructions and safety information, including relevant clinic/provider actions that affect the patient's next steps. Repeat action details required for safe execution, but do not repeat clinical history, diagnostic interpretation, or clinical rationale.
 - When a fact is required in multiple locations, repeat only the form needed by that section's function. Do not duplicate narrative merely to satisfy a coverage rule.
 
 HPI
@@ -1181,8 +1181,8 @@ Document exactly what was ordered, prescribed, changed, recommended, taught, or 
 - Return precautions
 - Shared decision-making and patient agreement or preference when documented
 
-Care Plan
-Restate the Plan in patient-facing language as a printed instruction list.
+  Care Plan
+  Translate only the patient execution/next-step portion of the Plan into a patient-facing list. Do not reproduce the full clinician management plan.
 
 INTERNAL PLACEMENT CHECK — PERFORM SILENTLY BEFORE FINALIZING:
 Before producing the final note, verify that every sentence is placed in the correct section. If a sentence contains interpretation, diagnosis, risk assessment, treatment rationale, or a recommendation, it does not belong in the HPI. Do not display this review in the output.
@@ -1368,7 +1368,7 @@ H. PRIOR HISTORY AND WORKUP: (1) Which providers this patient saw BEFORE this vi
 
 I. PATIENT CONTEXT: (1) Patient-expressed fears or concerns about specific treatments or outcomes — specific articulated worries that shaped shared decision-making. (2) Patient's stated goals for this visit or treatment overall. (3) Financial or access constraints that influenced the treatment plan. All found items from H and I must appear in the note; mentioning them in passing does not make them optional.
 
-J. DOSE CONSISTENCY: every medication dose must be IDENTICAL everywhere it appears — HPI, Current Medications, Assessment/Plan, and Care Plan. Before drafting, fix on ONE dose per medication from the transcript/extraction. If the transcript itself gives conflicting doses, use "unspecified" consistently and flag in provider_review_flags. A note that says 2.5 mg in one section and 2.1 mg in another is a failed note.
+J. DOSE CONSISTENCY: every medication dose must be IDENTICAL everywhere it appears — HPI, Current Medications, Assessment/Plan, and Care Plan. Before drafting, fix on ONE dose per medication from the transcript/extraction. If the transcript itself gives CONFLICTING doses, use "unspecified" consistently and flag in provider_review_flags. If the transcript simply omits a prescription-level field, document only the details that were established; do not invent the missing field or flag its absence. A note that says 2.5 mg in one section and 2.1 mg in another is a failed note.
 
 K. DECISION AGENCY: for every plan item, confirm WHO initiated it (see DECISION ATTRIBUTION data when provided; otherwise determine from the transcript). Provider-initiated decisions must be written as provider recommendations — never as patient desires, interests, or requests. A patient asking a question or mentioning something they read is seeking guidance, not driving the plan.
 
@@ -1865,7 +1865,7 @@ The NORMALIZED MEDICATIONS context tags every medication with its classified sta
       4. Care Plan: use the NEW dose in the patient instruction ("Take progesterone 100mg by mouth at bedtime")
       NEVER copy the old/prior dose into the A/P Plan line or Care Plan.
   status = "new"       → NEWLY PRESCRIBED THIS VISIT: A/P + HPI + Care Plan ONLY — NEVER in Current Medications
-  status = "discontinued" → HPI mention only
+  status = "discontinued" → If stopped at THIS visit: HPI + A/P + Care Plan. If the discontinuation was historical or occurred before this visit: HPI mention only.
   status = "discussed" → DISCUSSED_ONLY: HPI narrative only for brief/passing mentions — NEVER in Current Medications, NEVER in Care Plan as active instruction, NEVER as active prescribing item
 
 HARD RULE — DISCUSSED_ONLY MEDICATIONS:
@@ -1878,16 +1878,26 @@ For discussed medications only briefly mentioned (STATE C): HPI single-clause ru
 This gate OVERRIDES the Four-Location Mandate for discussed-status medications. The Four-Location Mandate governs only ACTIVE medications (status = current, adjusted) and newly prescribed medications (status = new).
 
 ═══════════════════════════════════════
+PRESCRIPTION DETAIL COMPLETENESS IS NOT DECISION UNCERTAINTY:
+When the final treatment decision is clear, document the treatment using only the medication details established in the transcript. Do not invent missing dose, concentration, quantity, route, frequency, or SIG details. Do not add "dose requires confirmation," "exact concentration not captured," "verify before initiation," or similar reconciliation language solely because a prescription-level field was not spoken.
+
+Missing detail alone does not create a provider review flag. Use review or uncertainty language only for a genuine clinically consequential ambiguity or contradiction, such as conflicting doses, unresolved route, unclear medication identity, uncertainty whether treatment was initiated versus discussed, or an unresolved final treatment decision.
+
+Example: if the transcript establishes that testosterone injections will be initiated twice weekly but does not establish the mg dose, write "Initiate testosterone IM twice weekly." Do not append a dose-verification warning. Never infer or invent the missing dose.
+
+This rule does not suppress safeguards for conflicting doses or routes, unclear medication identity, unclear start-versus-discussion state, or any ambiguity that could materially affect patient safety.
+
+═══════════════════════════════════════
 FOUR-LOCATION MANDATE
 ═══════════════════════════════════════
-Every medication, supplement, or treatment plan item that is discussed, acknowledged, mentioned, or referenced in relation to this patient's health during the encounter MUST appear in ALL applicable sections:
+Every ACTIVE medication, supplement, or treatment plan item must appear in all applicable sections. The Care Plan location is applicable when the item creates a patient execution/next-step, monitoring, timing, clinic/provider-action, or safety instruction:
 
   1. HPI — mentioned with clinical context (what was discussed, its relevance, tolerability, response)
   2. Current Medications — listed with dose/route/frequency if the patient is currently taking it
    3. Assessment/Plan — under the most relevant supported diagnosis or clinical problem when the intervention is part of active clinical management. Do not create a diagnosis solely to house the intervention. If no supported diagnosis or problem exists, preserve the intervention in the appropriate narrative and Care Plan location without inventing a diagnostic label.
   4. Care Plan — as a patient-actionable item
 
-This rule applies to: existing medications being continued; dose adjustments; new prescriptions; supplements; OTC recommendations; and any active treatment. Preserve every clinically meaningful intervention; do not omit it merely because it does not warrant its own diagnosis. A medication listed only in Current Medications but absent from the applicable Assessment/Plan, narrative, or Care Plan documentation is incomplete.
+This rule applies to: existing medications being continued when clinically managed; dose adjustments; new prescriptions; supplements; OTC recommendations; and any active treatment. Preserve every clinically meaningful intervention; do not omit it merely because it does not warrant its own diagnosis. An unchanged medication with no patient-facing action may remain in Current Medications and the relevant HPI/A&P documentation without a Care Plan bullet.
 
 COMMITTED FUTURE-DATED MEDICATIONS (State A2 — confirmed start at a specific future time): These appear in locations 1, 3, and 4 only (HPI narrative, Assessment/Plan, Care Plan). They do NOT appear in location 2 (Current Medications) because the patient is not yet taking them. In the A/P Plan line, use definitive future language: "[Drug] [dose] [route] [frequency] to be initiated [timing]." In the Care Plan, state the timing explicitly so the patient knows when to start.
 
@@ -1992,7 +2002,7 @@ Only generate trajectory language when you have actual prior data to cite.
 ═══════════════════════════════════════
 SECTION 4 — CARE PLAN
 ═══════════════════════════════════════
-Write as a patient-facing bulleted action list — what the patient needs to do, take, watch for, and follow up on after this visit. Detailed enough that it could be printed and handed directly to the patient.
+Write as a patient-facing execution/next-steps list — what the patient needs to know or act on after this visit, including relevant clinic/provider actions that affect the patient's next steps. This is not an abbreviated Assessment & Plan and should not repeat clinician rationale or diagnostic interpretation.
 
 FORMAT RULES — MANDATORY:
 - Use a dash (-) at the start of each bullet. No numbers, no paragraphs, no prose.
@@ -2003,14 +2013,16 @@ FORMAT RULES — MANDATORY:
 CONTENT — include a bullet for each of the following that applies:
 - Each new medication or supplement being started: what it is, exact dose and how/when to take it, plain-language reason
 - Each medication being paused, stopped, or changed: what changed and why
+- Essential administration instructions or timing needed for safe execution
 - Labs ordered: specify which labs and when
 - Any imaging or monitoring ordered
 - Any referrals placed
-- Pending decisions the patient is still considering or that were deferred
 - Dietary or lifestyle actions discussed: specify the recommendation
 - Safety precautions or red-flag symptoms to call about
 - Next appointment or follow-up timing with clinical reason
-- Recommendations that were declined or deferred, so the patient understands the status
+- Relevant clinic/provider actions that affect the patient's next steps, when the patient needs to know about them
+
+Keep declined, deferred, and pending decisions in the HPI, Assessment/Plan, or Future Considerations according to their decision state. Include one in the Care Plan only when it creates a concrete patient or clinic/provider next step.
 
 PROHIBITED VAGUE PHRASES — never use in Care Plan:
 - "Continue current plan" — always specify what the plan is
@@ -2027,6 +2039,8 @@ CARE PLAN vs. ASSESSMENT/PLAN CONSISTENCY — MANDATORY:
 - Every dose CHANGE in the A/P must appear in the Care Plan with the NEW dose — never carry the old dose
 - Every STOP or HOLD in the A/P must appear in the Care Plan
 - Every lab order, referral, and follow-up from the A/P must appear in the Care Plan
+- Every safety-critical precaution, essential administration instruction, or relevant clinic/provider action affecting the patient's next steps must appear in the Care Plan
+- Future Considerations, declined recommendations, and deferred decisions must remain in the note but do not require a Care Plan bullet unless they create a concrete next step
 - The Care Plan must not introduce any medication, instruction, or recommendation absent from the A/P — no new clinical content in this section
 
 ═══════════════════════════════════════
@@ -2048,7 +2062,7 @@ SECTION 6 — FABRICATION GUARDRAILS
 - Do NOT invent physical exam findings not documented
 - Do NOT add medications not mentioned in the transcript
 - Preserve all documented negatives
-- If uncertain, flag in needs_clinician_review
+  - If a treatment decision is clinically uncertain or contradictory, flag it in needs_clinician_review or provider_review_flags as appropriate. A prescription-level detail that was simply not spoken is not, by itself, clinical uncertainty and must not be narrated as requiring confirmation.
 - Physical Exam not performed → "Physical examination not performed at this encounter."
 - MEDICATION NAMES — PATIENT SAFETY: Copy every medication name EXACTLY as it appears in the NORMALIZED MEDICATION LIST or transcript. Character-for-character. Never phonetically approximate, respell, or paraphrase a drug name. If a name is genuinely unclear, write [unclear medication] — never guess at spelling.
 - LAB LEVEL TARGETS: "increase vitamin D to 60–80" = a lab level target (ng/mL), NOT a dose.
@@ -2197,7 +2211,7 @@ Return JSON with exactly these keys:
   "fullNote": "<complete formatted note as plain text>",
   "uncertain_items": ["<items needing clinician clarification>"],
   "needs_clinician_review": ["<specific flags — NO duplicates of explicit plan items>"],
-  "provider_review_flags": ["<clinically material ambiguities or contradictions that cannot be safely resolved — format each as one of: 'Medication dose requires confirmation: ...', 'Diagnosis/code mismatch: ...', 'Unclear whether treatment was started or only discussed: ...', 'Conflicting follow-up intervals: ...', 'Medication appears both continued and stopped: ...', 'Safety concern raised but not resolved: ...' — OMIT this key entirely if there are no unresolvable ambiguities>"]
+  "provider_review_flags": ["<clinically material ambiguities or contradictions that cannot be safely resolved — format each as one of: 'Medication dose requires confirmation: ...', 'Diagnosis/code mismatch: ...', 'Unclear whether treatment was started or only discussed: ...', 'Conflicting follow-up intervals: ...', 'Medication appears both continued and stopped: ...', 'Safety concern raised but not resolved: ...' — use medication dose confirmation ONLY for conflicting or otherwise clinically consequential dose ambiguity, NEVER for a dose that was simply not spoken; OMIT this key entirely if there are no unresolvable ambiguities>"]
 }
 
 Use this EXACT format for fullNote:
@@ -2257,7 +2271,7 @@ Future Considerations: [ONLY when applicable]
 [Continue for each diagnosis, grouped by clinical domain — hormonal together, metabolic together, etc.]
 
 CARE PLAN
-[Dash-bulleted patient-facing action list. One action per bullet. Plain language. Every medication start, stop, change, lab order, referral, lifestyle recommendation, and follow-up timing from the A/P must appear here. Detailed enough to print and hand to the patient.]
+[Dash-bulleted patient-facing execution/next-steps list. One action per bullet. Plain language. Include medication starts, stops, changes, essential administration instructions, testing, referrals, monitoring/follow-up, relevant clinic/provider actions affecting the patient's next steps, and safety-critical precautions. Do not reproduce clinical rationale, diagnostic interpretation, Future Considerations merely because they were discussed, extensive counseling, or unchanged medications without a patient-facing action.]
 
 FOLLOW-UP
 [Specific timeframe; purpose; laboratory timing; monitoring; return precautions when discussed.]
@@ -2563,9 +2577,9 @@ RULE: No item on this list is optional. An encounter topic in this inventory tha
     ? (() => {
         const decided = extraction.supplement_discussions.filter((s: any) => s.decided !== false);
         const discussedOnly = extraction.supplement_discussions.filter((s: any) => s.decided === false);
-        const lines: string[] = ['\nSUPPLEMENT CONVERSATIONS (extracted from transcript — MUST be fully documented per Four-Location Mandate rules):'];
-        lines.push('Every supplement below must appear in HPI (with context), Current Medications (if continuing), Assessment/Plan (numbered item or nested under a related diagnosis), AND Care Plan (actionable patient instruction).');
-        lines.push('Do NOT compress these to a bare mention. Include dose, timing, indication, patient questions asked, and provider education given.');
+         const lines: string[] = ['\nSUPPLEMENT CONVERSATIONS (extracted from transcript — preserve each clinically meaningful decision and its patient next step):'];
+         lines.push('Every decided supplement must appear in HPI (with context), Assessment/Plan (action and decision-relevant rationale), and Care Plan when it creates a patient-facing action. Include dose, timing, indication, and relevant patient questions or provider education in the section that owns each detail.');
+         lines.push('Do NOT compress a decided supplement to a bare mention. Do not copy the full discussion or an unchanged supplement into the Care Plan when no patient action is required.');
         if (decided.length) {
           lines.push('\nDECIDED SUPPLEMENT ACTIONS (provider made a definitive decision at this visit):');
           for (const s of decided) {
@@ -2822,15 +2836,15 @@ Every item on this list is mandatory. An inventory item absent from the note is 
   const systemPrompt = `You are a clinical documentation quality assurance specialist. Your job is to compare the SOAP note against the source extraction data and transcript to catch omissions, contradictions, and over-compression.
 
 CHECK FOR:
-1. FOUR-LOCATION COMPLETENESS — CRITICAL: For every medication, supplement, or treatment referenced in the transcript in any clinical context, verify it appears in ALL four applicable locations:
+1. FOUR-LOCATION COMPLETENESS — CRITICAL: For every ACTIVE medication, supplement, or treatment plan item, verify it appears in all applicable locations. The Care Plan location is applicable when the item creates a patient execution/next-step, monitoring, timing, clinic/provider-action, or safety instruction:
    a) HPI — mentioned with clinical context (what was said about it, tolerability, response, dose stated)
    b) Current Medications — listed with dose/route/frequency (if currently prescribed)
    c) Assessment/Plan — as a numbered item with clinical reasoning, plan details, monitoring, and continuation decision
-   d) Care Plan — as a patient-actionable item
+   d) Care Plan — as a patient execution/next-step item when applicable
 
-   Scan the full transcript and medications_normalized list. For ANY medication with "current" status that was mentioned in the transcript — even briefly, even in a single sentence, even to simply confirm continuation — check all four locations. A medication present in medications_current but absent from the Assessment/Plan is a CRITICAL omission. A medication discussed in the transcript but absent from the HPI is a CRITICAL omission. Both require revision.
+   Scan the full transcript and medications_normalized list. For ANY medication with "current" status that was clinically managed or creates a patient-facing action, check all applicable locations. An unchanged medication with no patient-facing action does not require a Care Plan bullet. A medication present in medications_current but absent from the relevant Assessment/Plan is a CRITICAL omission. A medication discussed in the transcript but absent from the HPI is a CRITICAL omission. Both require revision.
 
-   If ANY currently-prescribed or newly-started medication (GLP-1, testosterone, thyroid medication, antidepressant, supplement, hormone, etc.) is missing from any of its four required locations → flag as CRITICAL and add it to every missing location before returning the revised note.
+   If ANY currently-prescribed or newly-started medication (GLP-1, testosterone, thyroid medication, antidepressant, supplement, hormone, etc.) is missing from an applicable location → flag as CRITICAL and add it to every missing location before returning the revised note. Starts, stops, changes, essential administration instructions, testing, follow-up, relevant clinic/provider actions, and safety-critical precautions remain required in the Care Plan when they affect the patient's next steps.
 2. SYMPTOM-TO-ASSESSMENT OMISSIONS — CRITICAL: Are all significant symptoms reported by the patient captured not only in the HPI but ALSO in a numbered Assessment/Plan entry?
    Symptoms that drove clinical discussion (fatigue, mood changes, low libido, sleep disturbance, weight changes, pain, brain fog, palpitations, etc.) MUST appear as numbered Assessment items — not just as narrative in the HPI. Symptom clusters that point to a known condition (fatigue + low libido + mood in a woman = likely female hormone deficiency/HSDD) should be grouped under the appropriate diagnosis with clinical reasoning. A Plan line of "Options discussed; patient to consider further" is acceptable when no treatment was decided — but the Assessment entry MUST exist. If significant symptoms appear in the HPI but have no corresponding numbered Assessment entry, flag as CRITICAL and add the Assessment item.
 3. SECONDARY CONCERN OMISSIONS: Are all secondary concerns discussed during the visit captured in the HPI and Assessment? Secondary concerns must not be lost.
@@ -2988,7 +3002,7 @@ When a generalized phrase has replaced specific clinical content from the transc
 
 36. STOCK TEMPLATE PHRASING: Scan for banned constructions: "which she/he associates with", "expresses a desire for", "expressing interest in addressing", "Discussion centered on", "The discussion focused on", "aims to address these concerns", "to enhance her/his well-being". If found, flag as important and rewrite in natural clinical prose per CRITICAL VIOLATION 7 in the generation rules — state reported symptoms and timing directly, name specific target symptoms, and document who raised each topic.
 
-37. CROSS-SECTION DOSE CONSISTENCY: For every medication appearing in more than one section (HPI, Current Medications, Assessment/Plan, Care Plan), verify the dose, route, and frequency are IDENTICAL in every mention. If any mention conflicts (e.g., 2.5 mg in HPI but 2.1 mg in the med list), flag as CRITICAL, determine the transcript-supported value, and make every mention match it. If the transcript itself is ambiguous, use "unspecified" consistently and add the conflict to needs_clinician_review.
+37. CROSS-SECTION DOSE CONSISTENCY: For every medication appearing in more than one section (HPI, Current Medications, Assessment/Plan, Care Plan), verify the dose, route, and frequency are IDENTICAL in every mention. If any mention conflicts (e.g., 2.5 mg in HPI but 2.1 mg in the med list), flag as CRITICAL, determine the transcript-supported value, and make every mention match it. If the transcript provides conflicting values or another genuine clinically consequential ambiguity, use "unspecified" consistently and add the conflict to needs_clinician_review or provider_review_flags. If a prescription-level field was simply not spoken, document only the known details and do not flag or narrate the field's absence.
 
 38. CONDITIONAL PLAN COVERAGE: If the generation input included CONDITIONAL (IF/THEN) PLANS, verify EACH conditional instruction appears in the note — in the relevant Assessment item (Plan or Future Considerations) AND as a patient-facing instruction in the Care Plan (e.g., "If hot flashes persist after a few weeks on the increased estrogen, decrease progesterone to 100 mg at night."). If any conditional plan is missing from either location, flag as CRITICAL and add it.
 
@@ -3043,6 +3057,7 @@ When a generalized phrase has replaced specific clinical content from the transc
    - Route omitted when provider stated a specific route (e.g., "testosterone" without stating IM/SQ/topical)
    - Frequency omitted when provider stated a specific frequency (e.g., "testosterone" without stating "weekly")
    - Administration instructions omitted when counseling was given (e.g., injection site rotation instructions not in Care Plan)
+   Do NOT treat a dose, concentration, quantity, route, frequency, or complete SIG that was not spoken as a missing-note error. Missing prescription detail alone is not a provider review flag and must not be rewritten as "requires confirmation." Preserve genuine ambiguity only when conflicting details, unclear identity/route, unclear start-versus-discussion status, or another clinically consequential unresolved decision exists.
    Flag each omission as important and add the missing specifics from the transcript. A plan entry that says only "Start tirzepatide" when the transcript specified "tirzepatide 5mg subcutaneously weekly" is inadequate.
 
 52. MAJOR TREATMENT TOPIC MISSING FROM ASSESSMENT: Compare the structured extraction's treatment_decision_rationale (if present) against the numbered Assessment items. For each decision documented in treatment_decision_rationale, verify a corresponding numbered Assessment item exists. If a major treatment decision is present in the extraction (estrogen route selection rationale, testosterone deferral reasoning, GLP-1 dose escalation, smoking cessation counseling) but has no corresponding Assessment entry → flag CRITICAL and add the Assessment item with the full Clinical Rationale drawn from the extraction's treatment_decision_rationale.
@@ -3100,7 +3115,7 @@ When writing a revised_fullNote, you may fix the issues identified. You must NOT
 - Do not remove or generalize patient statements, provider reasoning, or treatment decisions
 - Do not replace specific clinical content with general topic labels (e.g., do not replace "patient stated she would not take the medication consistently" with "adherence discussed")
 - Do not remove medication dosing, frequency, route, or administration details
-- Do not remove declined, deferred, or pending items from the Care Plan
+- Do not remove declined, deferred, or pending decisions from the note. Keep them in the HPI, Assessment/Plan, or Future Considerations according to their decision state; include them in the Care Plan only when they create a concrete patient or clinic/provider next step.
 - Do not remove the patient's stated reasons for decisions or refusals
 - Do not shorten the Follow-up section
 - Do not remove Future Considerations that were documented in the original note
@@ -3620,7 +3635,7 @@ function buildExtractionSummary(extraction: any): string {
         discontinued_today: "DISCONTINUED (must not appear as continued or active)",
         discussed_only: "Discussed only — NOT an active prescription",
         future_consideration: "Future consideration ONLY — not decided at this visit",
-        uncertain_dose_or_identity: "UNCERTAIN identity or dose — flag for clinician verification",
+        uncertain_dose_or_identity: "UNCERTAIN identity or conflicting/consequential dose — flag for clinician verification",
       }[status] ?? status;
       lines.push(`Medication status [${label}]: ${items.join("; ")}`);
     }

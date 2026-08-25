@@ -1,0 +1,37 @@
+I approve the analysis and the four targeted prompt/QA changes.
+
+Please implement A–D as proposed, with one wording refinement to the Care Plan rule:
+
+Instead of defining Care Plan only as “actions the patient must carry out,” define it as:
+
+Care Plan is a patient execution/next-steps list, not an abbreviated Assessment & Plan. Include practical next steps the patient needs to know or act on after the visit: medication starts/stops/changes, essential administration instructions, testing or imaging to complete, referrals, monitoring/follow-up, relevant clinic/provider actions that affect the patient's next steps, and safety-critical precautions.
+
+This distinction is important because some appropriate Care Plan items are provider/clinic actions the patient needs to know about, even though the patient does not personally perform them.
+
+Preserve the remainder of the proposed non-redundancy rules:
+
+no clinical rationale;
+no diagnostic interpretation;
+no Future Considerations merely because they were discussed;
+no extensive counseling replay;
+no unchanged medications unless they create a patient-facing action;
+combine closely related actions when this preserves clinically meaningful and safety-critical information.
+
+Implement the proposed PRESCRIPTION DETAIL COMPLETENESS IS NOT DECISION UNCERTAINTY rule and corresponding QA changes as written.
+
+A clearly decided treatment remains a decided treatment even when every prescription field was not verbalized. Document only the known details, do not invent missing details, and do not narrate their absence.
+
+Preserve true ambiguity safeguards for conflicting doses/routes, unclear medication identity, unclear start-vs-discussion state, or genuinely unresolved final treatment decisions.
+
+Add the proposed regression coverage, including:
+
+Care Plan section ownership;
+known treatment with unspoken dose;
+no artificial verification prose or review flag for merely missing prescription details;
+genuine medication ambiguity still flagged;
+all medication details that were spoken remain preserved;
+starts/stops/changes, testing, follow-up and safety-critical instructions remain represented in Care Plan.
+
+This is a prompt/QA refinement only. Do not change Mode B architecture, model selection, routing, persistence, preprocessing, Brain, lab evaluation, Patient Communication, Provider Chart Note, Evidence Layer, or June.
+
+Run the relevant regression tests and production build. Do not deploy automatically.
