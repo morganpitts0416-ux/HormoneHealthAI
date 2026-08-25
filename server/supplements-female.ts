@@ -1013,14 +1013,24 @@ export function evaluateSupplements(labs: FemaleLabValues, irScreening?: Insulin
     if (result) candidates.push(result);
   }
 
+  // PhytoMulti is a fallback broad-spectrum foundation, not an additive
+  // recommendation. When any other supplement has been selected, prefer the
+  // targeted recommendation and remove the overlapping multivitamin.
+  const hasAlternativeSupplement = candidates.some(
+    c => !c.name.toLowerCase().includes('phytomulti'),
+  );
+  const prioritizedCandidates = hasAlternativeSupplement
+    ? candidates.filter(c => !c.name.toLowerCase().includes('phytomulti'))
+    : candidates;
+
   // Cap UltraFlora brand products at 2 (keep highest-scoring) to prevent 3 probiotics
   // appearing simultaneously for metabolic + sleep + gynecological patterns.
   const MAX_ULTRAFORA = 2;
-  const ultraFloraItems = candidates
+  const ultraFloraItems = prioritizedCandidates
     .filter(c => c.name.toLowerCase().includes('ultraflora'))
     .sort((a, b) => b.score - a.score);
   const ultraFloraKept = new Set(ultraFloraItems.slice(0, MAX_ULTRAFORA).map(c => c.name));
-  const dedupedCandidates = candidates.filter(
+  const dedupedCandidates = prioritizedCandidates.filter(
     c => !c.name.toLowerCase().includes('ultraflora') || ultraFloraKept.has(c.name),
   );
 

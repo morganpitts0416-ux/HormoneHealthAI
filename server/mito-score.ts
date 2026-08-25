@@ -620,5 +620,13 @@ function getMitoSupplementRecommendations(
     });
   }
 
-  return recs;
+  // PhytoMulti is a fallback broad-spectrum foundation, not an additive
+  // recommendation. If this score already produced another supplement
+  // recommendation, prefer that targeted product and omit PhytoMulti.
+  const hasAlternativeSupplement = recs.some(
+    recommendation => !recommendation.name.toLowerCase().includes('phytomulti'),
+  );
+  return hasAlternativeSupplement
+    ? recs.filter(recommendation => !recommendation.name.toLowerCase().includes('phytomulti'))
+    : recs;
 }

@@ -606,7 +606,15 @@ export function evaluateMaleSupplements(labs: LabValues): SupplementRecommendati
     }
   }
   
-  const recommendations = Array.from(supplementMap.values());
+  const allRecommendations = Array.from(supplementMap.values());
+  // PhytoMulti is a fallback broad-spectrum foundation, not an additive
+  // recommendation. Prefer any targeted supplement recommendation instead.
+  const hasAlternativeSupplement = allRecommendations.some(
+    recommendation => !recommendation.name.toLowerCase().includes('phytomulti'),
+  );
+  const recommendations = hasAlternativeSupplement
+    ? allRecommendations.filter(recommendation => !recommendation.name.toLowerCase().includes('phytomulti'))
+    : allRecommendations;
   recommendations.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
   
   return recommendations;
