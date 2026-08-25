@@ -66,6 +66,21 @@ Patient Report PDF passes `effectiveSupplements` as `selectedSupplements` param
 The Wellness PDF's “Understanding Your Results” must render the canonical summary,
 not independently generated wellness-plan educational content.
 
+## Summary parity caveat
+The saved chart-detail flow is aligned only after the canonical summary is populated
+and saved: the portal reads the canonical column, while the chart-detail PDFs receive
+the same editor value. The PDF helpers still retain a legacy fallback to the
+interpretation's generated summary, and the standalone lab-interpretation export
+passes that generated value directly.
+
+**Why:** The fallback preserves older/unsaved interpretation workflows, but it means
+“identical everywhere” is not an absolute guarantee for blank, unsaved, or legacy
+exports.
+
+**How to apply:** When auditing patient-visible parity, distinguish the saved
+patient-profile flow from standalone interpretation exports. Treat the canonical
+column as authoritative for portal and saved-chart PDF comparisons.
+
 ## Auto-save pattern in LabDetailModal
 900ms debounced PATCH via `saveOverridesMutation`. State machine: `saved` → `unsaved`
 (on any toggle) → `saving` (debounce fires) → `saved` / `unsaved` (on result).
