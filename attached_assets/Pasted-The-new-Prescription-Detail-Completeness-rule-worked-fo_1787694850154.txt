@@ -1,0 +1,26 @@
+The new Prescription Detail Completeness rule worked for the compounded estradiol/testosterone: the note appropriately documents the known treatment without adding “exact concentrations require confirmation.”
+
+However, there is a residual failure when a treatment decision is established but the exact medication/product itself is not recoverable from the transcript.
+
+In Michelle's new SOAP, examples include:
+
+Initiate a low-dose antihypertensive after the intended prescription's medication name, dose, and directions are confirmed.
+Care Plan: Confirm the name, dose, and directions of the new low-dose blood pressure medication with the clinic or pharmacy before taking it.
+the exact identity and directions for the intended second nasal spray were not established clearly enough for complete medication reconciliation
+Care Plan: Confirm the second nasal spray and oral decongestant prescriptions before use because the exact products and directions require clarification.
+
+I do not want missing transcript detail converted into a patient responsibility to verify a prescription.
+
+If the clinical decision itself is established but the prescription record will supply the medication-level details, document the established clinical plan at the supported level of specificity. Example:
+
+Start low-dose antihypertensive therapy. Recheck blood pressure and tolerability at follow-up.
+
+Do not append “confirm medication/dose/directions.”
+
+If an incompletely identified intervention is not sufficiently established to document as an active treatment, omit that specific intervention from the active Plan/Care Plan rather than creating a “confirm/clarify/verify” instruction solely because the transcript lacked enough detail.
+
+Absence of sufficient transcript detail is not itself a patient-facing action.
+
+Do not suppress genuine safety ambiguity. If two identifiable medications, doses, or routes conflict and choosing the wrong one could affect care, retain the existing provider-review safeguards.
+
+Before changing anything, identify which remaining prompt or QA rule caused these specific outputs and propose the smallest correction. Do not implement or deploy yet.
