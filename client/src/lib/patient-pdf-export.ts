@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import type { FemaleLabValues, InterpretationResult, LabInterpretation, LabResult } from '@shared/schema';
+import type { FemaleLabValues, InterpretationResult, LabInterpretation, LabResult, SupplementPriority } from '@shared/schema';
 import { addTrendChartsToWellnessPDF } from '@/lib/pdf-trend-charts';
 import { toLocalDateStr } from '@/lib/date-utils';
 
@@ -416,6 +416,7 @@ export interface PdfSupplement {
   name: string;
   dose: string;
   indication: string;
+  priority?: SupplementPriority;
   patientExplanation?: string;
   rationale?: string;
   continuationNote?: string;
@@ -1875,9 +1876,9 @@ export async function generatePatientWellnessPDF(
     const normalizeName = (name: string): string =>
       name.toLowerCase().replace(/[®™]/g, '').replace(/\s+/g, ' ').trim();
 
-    const sourceSupplements: Array<{ name: string; dose: string; indication?: string; rationale?: string; patientExplanation?: string }> =
+    const sourceSupplements: Array<{ name: string; dose: string; indication?: string; priority?: SupplementPriority; rationale?: string; patientExplanation?: string; continuationNote?: string; continuationOnly?: boolean }> =
       selectedSupplements && selectedSupplements.length > 0
-        ? selectedSupplements.map(s => ({ name: s.name, dose: s.dose, indication: s.indication, patientExplanation: s.patientExplanation, rationale: s.rationale }))
+        ? selectedSupplements.map(s => ({ name: s.name, dose: s.dose, indication: s.indication, priority: s.priority, patientExplanation: s.patientExplanation, rationale: s.rationale, continuationNote: s.continuationNote, continuationOnly: s.continuationOnly }))
         : (interpretation.supplements || []);
 
     if (sourceSupplements.length > 0) {

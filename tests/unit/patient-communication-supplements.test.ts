@@ -1,6 +1,10 @@
 import { describe, expect, test } from "vitest";
 import type { SupplementRecommendation } from "@shared/schema";
-import { resolvePatientVisibleSupplementProtocol } from "@shared/patient-visible-supplement-protocol";
+import {
+  normalizeSupplementName,
+  normalizeSupplementPriorityOverrides,
+  resolvePatientVisibleSupplementProtocol,
+} from "@shared/patient-visible-supplement-protocol";
 import { buildPatientVisibleSupplementProtocolPromptBlock } from "../../server/patient-communication-context";
 
 const brainSupplement: SupplementRecommendation = {
@@ -72,5 +76,98 @@ describe("patient-visible Supplement Protocol", () => {
     expect(block).toContain("Do not reproduce this as a separate product list");
     expect(block).toContain("use the exact selected product name");
     expect(block).toContain("absent from this resolved protocol");
+  });
+
+  test("uses the provider-selected priority instead of the Brain default", () => {
+    const resolved = resolvePatientVisibleSupplementProtocol(
+      [brainSupplement],
+      {
+        supplementPriorityOverrides: {
+          [normalizeSupplementName(brainSupplement.name)]: "low",
+        },
+      },
+    );
+
+    expect(resolved).toEqual([{ ...brainSupplement, priority: "low" }]);
+  });
+
+  test("falls back to the Brain priority when no provider priority exists", () => {
+    const resolved = resolvePatientVisibleSupplementProtocol([brainSupplement], {});
+
+    expect(resolved[0].priority).toBe("high");
+  });
+
+  test("applies a provider priority override to a clinician-added supplement", () => {
+    const resolved = resolvePatientVisibleSupplementProtocol(
+      [],
+      {
+        addedSupplements: [clinicianSupplement],
+        supplementPriorityOverrides: {
+          [normalizeSupplementName(clinicianSupplement.name)]: "high",
+        },
+      },
+    );
+
+    expect(resolved).toEqual([{ ...clinicianSupplement, priority: "high" }]);
+  });
+
+  test("keeps hiding independent from a saved priority override", () => {
+    const overrides = {
+      supplementPriorityOverrides: {
+        [normalizeSupplementName(brainSupplement.name)]: "medium" as const,
+      },
+      hiddenSupplementNames: [brainSupplement.name],
+    };
+
+    expect(resolvePatientVisibleSupplementProtocol([brainSupplement], overrides)).toEqual([]);
+    expect(
+      resolvePatientVisibleSupplementProtocol([brainSupplement], {
+        ...overrides,
+        hiddenSupplementNames: [],
+      }),
+    ).toEqual([{ ...brainSupplement, priority: "medium" }]);
+  });
+
+  test("matches priority override names through the centralized normalization rule", () => {
+    const spacedName = "  BRAIN METABOLIC SUPPORT  ";
+    const resolved = resolvePatientVisibleSupplementProtocol(
+      [{ ...brainSupplement, name: spacedName }],
+      {
+        supplementPriorityOverrides: {
+          [normalizeSupplementName("brain metabolic support")]: "medium",
+        },
+      },
+    );
+
+    expect(resolved[0].priority).toBe("medium");
+  });
+
+  test("canonicalizes priority override keys before persistence", () => {
+    expect(
+      normalizeSupplementPriorityOverrides({
+        "  BRAIN METABOLIC SUPPORT  ": "medium",
+        "Not a valid priority": "urgent",
+      }),
+    ).toEqual({
+      [normalizeSupplementName(brainSupplement.name)]: "medium",
+    });
+  });
+
+  test("passes the final resolved priority and priority semantics to Patient Communication", () => {
+    const resolved = resolvePatientVisibleSupplementProtocol(
+      [brainSupplement],
+      {
+        supplementPriorityOverrides: {
+          [normalizeSupplementName(brainSupplement.name)]: "low",
+        },
+      },
+    );
+    const block = buildPatientVisibleSupplementProtocolPromptBlock(resolved);
+
+    expect(block).toContain('"priority": "low"');
+    expect(block).toContain("high priority should be strongly favored");
+    expect(block).toContain("medium priority should be included");
+    expect(block).toContain("low priority should generally remain");
+    expect(block).toContain("does not mean mechanically mentioning every high-priority product");
   });
 });

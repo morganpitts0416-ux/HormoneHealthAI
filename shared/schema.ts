@@ -359,6 +359,7 @@ export const supplementRecommendationSchema = z.object({
 });
 
 export type SupplementRecommendation = z.infer<typeof supplementRecommendationSchema>;
+export type SupplementPriority = SupplementRecommendation["priority"];
 
 export interface ProviderOverrides {
   hiddenSections?: string[];
@@ -367,6 +368,8 @@ export interface ProviderOverrides {
   hiddenPatternNames?: string[];
   hiddenHormonePatternCategories?: string[];
   hiddenSupplementNames?: string[];
+  /** Explicit provider-selected priority by normalized supplement name. */
+  supplementPriorityOverrides?: Record<string, SupplementPriority>;
   addedSupplements?: SupplementRecommendation[];
   /** @deprecated Migrated into lab_results.patient_communication_summary. */
   patientSummaryDraft?: string | null;

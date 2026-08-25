@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import type { LabValues, InterpretationResult, LabInterpretation, LabResult } from '@shared/schema';
+import type { LabValues, InterpretationResult, LabInterpretation, LabResult, SupplementPriority } from '@shared/schema';
 import { addTrendChartsToWellnessPDF } from '@/lib/pdf-trend-charts';
 import { toLocalDateStr } from '@/lib/date-utils';
 
@@ -297,6 +297,7 @@ export interface PdfSupplement {
   name: string;
   dose: string;
   indication: string;
+  priority?: SupplementPriority;
 }
 
 import { hexToRgb, resolveBranding, type PartialBranding } from "@/lib/branding";
@@ -1349,9 +1350,9 @@ export async function generateMalePatientWellnessPDF(
       name.toLowerCase().replace(/[®™]/g, '').replace(/\s+/g, ' ').trim();
 
     // Use provider-curated list if supplied; otherwise fall back to all interpretation supplements
-    const sourceSupplements: Array<{ name: string; dose: string; indication?: string; rationale?: string; patientExplanation?: string }> =
+    const sourceSupplements: Array<{ name: string; dose: string; indication?: string; priority?: SupplementPriority; rationale?: string; patientExplanation?: string }> =
       selectedSupplements && selectedSupplements.length > 0
-        ? selectedSupplements.map(s => ({ name: s.name, dose: s.dose, indication: s.indication }))
+        ? selectedSupplements.map(s => ({ name: s.name, dose: s.dose, indication: s.indication, priority: s.priority }))
         : (interpretation.supplements || []);
 
     if (sourceSupplements.length > 0) {

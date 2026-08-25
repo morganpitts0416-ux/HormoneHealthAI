@@ -22,6 +22,21 @@ must not independently compute a different protocol. Patient Communication
 regeneration first persists the editor's override choices, then resolves from the
 stored lab result so its canonical draft cannot mention a transient product choice.
 
+## Provider priority decisions
+Provider-selected supplement priorities are stored separately from Brain output as a
+normalized-name map in `providerOverrides`. The shared protocol resolver applies that
+map to Brain and clinician-added recommendations; the Brain/added priority remains the
+fallback.
+
+**Why:** Provider curation must change patient-facing emphasis without mutating Brain
+selection or scoring. Every priority write and read uses the shared supplement-name
+normalizer so case and whitespace cannot create competing decisions for one product.
+
+**How to apply:** Any patient-facing consumer must use the resolved protocol, not raw
+Brain recommendations. The Patient Communication writer treats high as a strong
+domain-based inclusion signal, medium as context-dependent, and low as generally
+protocol-only; it never turns priority into a mechanical supplement list.
+
 ## Shape (ProviderOverrides interface in shared/schema.ts)
 - `hiddenSections` — section keys: `labResults`, `preventRisk`, `adjustedRisk`,
   `stopBang`, `insulinResistance`, `hormonePatterns`, `clinicalPhenotypes`, `maleHormonePatterns`

@@ -54,7 +54,10 @@ import { applySupplementContinuation } from "./supplement-continuation";
 import { PHENOTYPE_KEYS, detectedPhenotypeKeys } from "./phenotype-registry";
 import { screenInsulinResistance } from "./insulin-resistance";
 import { calculateMitoScore } from "./mito-score";
-import { resolvePatientVisibleSupplementProtocol } from "@shared/patient-visible-supplement-protocol";
+import {
+  normalizeSupplementPriorityOverrides,
+  resolvePatientVisibleSupplementProtocol,
+} from "@shared/patient-visible-supplement-protocol";
 import { normalizeTranscript, enrichWithRxNorm, parseCSV, parseArrayField } from "./medication-normalizer";
 import {
   forwardMessageToExternalProvider,
@@ -5759,13 +5762,18 @@ Return ONLY this JSON structure:
       if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)) {
         return res.status(400).json({ message: "overrides must be an object" });
       }
+      const normalizedOverrides = { ...overrides };
+      if (Object.prototype.hasOwnProperty.call(overrides, "supplementPriorityOverrides")) {
+        normalizedOverrides.supplementPriorityOverrides =
+          normalizeSupplementPriorityOverrides(overrides.supplementPriorityOverrides);
+      }
       const patient = await storage.getPatient(patientId, clinicianId, clinicId);
       if (!patient) return res.status(404).json({ message: "Patient not found" });
       const labResult = await storage.getLabResult(labId);
       if (!labResult || labResult.patientId !== patientId) {
         return res.status(404).json({ message: "Lab result not found" });
       }
-      const updated = await storage.updateLabResultProviderOverrides(labId, overrides);
+      const updated = await storage.updateLabResultProviderOverrides(labId, normalizedOverrides);
       res.json({ message: "Provider overrides saved", providerOverrides: updated?.providerOverrides ?? null });
     } catch (error) {
       console.error("Error updating provider overrides:", error);

@@ -41,8 +41,12 @@ import { labsApi, femaleLabsApi, type WellnessPlan } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
-import type { Patient, LabResult, InterpretationResult, LabValues, FemaleLabValues, ClinicalEncounter, PatientChart, PatientChartDraft, ExtractedMedication, Appointment, SimpleLabUpload, ProviderOverrides, SupplementRecommendation, ClinicianSupplement, PatientVital, EvidenceOverlay } from "@shared/schema";
-import { resolvePatientVisibleSupplementProtocol } from "@shared/patient-visible-supplement-protocol";
+import type { Patient, LabResult, InterpretationResult, LabValues, FemaleLabValues, ClinicalEncounter, PatientChart, PatientChartDraft, ExtractedMedication, Appointment, SimpleLabUpload, ProviderOverrides, SupplementRecommendation, SupplementPriority, ClinicianSupplement, PatientVital, EvidenceOverlay } from "@shared/schema";
+import {
+  getSupplementPriorityOverride,
+  normalizeSupplementName,
+  resolvePatientVisibleSupplementProtocol,
+} from "@shared/patient-visible-supplement-protocol";
 import { ResultsDisplay } from "@/components/results-display";
 import { LabComparisonDialog } from "@/components/lab-comparison-dialog";
 import {
@@ -816,6 +820,19 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
     });
   }, []);
 
+  const setSupplementPriority = useCallback((
+    supplementName: string,
+    priority: SupplementPriority,
+  ) => {
+    updateOverrides(prev => ({
+      ...prev,
+      supplementPriorityOverrides: {
+        ...prev.supplementPriorityOverrides,
+        [normalizeSupplementName(supplementName)]: priority,
+      },
+    }));
+  }, [updateOverrides]);
+
   const updatePatientSummary = useCallback((value: string) => {
     setCommunicationSummary(value);
     setSaveStatus('unsaved');
@@ -922,7 +939,7 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
     onSuccess: async (wellnessPlan: WellnessPlan) => {
       if (interp) {
         const patientLabs = allLabs.length >= 2 ? allLabs : undefined;
-        const pdfSupps = effectiveSupplements.map(s => ({ name: s.name, dose: s.dose, indication: s.indication, patientExplanation: (s as any).patientExplanation, rationale: (s as any).rationale, continuationNote: (s as any).continuationNote, continuationOnly: (s as any).continuationOnly }));
+        const pdfSupps = effectiveSupplements.map(s => ({ name: s.name, dose: s.dose, indication: s.indication, priority: s.priority, patientExplanation: (s as any).patientExplanation, rationale: (s as any).rationale, continuationNote: (s as any).continuationNote, continuationOnly: (s as any).continuationOnly }));
         const clinicLogo = clinicBrandingFull?.clinicLogo ?? null;
         const footerText = clinicBrandingFull?.footerText ?? null;
         const hiddenSections = overrides.hiddenSections || [];
@@ -963,6 +980,32 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
       default: return 'bg-muted text-muted-foreground';
     }
   };
+
+  const SupplementPrioritySelect = ({
+    supplementName,
+    priority,
+  }: {
+    supplementName: string;
+    priority: SupplementPriority;
+  }) => (
+    <Select
+      value={priority}
+      onValueChange={(value) => setSupplementPriority(supplementName, value as SupplementPriority)}
+    >
+      <SelectTrigger
+        className="h-7 w-[112px] text-xs"
+        aria-label={`Priority for ${supplementName}`}
+        data-testid={`select-supplement-priority-${normalizeSupplementName(supplementName).replace(/[^a-z0-9]+/g, "-")}`}
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="high">High priority</SelectItem>
+        <SelectItem value="medium">Medium priority</SelectItem>
+        <SelectItem value="low">Low priority</SelectItem>
+      </SelectContent>
+    </Select>
+  );
 
   const summaryText = communicationSummary;
 
@@ -1163,9 +1206,10 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
                         const hidden = isSuppHidden(supp.name);
                         const isContinuationOnly = (supp as any).continuationOnly === true;
                         const hasContinuationNote = !!(supp as any).continuationNote;
+                        const priority = getSupplementPriorityOverride(overrides, supp.name) ?? supp.priority;
                         return (
                           <div key={idx} className={cn(
-                            `p-3 rounded-md border flex items-start gap-3 ${isContinuationOnly ? 'bg-emerald-50/60 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-800' : priorityColor(supp.priority)}`,
+                            `p-3 rounded-md border flex items-start gap-3 ${isContinuationOnly ? 'bg-emerald-50/60 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-800' : priorityColor(priority)}`,
                             hidden && "opacity-50"
                           )}>
                             <div className="flex-1 min-w-0">
@@ -1174,7 +1218,7 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
                                 {isContinuationOnly ? (
                                   <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">Continue — optimal</span>
                                 ) : (
-                                  <span className={`text-xs px-2 py-0.5 rounded-full ${priorityBadge(supp.priority)}`}>{supp.priority} priority</span>
+                                  <span className={`text-xs px-2 py-0.5 rounded-full ${priorityBadge(priority)}`}>{priority} priority</span>
                                 )}
                                 {hasContinuationNote && !isContinuationOnly && (
                                   <span className="text-xs px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-300">Currently taking</span>
@@ -1188,37 +1232,46 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
                               )}
                               {supp.rationale && !hidden && !isContinuationOnly && <p className="text-xs text-muted-foreground mt-0.5 italic">{supp.rationale}</p>}
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => toggle('hiddenSupplementNames', supp.name)}
-                              title={hidden ? "Show to patient" : "Hide from patient"}
-                              className={cn("flex-shrink-0 p-1 rounded transition-colors mt-0.5", hidden ? "text-amber-600 hover:text-amber-700 dark:text-amber-400" : "text-muted-foreground hover:text-foreground")}
-                            >
-                              {hidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                            </button>
+                            <div className="flex flex-shrink-0 items-start gap-1">
+                              <SupplementPrioritySelect supplementName={supp.name} priority={priority} />
+                              <button
+                                type="button"
+                                onClick={() => toggle('hiddenSupplementNames', supp.name)}
+                                title={hidden ? "Show to patient" : "Hide from patient"}
+                                className={cn("p-1 rounded transition-colors mt-0.5", hidden ? "text-amber-600 hover:text-amber-700 dark:text-amber-400" : "text-muted-foreground hover:text-foreground")}
+                              >
+                                {hidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                              </button>
+                            </div>
                           </div>
                         );
                       })}
 
                       {(overrides.addedSupplements || []).map((supp, idx) => (
-                        <div key={`added-${idx}`} className={`p-3 rounded-md border flex items-start gap-3 ${priorityColor(supp.priority)}`}>
+                        <div key={`added-${idx}`} className={`p-3 rounded-md border flex items-start gap-3 ${priorityColor(getSupplementPriorityOverride(overrides, supp.name) ?? supp.priority)}`}>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap mb-0.5">
                               <span className="text-sm font-semibold">{supp.name}</span>
-                              <span className={`text-xs px-2 py-0.5 rounded-full ${priorityBadge(supp.priority)}`}>{supp.priority} priority</span>
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${priorityBadge(getSupplementPriorityOverride(overrides, supp.name) ?? supp.priority)}`}>{getSupplementPriorityOverride(overrides, supp.name) ?? supp.priority} priority</span>
                               <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">Added</span>
                             </div>
                             <p className="text-xs text-muted-foreground font-mono">{supp.dose}</p>
                             <p className="text-xs text-muted-foreground mt-0.5">{supp.indication}</p>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => updateOverrides(prev => ({ ...prev, addedSupplements: (prev.addedSupplements || []).filter((_, i) => i !== idx) }))}
-                            title="Remove"
-                            className="flex-shrink-0 p-1 rounded text-muted-foreground hover:text-destructive transition-colors mt-0.5"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
+                          <div className="flex flex-shrink-0 items-start gap-1">
+                            <SupplementPrioritySelect
+                              supplementName={supp.name}
+                              priority={getSupplementPriorityOverride(overrides, supp.name) ?? supp.priority}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => updateOverrides(prev => ({ ...prev, addedSupplements: (prev.addedSupplements || []).filter((_, i) => i !== idx) }))}
+                              title="Remove"
+                              className="p-1 rounded text-muted-foreground hover:text-destructive transition-colors mt-0.5"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
                       ))}
 
