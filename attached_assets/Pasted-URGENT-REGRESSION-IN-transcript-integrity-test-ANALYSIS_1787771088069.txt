@@ -1,0 +1,79 @@
+URGENT REGRESSION IN transcript-integrity-test — ANALYSIS ONLY. DO NOT IMPLEMENT OR DEPLOY YET.
+
+I tested the new transcript-integrity revision hormonehealthai-00559-wig using a simple controlled recording.
+
+I spoke approximately:
+
+Patient returns for hormone follow-up. She is taking estradiol patch 0.025 mg and progesterone 100 mg nightly. She reports feeling better overall. She had breakthrough bleeding last month, but it has stopped. We discussed adding transdermal testosterone. Follow up in 6 to 8 weeks.
+
+The final raw transcript contained only:
+
+25
+
+This is a severe truncation/regression. Do not change the STT prompt or SOAP logic yet.
+
+I need you to trace the new provenance-based recording flow and determine exactly where the rest of the recording was lost.
+
+Inspect:
+
+How many recording segments the browser created.
+The recording-session ID and sequence/index assigned to every segment.
+Whether every segment request reached POST /api/encounters/transcribe.
+The HTTP result for every segment.
+Whether each segment was persisted as completed, empty, failed, or gap.
+The raw STT text returned for each segment.
+Whether retries reused the correct session/segment key or accidentally replaced another segment.
+Whether deterministic sequence/index assignment is working correctly.
+Whether the database uniqueness/upsert logic is causing multiple segments to overwrite the same slot.
+Whether the client is accidentally sending the same segmentIndex for every segment.
+Whether the recording session is being recreated/reset during the same encounter.
+Whether only the final segment is being persisted or selected.
+Whether getAuthoritativeTranscriptSource() is assembling all persisted segments or returning only one.
+Whether completed, empty, or failure filtering is unintentionally excluding valid segments.
+Whether transcript assembly is using the wrong recording-session ID.
+Whether an audio/blob lifecycle bug is sending extremely short or empty blobs after the first segment.
+
+For this test, reconstruct:
+
+browser recording
+→ segment 0
+→ segment 1
+→ ...
+→ STT request
+→ STT response
+→ persisted provenance row
+→ authoritative transcript assembly
+→ transcript shown in UI
+
+Show me a table with one row per segment containing:
+
+session ID
+segment index
+audio byte size
+audio hash
+request timestamp
+STT model
+fallback status
+STT result text
+persisted status
+retry count
+database row ID
+whether included in final authoritative transcript
+
+I especially want you to check for upsert-key collision or repeated segmentIndex, because a final transcript of only 25 is consistent with earlier segments being overwritten or ignored.
+
+Also confirm whether the UI is showing:
+
+immutable assembled raw STT,
+editable transcription,
+or another field.
+
+Do not weaken the provenance architecture or re-enable normalized transcript as authoritative just to make transcription appear again.
+
+The desired fix remains:
+
+all successfully recorded segments → immutable raw STT rows → ordered authoritative transcript
+
+Missing/failed segments may produce gaps, but valid segments must never disappear.
+
+Do not implement yet. Show me the root cause and smallest correction first.
