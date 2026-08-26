@@ -1,0 +1,114 @@
+I approve the forensic conclusion and the fail-closed direction.
+
+This is now the highest-priority issue in ClinIQ. Do not work on SOAP, Provider Chart Note, June, Evidence Layer, or further Brain integration until transcript source integrity is addressed.
+
+Please create the smallest implementation plan for a Transcript Provenance and Fail-Closed Transcription fix.
+
+The implementation should preserve these invariants:
+
+1. Raw STT must be immutable source evidence
+
+The first speech-to-text result produced from each audio segment must be stored separately from any editable or normalized transcript.
+
+Once stored, downstream UI saves, SOAP generation, normalization, diarization, retries, or clinician edits must not overwrite that original STT artifact.
+
+The current editable transcription field should no longer be treated as proof of the original STT response if it can be rewritten by the client.
+
+2. Remove prompt-conditioned clinical hallucination risk from STT
+
+Remove the broad patient-like clinical glossary from the transcription prompt.
+
+Do not prime the transcription model with lists containing medication names, lab markers, diagnoses, or clinical phrases that could plausibly be hallucinated into the encounter.
+
+If prompting is retained at all, keep it generic and limited to transcription behavior such as:
+
+Transcribe exactly what is spoken. Do not infer, complete, summarize, or add medical content that is not audible.
+
+Do not attempt to solve medical spelling by feeding the model a broad clinical lexicon.
+
+3. Raw transcript must remain the downstream source of truth by default
+
+SOAP/extraction/clinical reasoning should use the raw transcript unless an explicit reviewed transcript has been intentionally accepted.
+
+LLM-normalized/diarized text must not automatically supersede raw STT.
+
+4. Derived transcript must be separate and reviewable
+
+Speaker labeling, normalization, spelling correction, or formatting may produce a derived transcript, but:
+
+it must be stored separately;
+its provenance must be clear;
+it must never add new clinical facts;
+it must never silently become authoritative merely because generation succeeded.
+
+If ClinIQ eventually allows the clinician to approve a reviewed transcript, that can become an explicit source state later. Do not silently infer approval.
+
+5. Fail closed
+
+If STT fails, audio is incomplete, or a segment cannot be confidently transcribed:
+
+preserve [AUDIO GAP], [UNINTELLIGIBLE], or a transcription-failure flag;
+do not reconstruct probable dialogue;
+do not use chart history, encounter type, prior transcripts, algorithms, or model inference to fill missing speech.
+
+Missing evidence is safer than invented evidence.
+
+6. Normalization must never be validated by word count alone
+
+The current ~60% word-count safeguard is not sufficient because a fabricated or substituted transcript can have similar length.
+
+For the first safe implementation, I would prefer that normalized text is not used as the authoritative downstream source at all rather than trying to invent a complex semantic-fidelity validator immediately.
+
+Use raw STT downstream by default and treat normalization as optional derived assistance.
+
+7. Provenance
+
+Persist enough per-segment provenance to reconstruct what happened:
+
+encounter/segment identifier;
+STT model used;
+whether fallback model was used;
+timestamp;
+audio hash;
+original STT response hash;
+derived-transcript hash if generated;
+generation/retry status;
+explicit source relationship between audio → raw STT → derived transcript.
+
+Do not unnecessarily duplicate clinical text if hashes/metadata can establish lineage.
+
+8. Existing encounters
+
+Do not retroactively label existing transcripts as verified raw STT if provenance does not exist.
+
+Treat legacy encounter transcripts as legacy/unverified provenance where appropriate.
+
+9. Client overwrite path
+
+Audit and remove the ability for a general encounter update route or pre-SOAP client save to overwrite immutable raw STT.
+
+Editable transcript/review text must have a separate field and route from raw STT storage.
+
+10. Regression tests
+
+Include tests proving:
+
+STT prompt no longer contains clinical glossary terms;
+raw STT cannot be overwritten by ordinary encounter updates;
+normalized/diarized output cannot replace raw transcript;
+a failed/empty transcription produces a gap/failure state rather than generated dialogue;
+retries cannot pull prior encounter text;
+stale diarized text is not reused as authoritative context after raw transcript changes;
+SOAP generation uses raw STT by default;
+legacy transcripts remain readable without being misrepresented as provenance-verified.
+
+Before implementation, show me:
+
+the smallest schema/data-model changes required;
+which routes/functions will change;
+how existing transcription and diarized_transcript fields will be handled;
+how SOAP generation will choose its transcript source after the change;
+how audio-segment provenance will be stored;
+migration/backward-compatibility behavior for existing encounters.
+
+Do not implement or deploy until I approve the plan.
