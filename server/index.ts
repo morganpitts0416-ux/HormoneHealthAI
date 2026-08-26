@@ -95,6 +95,7 @@ const DRIFT_REQUIRED_TABLES = [
   "diagnosis_presets",
   "encounter_transcription_sessions",
   "encounter_transcription_segments",
+  "encounter_transcription_attempts",
 ];
 
 const DRIFT_REQUIRED_COLUMNS: Record<string, string[]> = {

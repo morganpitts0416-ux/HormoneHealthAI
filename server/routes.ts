@@ -9310,7 +9310,11 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       cleanupFiles([filePath]);
       return res.status(404).json({ message: "Encounter not found" });
     }
+    const audioByteLength = fs.statSync(filePath).size;
     const audioSha256 = crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+    const requestReceivedAt = new Date();
+    let attempt: { segment: schema.EncounterTranscriptionSegment; attempt: schema.EncounterTranscriptionAttempt } | null = null;
+    let sttStartedAt = requestReceivedAt;
 
     const persistSourceOutcome = async (outcome: {
       rawSttText: string | null;
@@ -9320,11 +9324,13 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       status: "completed" | "empty" | "failed" | "unintelligible";
       failureReason?: string | null;
     }) => {
-      const segment = await storage.upsertEncounterTranscriptionSegment({
-        encounterId,
-        clientSessionId: recordingSessionId,
-        segmentIndex,
-        audioSha256,
+      if (!attempt) throw new Error("Transcription attempt was not initialized");
+      const segment = await storage.completeEncounterTranscriptionAttempt({
+        segmentId: attempt.segment.id,
+        attemptId: attempt.attempt.id,
+        attemptNumber: attempt.attempt.attemptNumber,
+        sttStartedAt,
+        sttCompletedAt: new Date(),
         ...outcome,
       });
       await storage.updateEncounter(encounterId, clinicianId, {
@@ -9334,6 +9340,15 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
     };
 
     try {
+      attempt = await storage.beginEncounterTranscriptionAttempt({
+        encounterId,
+        clientSessionId: recordingSessionId,
+        segmentIndex,
+        audioSha256,
+        audioByteLength,
+        requestReceivedAt,
+      });
+      sttStartedAt = new Date();
       // Audio transcription requires a direct OpenAI key — the AI Integration proxy
       // does not support the /audio/transcriptions endpoint. Fall back gracefully.
       const audioApiKey = process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY;

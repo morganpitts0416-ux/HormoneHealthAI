@@ -107,6 +107,31 @@ CREATE UNIQUE INDEX IF NOT EXISTS encounter_transcription_segments_session_index
 CREATE INDEX IF NOT EXISTS encounter_transcription_segments_session_index_idx
   ON encounter_transcription_segments(transcription_session_id, segment_index);
 
+-- Per-attempt forensic metadata stays separate from the source slot: retry
+-- completion may replace the slot outcome, but never deletes attempt timing,
+-- audio size/hash, model/fallback, response hash, or protected STT result.
+CREATE TABLE IF NOT EXISTS encounter_transcription_attempts (
+  id SERIAL PRIMARY KEY,
+  transcription_segment_id INTEGER NOT NULL REFERENCES encounter_transcription_segments(id) ON DELETE CASCADE,
+  attempt_number INTEGER NOT NULL,
+  audio_byte_length INTEGER NOT NULL,
+  audio_sha256 VARCHAR(64) NOT NULL,
+  request_received_at TIMESTAMP NOT NULL,
+  stt_started_at TIMESTAMP,
+  stt_completed_at TIMESTAMP,
+  raw_stt_text TEXT,
+  stt_response_sha256 VARCHAR(64),
+  stt_model VARCHAR(80),
+  used_fallback BOOLEAN NOT NULL DEFAULT FALSE,
+  status VARCHAR(30) NOT NULL,
+  failure_reason TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS encounter_transcription_attempts_segment_number_uq
+  ON encounter_transcription_attempts(transcription_segment_id, attempt_number);
+CREATE INDEX IF NOT EXISTS encounter_transcription_attempts_segment_number_idx
+  ON encounter_transcription_attempts(transcription_segment_id, attempt_number);
+
 -- ── New tables (created only if they don't exist) ────────────
 
 CREATE TABLE IF NOT EXISTS baa_signatures (

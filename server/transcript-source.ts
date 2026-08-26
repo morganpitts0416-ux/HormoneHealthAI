@@ -6,10 +6,16 @@ export type ProvenanceSegment = EncounterTranscriptionSegment & {
 };
 
 export type TranscriptSourceKind = "verified_raw" | "legacy_unverified";
+export type TranscriptSourceState =
+  | "verified_raw"
+  | "legacy_unverified"
+  | "incomplete"
+  | "transcription_failed";
 
 export interface TranscriptSource {
   text: string;
   kind: TranscriptSourceKind;
+  state: TranscriptSourceState;
   hasGaps: boolean;
   segmentCount: number;
 }
@@ -37,10 +43,13 @@ export function assembleVerifiedRawTranscript(segments: ProvenanceSegment[]): Tr
     return markerFor(segment);
   });
   const text = parts.join("\n").trim();
+  const allAttemptsFailed = ordered.length > 0 && ordered.every((segment) => segment.status === "failed");
+  const hasGaps = ordered.some((segment) => segment.status !== "completed" || !segment.rawSttText?.trim());
   return {
     text,
     kind: "verified_raw",
-    hasGaps: ordered.some((segment) => segment.status !== "completed" || !segment.rawSttText?.trim()),
+    state: allAttemptsFailed ? "transcription_failed" : hasGaps ? "incomplete" : "verified_raw",
+    hasGaps,
     segmentCount: ordered.length,
   };
 }
@@ -58,6 +67,7 @@ export function resolveTranscriptSource(
   return {
     text: encounter.transcription?.trim() ?? "",
     kind: "legacy_unverified",
+    state: "legacy_unverified",
     hasGaps: false,
     segmentCount: 0,
   };

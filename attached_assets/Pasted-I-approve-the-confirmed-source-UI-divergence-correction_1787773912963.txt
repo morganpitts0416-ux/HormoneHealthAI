@@ -1,0 +1,90 @@
+I approve the confirmed source/UI divergence correction, with one important requirement: do not assume this fully explains the 25 transcription.
+
+If my test recording was shorter than the 60-second segmentation boundary, there may have been only one audio segment. In that case, if STT itself returned 25, re-reading the authoritative persisted source would still correctly display 25.
+
+Therefore implement the smallest correction plus sufficient observability to distinguish:
+
+audio capture failure → STT failure/truncation → persistence failure → UI divergence
+
+1. Make the authoritative server source clinician-visible
+
+After recording completes and all pending transcription requests/retries have settled:
+
+fetch the encounter's authoritative transcriptSource;
+populate the transcript review UI from that server-assembled source;
+do not treat recording.finalTranscript as the final clinical transcript;
+browser-local assembly may remain temporary in-progress feedback only.
+
+The UI should not fetch the authoritative source prematurely while segment requests are still pending.
+
+2. Preserve the current provenance architecture
+
+Do not change:
+
+generic fail-closed STT prompt;
+immutable segment provenance;
+deterministic session/segment ordering;
+authoritative transcript-source resolver;
+SOAP source selection;
+normalization/diarization authority rules.
+
+Do not restore the old medical glossary.
+
+3. Add minimum per-attempt observability
+
+Persist enough information to diagnose the next recording:
+
+recording session ID;
+segment index;
+audio byte length;
+audio hash;
+request-received timestamp;
+STT request/start timestamp if useful;
+STT completion timestamp;
+model actually used;
+whether fallback was used;
+retry/attempt number;
+returned STT text or an appropriate durable linkage to the immutable result;
+response text hash;
+final persisted status;
+error/failure reason when applicable.
+
+Do not log PHI unnecessarily into ordinary application logs. Clinical transcript text should remain in the appropriate protected persistence layer rather than being dumped into general logs merely for debugging.
+
+4. Add a clinician-visible source state
+
+On the test/review screen, make it possible to distinguish at minimum:
+
+verified raw segment-backed transcript;
+legacy/unverified transcript;
+incomplete transcript / audio gap;
+transcription failure.
+
+This does not need to be a major UI redesign. A small status indicator is sufficient.
+
+5. Protect completion sequencing
+
+Add regression coverage proving that recording completion waits for all pending segment uploads/retries before fetching the authoritative transcript.
+
+The final fetch must not race the last STT request and accidentally retrieve an incomplete transcript.
+
+6. Regression tests
+
+Add tests for:
+
+browser-local transcript differs from authoritative server transcript → authoritative source wins after completion;
+single-segment recording;
+multi-segment recording;
+delayed final segment;
+retry still pending when Stop is clicked;
+out-of-order request completion;
+failed segment produces explicit gap/failure state;
+authoritative transcript is fetched only after pending work settles;
+audio byte length and request timing are persisted;
+SOAP continues to use the centralized authoritative source.
+
+Implement this narrow correction and run the focused recording/transcript-source tests plus SOAP regression tests and production build.
+
+Do not deploy automatically.
+
+After implementation, show me the results and tell me exactly what information we should inspect after the next controlled recording if transcription is still incorrect.

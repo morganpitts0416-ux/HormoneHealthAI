@@ -4,6 +4,19 @@ import { useToast } from "@/hooks/use-toast";
 import type { DiarizedUtterance } from "@shared/schema";
 
 export type RecordingState = "idle" | "recording" | "transcribing" | "review" | "error";
+export type TranscriptSourceState =
+  | "verified_raw"
+  | "legacy_unverified"
+  | "incomplete"
+  | "transcription_failed";
+
+export interface TranscriptSourceSummary {
+  text: string;
+  kind: "verified_raw" | "legacy_unverified";
+  state: TranscriptSourceState;
+  hasGaps: boolean;
+  segmentCount: number;
+}
 
 const SEGMENT_MS = 60_000;
 // Upload retry policy: transient network/server failures must NOT silently
@@ -36,7 +49,10 @@ interface RecordingContextValue {
   segmentsDone: number;
   segmentsTotal: number;
   liveTranscript: string;
+  // This is populated only from the server's ordered immutable source after
+  // every upload/retry settles. It is never the browser-local assembly.
   finalTranscript: string;
+  transcriptSource: TranscriptSourceSummary | null;
   finalUtterances: DiarizedUtterance[] | null;
   errorMessage: string | null;
   start: (params: StartRecordingParams) => Promise<boolean>;
@@ -66,6 +82,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
   const [segmentsTotal, setSegmentsTotal] = useState(0);
   const [liveTranscript, setLiveTranscript] = useState("");
   const [finalTranscript, setFinalTranscript] = useState("");
+  const [transcriptSource, setTranscriptSource] = useState<TranscriptSourceSummary | null>(null);
   const [finalUtterances, setFinalUtterances] = useState<DiarizedUtterance[] | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -183,6 +200,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     setSegmentsTotal(0);
     setLiveTranscript("");
     setFinalTranscript("");
+    setTranscriptSource(null);
     setFinalUtterances(null);
     setErrorMessage(null);
     setState("idle");
@@ -210,8 +228,22 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     return (await res.json()) as { transcription?: string; utterances?: DiarizedUtterance[] | null };
   }, []);
 
-  // Once all segments have been transcribed AND recording has stopped, persist
-  // the final transcript to the bound encounter and switch to review state.
+  // This is deliberately separate from the segment POST response. The browser
+  // may use its local assembly as temporary recording feedback, but clinical
+  // review must come from the ordered, immutable source the server assembled.
+  const fetchAuthoritativeTranscriptSource = useCallback(async (encounterId: number): Promise<TranscriptSourceSummary> => {
+    const res = await fetch(`/api/encounters/${encounterId}`, { credentials: "include" });
+    if (!res.ok) throw new Error("Could not load the authoritative transcript source");
+    const payload = await res.json();
+    const source = payload?.transcriptSource as TranscriptSourceSummary | undefined;
+    if (!source || typeof source.text !== "string" || !source.state) {
+      throw new Error("The authoritative transcript source is unavailable");
+    }
+    return source;
+  }, []);
+
+  // Once all segments have been transcribed AND recording has stopped, fetch
+  // the authoritative server source and then switch to review state.
   // `session` is the recording generation captured by the caller; if it no
   // longer matches the current session the recording was discarded/restarted
   // and we MUST NOT persist anything from the prior session.
@@ -242,26 +274,19 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     }
     const unrecoveredGaps = failedSegmentBlobsRef.current.size;
 
-    // Collect segment indices in ascending order
+    // Local utterance timing remains helpful review assistance, but local text
+    // assembly must never become the clinical transcript shown after stop.
     const indices = Array.from(transcribedSegmentsRef.current.keys()).sort((a, b) => a - b);
-    const allText: string[] = [];
     const allUtterances: DiarizedUtterance[] = [];
     let utteranceIdOffset = 0;
     for (const i of indices) {
-      const t = transcribedSegmentsRef.current.get(i) ?? "";
-      if (t) allText.push(t);
       const u = transcribedUtterancesRef.current.get(i);
       if (u) {
         u.forEach(ut => allUtterances.push({ ...ut, id: ut.id + utteranceIdOffset }));
         utteranceIdOffset += u.length;
       }
     }
-    const newText = allText.join(" ").trim();
     const utterances = allUtterances.length > 0 ? allUtterances : null;
-    const base = preExistingTranscriptRef.current;
-    const fullTranscript = base ? base + "\n\n" + newText : newText;
-
-    setFinalTranscript(fullTranscript);
     setFinalUtterances(utterances);
 
     if (unrecoveredGaps > 0) {
@@ -273,20 +298,35 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
       });
     }
 
-    // Source text was already persisted, one immutable deterministic segment
-    // at a time, by /transcribe. Do not mirror it into the editable encounter
-    // transcription field here. Refresh consumers so they obtain the
-    // authoritative raw source through the encounter endpoint.
+    // The final GET intentionally happens only after every upload/retry and
+    // last-chance retry above has settled. Fetching earlier can race the last
+    // provider response and show an incomplete authoritative assembly.
     const encounterId = boundEncounterIdRef.current;
-    if (encounterId) {
+    if (!encounterId) {
+      setErrorMessage("The recording was not linked to an encounter.");
+      setState("error");
+      return;
+    }
+    try {
+      const source = await fetchAuthoritativeTranscriptSource(encounterId);
+      if (session !== recordingSessionRef.current) return;
+      setTranscriptSource(source);
+      setFinalTranscript(source.text);
       queryClient.invalidateQueries({ queryKey: ["/api/encounters", encounterId] });
       queryClient.invalidateQueries({ queryKey: ["/api/encounters"] });
       queryClient.invalidateQueries({ queryKey: ["/api/encounters/open"] });
+    } catch {
+      if (session !== recordingSessionRef.current) return;
+      // Fail closed rather than presenting unverified browser-local text as
+      // the final clinical transcript.
+      setErrorMessage("Recording finished, but the authoritative transcript source could not be loaded. Please retry the review.");
+      setState("error");
+      return;
     }
 
     if (session !== recordingSessionRef.current) return;
     setState("review");
-  }, [toast, uploadSegmentOnce]);
+  }, [fetchAuthoritativeTranscriptSource, toast, uploadSegmentOnce]);
 
   const transcribeSegment = useCallback(async (blob: Blob, segIdx: number, session: number) => {
     try {
@@ -487,6 +527,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     setSegmentsTotal(0);
     setLiveTranscript(params.preExistingTranscript || "");
     setFinalTranscript("");
+    setTranscriptSource(null);
     setFinalUtterances(null);
     setErrorMessage(null);
 
@@ -579,6 +620,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     segmentsTotal,
     liveTranscript,
     finalTranscript,
+    transcriptSource,
     finalUtterances,
     errorMessage,
     start,

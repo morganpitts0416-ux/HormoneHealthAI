@@ -887,6 +887,9 @@ export function EncounterEditor({
       return;
     }
     if (recording.state === "review") {
+      // RecordingProvider fetches this only after every segment upload/retry
+      // settled. It is server-assembled immutable source text, not browser
+      // `finalTranscript` aggregation.
       const text = recording.finalTranscript;
       const last = lastAppliedFinalRef.current;
       if (last && last.encounterId === savedId && last.len === text.length) return;
@@ -896,12 +899,19 @@ export function EncounterEditor({
         setRawUtterances(recording.finalUtterances);
         setDiarizedTranscript(recording.finalUtterances);
       }
-      // Recording context already PUT the transcript with expectedPatientId;
-      // refresh the encounter cache so any stale fields (utterances) reload.
+      // The context fetched and applied the authoritative transcript source;
+      // refresh auxiliary encounter fields such as derived utterances.
       qc.invalidateQueries({ queryKey: ["/api/encounters", savedId] });
-      toast({ title: "Transcript saved", description: "The recorded transcript has been added to this encounter." });
+      toast({
+        title: recording.transcriptSource?.state === "verified_raw" ? "Verified transcript ready" : "Transcript review ready",
+        description: recording.transcriptSource?.state === "incomplete"
+          ? "The authoritative source includes an explicit audio gap or unintelligible segment."
+          : recording.transcriptSource?.state === "transcription_failed"
+            ? "The authoritative source records a transcription failure."
+            : "The transcript shown is assembled from the server-owned recording source.",
+      });
     }
-  }, [recording.state, recording.boundEncounterId, recording.liveTranscript, recording.finalTranscript, recording.finalUtterances, savedId]);
+  }, [recording.state, recording.boundEncounterId, recording.liveTranscript, recording.finalTranscript, recording.transcriptSource, recording.finalUtterances, savedId]);
 
   // Sync JSONB states when detail fetch arrives after initial mount
   // (list query strips these fields; detail fetch brings them in asynchronously)
@@ -2158,6 +2168,26 @@ export function EncounterEditor({
 
               {/* Live notes area — shows transcript building in real time */}
               <div className="relative">
+                {recording.boundEncounterId === savedId && recording.state === "review" && recording.transcriptSource && (
+                  <div
+                    className={`mb-2 rounded-md border px-2.5 py-1.5 text-xs ${
+                      recording.transcriptSource.state === "verified_raw"
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300"
+                        : recording.transcriptSource.state === "legacy_unverified"
+                          ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300"
+                          : "border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300"
+                    }`}
+                    data-testid="transcript-source-state"
+                  >
+                    {recording.transcriptSource.state === "verified_raw"
+                      ? `Verified raw source · ${recording.transcriptSource.segmentCount} segment${recording.transcriptSource.segmentCount === 1 ? "" : "s"}`
+                      : recording.transcriptSource.state === "legacy_unverified"
+                        ? "Legacy / unverified transcript"
+                        : recording.transcriptSource.state === "transcription_failed"
+                          ? "Transcription failure — review source status before generating a note"
+                          : "Incomplete transcript — includes an audio gap or unintelligible segment"}
+                  </div>
+                )}
                 {recorderState === "recording" && !transcription && (
                   <div className="absolute inset-0 rounded-md bg-red-50/60 dark:bg-red-950/20 border-2 border-red-300/50 flex items-start gap-2 px-3 py-3 pointer-events-none z-10">
                     <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse mt-1 flex-shrink-0" />

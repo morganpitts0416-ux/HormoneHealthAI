@@ -248,16 +248,25 @@ export interface IStorage {
   updateEncounter(id: number, clinicianId: number, data: Partial<InsertClinicalEncounter> & { soapNote?: any; soapGeneratedAt?: Date; summaryPublished?: boolean; summaryPublishedAt?: Date; diarizedTranscript?: any; clinicalExtraction?: any; evidenceSuggestions?: import("@shared/schema").EvidenceOverlay | any; patternMatch?: import("@shared/schema").PatternMatchResult | any; updatedAt?: Date }, clinicId?: number | null): Promise<ClinicalEncounter | undefined>;
   deleteEncounter(id: number, clinicianId: number, clinicId?: number | null): Promise<boolean>;
   getOrCreateEncounterTranscriptionSession(encounterId: number, clientSessionId: string): Promise<schema.EncounterTranscriptionSession>;
-  upsertEncounterTranscriptionSegment(data: {
+  beginEncounterTranscriptionAttempt(data: {
     encounterId: number;
     clientSessionId: string;
     segmentIndex: number;
-    rawSttText: string | null;
     audioSha256: string;
+    audioByteLength: number;
+    requestReceivedAt: Date;
+  }): Promise<{ segment: schema.EncounterTranscriptionSegment; attempt: schema.EncounterTranscriptionAttempt }>;
+  completeEncounterTranscriptionAttempt(data: {
+    segmentId: number;
+    attemptId: number;
+    attemptNumber: number;
+    rawSttText: string | null;
     sttResponseSha256: string | null;
     sttModel: string | null;
     usedFallback: boolean;
     status: "completed" | "empty" | "failed" | "unintelligible";
+    sttStartedAt: Date;
+    sttCompletedAt: Date;
     failureReason?: string | null;
   }): Promise<schema.EncounterTranscriptionSegment>;
   getEncounterTranscriptionSegments(encounterId: number): Promise<Array<schema.EncounterTranscriptionSegment & { sessionSequence: number; clientSessionId: string }>>;
@@ -2199,53 +2208,121 @@ export class DbStorage implements IStorage {
     throw new Error("Unable to reserve transcription session");
   }
 
-  async upsertEncounterTranscriptionSegment(data: {
+  async beginEncounterTranscriptionAttempt(data: {
     encounterId: number;
     clientSessionId: string;
     segmentIndex: number;
-    rawSttText: string | null;
     audioSha256: string;
-    sttResponseSha256: string | null;
-    sttModel: string | null;
-    usedFallback: boolean;
-    status: "completed" | "empty" | "failed" | "unintelligible";
-    failureReason?: string | null;
-  }): Promise<schema.EncounterTranscriptionSegment> {
+    audioByteLength: number;
+    requestReceivedAt: Date;
+  }): Promise<{ segment: schema.EncounterTranscriptionSegment; attempt: schema.EncounterTranscriptionAttempt }> {
     const session = await this.getOrCreateEncounterTranscriptionSession(data.encounterId, data.clientSessionId);
     const existing = await db.select().from(schema.encounterTranscriptionSegments)
       .where(and(
         eq(schema.encounterTranscriptionSegments.transcriptionSessionId, session.id),
         eq(schema.encounterTranscriptionSegments.segmentIndex, data.segmentIndex),
       ));
-    const attemptCount = (existing[0]?.attemptCount ?? 0) + 1;
-    const values = {
-      rawSttText: data.rawSttText,
-      audioSha256: data.audioSha256,
-      sttResponseSha256: data.sttResponseSha256,
-      sttModel: data.sttModel,
-      usedFallback: data.usedFallback,
-      attemptCount,
-      status: data.status,
-      failureReason: data.failureReason ?? null,
-      finalizedAt: new Date(),
-    };
-
-    if (existing[0]) {
-      const updated = await db.update(schema.encounterTranscriptionSegments)
-        .set(values)
-        .where(eq(schema.encounterTranscriptionSegments.id, existing[0].id))
+    let segment = existing[0];
+    if (!segment) {
+      const inserted = await db.insert(schema.encounterTranscriptionSegments)
+        .values({
+          transcriptionSessionId: session.id,
+          segmentIndex: data.segmentIndex,
+          rawSttText: null,
+          audioSha256: data.audioSha256,
+          sttResponseSha256: null,
+          sttModel: null,
+          usedFallback: false,
+          attemptCount: 0,
+          status: "processing",
+          failureReason: null,
+          finalizedAt: null,
+        })
         .returning();
-      return updated[0];
+      segment = inserted[0];
     }
 
-    const inserted = await db.insert(schema.encounterTranscriptionSegments)
+    const attemptRows = await db.select({
+      maxAttempt: sql<number>`coalesce(max(${schema.encounterTranscriptionAttempts.attemptNumber}), 0)`,
+    }).from(schema.encounterTranscriptionAttempts)
+      .where(eq(schema.encounterTranscriptionAttempts.transcriptionSegmentId, segment.id));
+    const attemptNumber = Number(attemptRows[0]?.maxAttempt ?? 0) + 1;
+    const attempt = (await db.insert(schema.encounterTranscriptionAttempts)
       .values({
-        transcriptionSessionId: session.id,
-        segmentIndex: data.segmentIndex,
-        ...values,
+        transcriptionSegmentId: segment.id,
+        attemptNumber,
+        audioByteLength: data.audioByteLength,
+        audioSha256: data.audioSha256,
+        requestReceivedAt: data.requestReceivedAt,
+        status: "processing",
       })
+      .returning())[0];
+    const updated = await db.update(schema.encounterTranscriptionSegments)
+      .set({
+        audioSha256: data.audioSha256,
+        attemptCount: attemptNumber,
+        status: "processing",
+        failureReason: null,
+        finalizedAt: null,
+      })
+      .where(eq(schema.encounterTranscriptionSegments.id, segment.id))
       .returning();
-    return inserted[0];
+    return { segment: updated[0], attempt };
+  }
+
+  async completeEncounterTranscriptionAttempt(data: {
+    segmentId: number;
+    attemptId: number;
+    attemptNumber: number;
+    rawSttText: string | null;
+    sttResponseSha256: string | null;
+    sttModel: string | null;
+    usedFallback: boolean;
+    status: "completed" | "empty" | "failed" | "unintelligible";
+    sttStartedAt: Date;
+    sttCompletedAt: Date;
+    failureReason?: string | null;
+  }): Promise<schema.EncounterTranscriptionSegment> {
+    await db.update(schema.encounterTranscriptionAttempts)
+      .set({
+        rawSttText: data.rawSttText,
+        sttResponseSha256: data.sttResponseSha256,
+        sttModel: data.sttModel,
+        usedFallback: data.usedFallback,
+        status: data.status,
+        sttStartedAt: data.sttStartedAt,
+        sttCompletedAt: data.sttCompletedAt,
+        failureReason: data.failureReason ?? null,
+      })
+      .where(eq(schema.encounterTranscriptionAttempts.id, data.attemptId));
+
+    const current = await db.select().from(schema.encounterTranscriptionSegments)
+      .where(eq(schema.encounterTranscriptionSegments.id, data.segmentId));
+    const segment = current[0];
+    if (!segment) throw new Error("Transcription segment not found");
+    // A newer browser retry may have started while this request was finishing.
+    // Never let an older completion replace that newer slot outcome.
+    if (segment.attemptCount > data.attemptNumber) return segment;
+    // If a prior attempt already produced usable immutable source text, a later
+    // transport/provider failure must not turn that evidence into an audio gap.
+    // A later successful retry may still replace it with its own completed STT
+    // result; failures only remain in the separate protected attempt record.
+    if (segment.status === "completed" && data.status !== "completed") return segment;
+
+    const updated = await db.update(schema.encounterTranscriptionSegments)
+      .set({
+        rawSttText: data.rawSttText,
+        sttResponseSha256: data.sttResponseSha256,
+        sttModel: data.sttModel,
+        usedFallback: data.usedFallback,
+        attemptCount: data.attemptNumber,
+        status: data.status,
+        failureReason: data.failureReason ?? null,
+        finalizedAt: data.sttCompletedAt,
+      })
+      .where(eq(schema.encounterTranscriptionSegments.id, data.segmentId))
+      .returning();
+    return updated[0];
   }
 
   async getEncounterTranscriptionSegments(encounterId: number): Promise<Array<schema.EncounterTranscriptionSegment & { sessionSequence: number; clientSessionId: string }>> {

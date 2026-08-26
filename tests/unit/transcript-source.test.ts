@@ -35,6 +35,7 @@ describe("authoritative transcript source", () => {
     ]);
     expect(result.text).toBe("first\nsecond\nthird");
     expect(result.kind).toBe("verified_raw");
+    expect(result.state).toBe("verified_raw");
   });
 
   test("keeps failed and empty source segments explicit rather than silently dropping them", () => {
@@ -45,6 +46,7 @@ describe("authoritative transcript source", () => {
     expect(result.hasGaps).toBe(true);
     expect(result.text).toContain("[AUDIO GAP");
     expect(result.text).toContain("[UNINTELLIGIBLE");
+    expect(result.state).toBe("incomplete");
   });
 
   test("uses legacy editable text only when no immutable source segments exist", () => {
@@ -53,6 +55,14 @@ describe("authoritative transcript source", () => {
     expect(resolveTranscriptSource({ transcription: "edited text" } as any, [
       segment({ rawSttText: "immutable raw" }),
     ]).text).toBe("immutable raw");
+  });
+
+  test("reports a transcription failure when every source segment failed", () => {
+    const result = assembleVerifiedRawTranscript([
+      segment({ status: "failed", rawSttText: null }),
+    ]);
+    expect(result.state).toBe("transcription_failed");
+    expect(result.hasGaps).toBe(true);
   });
 });
 

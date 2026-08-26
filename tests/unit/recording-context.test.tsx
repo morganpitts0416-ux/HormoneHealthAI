@@ -75,21 +75,59 @@ class MockMediaRecorder {
 
 // ─── fetch mock (segment transcription endpoint) ─────────────────────────────
 
-type FetchPlan = (callIndex: number) => { ok: boolean; body?: any };
+type FetchResult = { ok: boolean; body?: any };
+type FetchPlan = (callIndex: number) => FetchResult | Promise<FetchResult>;
 let fetchPlan: FetchPlan = () => ({ ok: true, body: { transcription: "hello" } });
 let fetchCalls = 0;
 let transcriptionBodies: FormData[] = [];
+let sourceFetchCalls = 0;
+let successfulTranscriptions: string[] = [];
+let authoritativeSourceOverride: {
+  text: string;
+  kind: "verified_raw" | "legacy_unverified";
+  state: "verified_raw" | "legacy_unverified" | "incomplete" | "transcription_failed";
+  hasGaps: boolean;
+  segmentCount: number;
+} | null = null;
 
 function installFetchMock() {
   fetchCalls = 0;
   transcriptionBodies = [];
+  sourceFetchCalls = 0;
+  successfulTranscriptions = [];
+  authoritativeSourceOverride = null;
   vi.stubGlobal("fetch", vi.fn(async (url: any, init?: RequestInit) => {
     if (String(url).includes("/api/encounters/transcribe")) {
       transcriptionBodies.push(init?.body as FormData);
-      const plan = fetchPlan(fetchCalls++);
+      const plan = await fetchPlan(fetchCalls++);
+      if (plan.ok && typeof plan.body?.transcription === "string") {
+        successfulTranscriptions.push(plan.body.transcription);
+      }
       return {
         ok: plan.ok,
         json: async () => plan.body ?? { message: "boom" },
+      } as any;
+    }
+    if (String(url) === "/api/encounters/7") {
+      sourceFetchCalls += 1;
+      const fallback = successfulTranscriptions.length
+        ? {
+            text: successfulTranscriptions.join("\n"),
+            kind: "verified_raw" as const,
+            state: "verified_raw" as const,
+            hasGaps: false,
+            segmentCount: successfulTranscriptions.length,
+          }
+        : {
+            text: "[AUDIO GAP — session 1, segment 1 could not be transcribed]",
+            kind: "verified_raw" as const,
+            state: "transcription_failed" as const,
+            hasGaps: true,
+            segmentCount: 1,
+          };
+      return {
+        ok: true,
+        json: async () => ({ transcriptSource: authoritativeSourceOverride ?? fallback }),
       } as any;
     }
     throw new Error(`Unexpected fetch: ${url}`);
@@ -231,7 +269,7 @@ describe("segment upload failures", () => {
     expect(fetchCalls).toBe(4);
     expect(ctx.state).toBe("review");
     expect(ctx.finalTranscript).toContain(AUDIO_GAP_MARKER_PREFIX);
-    expect(ctx.finalTranscript).toContain("minute 1");
+    expect(ctx.transcriptSource?.state).toBe("transcription_failed");
     // Loud INCOMPLETE-transcript toast at finalize
     expect(toastMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -322,6 +360,87 @@ describe("MediaRecorder restart failure", () => {
     await tick(1000);
 
     expect(ctx.state).toBe("review");
-    expect(ctx.finalTranscript).toBe("minute one minute two");
+    expect(ctx.finalTranscript).toBe("minute one\nminute two");
+  });
+});
+
+describe("authoritative source sequencing", () => {
+  test("authoritative server source wins when browser-local assembly differs", async () => {
+    fetchPlan = () => ({ ok: true, body: { transcription: "browser-local value" } });
+    authoritativeSourceOverride = {
+      text: "server-authoritative value",
+      kind: "verified_raw",
+      state: "verified_raw",
+      hasGaps: false,
+      segmentCount: 1,
+    };
+
+    await startRecording();
+    MockMediaRecorder.latest().emitData();
+    await act(async () => ctx.stop());
+    await tick(1000);
+
+    expect(ctx.state).toBe("review");
+    expect(ctx.finalTranscript).toBe("server-authoritative value");
+    expect(ctx.finalTranscript).not.toBe("browser-local value");
+    expect(ctx.transcriptSource?.state).toBe("verified_raw");
+  });
+
+  test("waits for a delayed final segment before fetching the authoritative source", async () => {
+    let releaseFinalSegment!: (value: FetchResult) => void;
+    const delayedFinalSegment = new Promise<FetchResult>((resolve) => { releaseFinalSegment = resolve; });
+    fetchPlan = () => delayedFinalSegment;
+    authoritativeSourceOverride = {
+      text: "server final segment",
+      kind: "verified_raw",
+      state: "verified_raw",
+      hasGaps: false,
+      segmentCount: 1,
+    };
+
+    await startRecording();
+    MockMediaRecorder.latest().emitData();
+    await act(async () => ctx.stop());
+    await tick(50);
+
+    expect(ctx.state).toBe("transcribing");
+    expect(sourceFetchCalls).toBe(0);
+
+    await act(async () => { releaseFinalSegment({ ok: true, body: { transcription: "late browser result" } }); });
+    await tick(50);
+
+    expect(sourceFetchCalls).toBe(1);
+    expect(ctx.state).toBe("review");
+    expect(ctx.finalTranscript).toBe("server final segment");
+  });
+
+  test("does not fetch the authoritative source while a retry remains pending", async () => {
+    let releaseRetry!: (value: FetchResult) => void;
+    const delayedRetry = new Promise<FetchResult>((resolve) => { releaseRetry = resolve; });
+    fetchPlan = (i) => i === 0
+      ? { ok: false, body: { message: "temporary outage" } }
+      : delayedRetry;
+    authoritativeSourceOverride = {
+      text: "recovered authoritative source",
+      kind: "verified_raw",
+      state: "verified_raw",
+      hasGaps: false,
+      segmentCount: 1,
+    };
+
+    await startRecording();
+    MockMediaRecorder.latest().emitData();
+    await act(async () => ctx.stop());
+    await tick(1600);
+
+    expect(fetchCalls).toBe(2);
+    expect(ctx.state).toBe("transcribing");
+    expect(sourceFetchCalls).toBe(0);
+
+    await act(async () => { releaseRetry({ ok: true, body: { transcription: "recovered local" } }); });
+    await tick(50);
+
+    expect(sourceFetchCalls).toBe(1);
+    expect(ctx.finalTranscript).toBe("recovered authoritative source");
   });
 });

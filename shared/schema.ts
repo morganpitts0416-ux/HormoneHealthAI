@@ -1417,6 +1417,33 @@ export const encounterTranscriptionSegments = pgTable("encounter_transcription_s
 }));
 export type EncounterTranscriptionSegment = typeof encounterTranscriptionSegments.$inferSelect;
 
+// One row per HTTP/STT attempt. This is intentionally separate from the
+// deterministic source slot above: retries replace the slot's current outcome
+// but never erase the protected forensic record of what each request received
+// and how the provider responded.
+export const encounterTranscriptionAttempts = pgTable("encounter_transcription_attempts", {
+  id: serial("id").primaryKey(),
+  transcriptionSegmentId: integer("transcription_segment_id").notNull().references(() => encounterTranscriptionSegments.id, { onDelete: "cascade" }),
+  attemptNumber: integer("attempt_number").notNull(),
+  audioByteLength: integer("audio_byte_length").notNull(),
+  audioSha256: varchar("audio_sha256", { length: 64 }).notNull(),
+  requestReceivedAt: timestamp("request_received_at").notNull(),
+  sttStartedAt: timestamp("stt_started_at"),
+  sttCompletedAt: timestamp("stt_completed_at"),
+  rawSttText: text("raw_stt_text"),
+  sttResponseSha256: varchar("stt_response_sha256", { length: 64 }),
+  sttModel: varchar("stt_model", { length: 80 }),
+  usedFallback: boolean("used_fallback").notNull().default(false),
+  // processing | completed | empty | failed | unintelligible
+  status: varchar("status", { length: 30 }).notNull(),
+  failureReason: text("failure_reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  segmentAttemptUnique: uniqueIndex("encounter_transcription_attempts_segment_number_uq").on(t.transcriptionSegmentId, t.attemptNumber),
+  segmentAttemptIndex: index("encounter_transcription_attempts_segment_number_idx").on(t.transcriptionSegmentId, t.attemptNumber),
+}));
+export type EncounterTranscriptionAttempt = typeof encounterTranscriptionAttempts.$inferSelect;
+
 // ─── Appointments (native scheduling + Boulevard sync via Zapier) ──────────
 // `source` distinguishes native (created in ClinIQ) vs boulevard (mirrored from Zapier webhook).
 // Boulevard appointments remain read-only in our UI; native appointments fully editable.
