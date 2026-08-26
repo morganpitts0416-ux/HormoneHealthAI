@@ -1,0 +1,101 @@
+STOP ADDING DIAGNOSTICS OR NEW RECORDER LOGIC. I want a regression analysis against the last recorder version that actually captured speech.
+
+Audio transcription was functioning before Task #68. It had a serious hallucination/source-integrity problem, but the listener was capturing and transcribing substantial encounter speech.
+
+After the transcript-integrity implementation beginning with commit:
+
+8d39386 — Update recording logic and expand clinical lexicon schema with migration
+
+the recorder began producing almost no actual speech:
+
+25
+The first day is tomorrow
+butterfly
+context:
+
+Only 25 corresponded to anything actually spoken.
+
+This strongly suggests that the Task #68 recording-path changes introduced a functional regression in audio capture/upload, independent of the original hallucination problem.
+
+I want a code regression diff now
+
+Compare the recorder/transcription implementation immediately before Task #68 against current HEAD.
+
+Use the last pre-integrity code commit as the baseline — likely 30573f4 or the actual code commit immediately preceding 8d39386.
+
+Show every behavioral change affecting:
+
+MediaRecorder creation
+MediaRecorder.start()
+timeslice usage, if any
+dataavailable
+chunk accumulation
+segment flushing
+stop()
+stream/track shutdown
+recorder restart
+audio Blob construction
+Blob MIME type
+File construction
+multipart upload
+recording-session creation
+segment indexing
+retry behavior
+/api/encounters/transcribe
+when/how transcription responses are appended
+
+I want this presented as:
+
+PRE-TASK-68 behavior → CURRENT behavior → could this cause lost audio?
+
+Most important question
+
+Identify which Task #68 changes altered the actual audio capture/upload lifecycle.
+
+The provenance architecture itself should not require redesigning how the browser records audio.
+
+If the old recorder successfully captured audio, I want to seriously consider restoring the known-working pre-Task-68 MediaRecorder capture/upload mechanism and separating that from the source-integrity improvements.
+
+Target architecture
+
+We may need:
+
+Known-working old audio capture/upload path
+
++
+
+generic STT prompt with NO clinical glossary
+
++
+
+immutable provenance recorded passively after STT
+
++
+
+raw STT remains authoritative
+
+rather than continuing to rewrite the recorder itself.
+
+Provenance should observe the working recorder, not break it.
+
+Also identify the exact first bad code commit
+
+Do not rely on Cloud Run revision names.
+
+Use Git history to determine:
+
+last commit containing the old working recorder;
+first commit that changed recorder behavior;
+all subsequent recorder changes;
+whether we can restore only the old capture lifecycle while preserving the safe STT prompt and provenance storage.
+Do NOT implement yet
+
+I want the diff and recommended minimal rollback first.
+
+Do not add another diagnostic.
+Do not change models.
+Do not change SOAP.
+Do not change the Brain.
+Do not deploy.
+
+Tell me exactly what changed between “the listener heard the encounter” and “the listener hears almost nothing.”
