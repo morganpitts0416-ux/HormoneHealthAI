@@ -252,6 +252,10 @@ export interface IStorage {
     encounterId: number;
     clientSessionId: string;
     segmentIndex: number;
+    captureStartedAt: Date | null;
+    captureEndedAt: Date | null;
+    captureDurationMs: number | null;
+    audioMimeType: string | null;
     audioSha256: string;
     audioByteLength: number;
     requestReceivedAt: Date;
@@ -264,12 +268,13 @@ export interface IStorage {
     sttResponseSha256: string | null;
     sttModel: string | null;
     usedFallback: boolean;
-    status: "completed" | "empty" | "failed" | "unintelligible";
-    sttStartedAt: Date;
+    status: "completed" | "empty" | "failed" | "unintelligible" | "audio_capture_failed";
+    sttStartedAt: Date | null;
     sttCompletedAt: Date;
     failureReason?: string | null;
   }): Promise<schema.EncounterTranscriptionSegment>;
   getEncounterTranscriptionSegments(encounterId: number): Promise<Array<schema.EncounterTranscriptionSegment & { sessionSequence: number; clientSessionId: string }>>;
+  getEncounterTranscriptionAttempts(encounterId: number): Promise<Array<schema.EncounterTranscriptionAttempt & { segmentIndex: number; sessionSequence: number; clientSessionId: string }>>;
   setEncounterTranscriptionDerivedHash(encounterId: number, derivedTranscriptSha256: string): Promise<void>;
   getPublishedEncountersByPatient(patientId: number): Promise<Pick<ClinicalEncounter, 'id' | 'visitDate' | 'visitType' | 'chiefComplaint' | 'patientSummary' | 'summaryPublishedAt'>[]>;
 
@@ -2212,6 +2217,10 @@ export class DbStorage implements IStorage {
     encounterId: number;
     clientSessionId: string;
     segmentIndex: number;
+    captureStartedAt: Date | null;
+    captureEndedAt: Date | null;
+    captureDurationMs: number | null;
+    audioMimeType: string | null;
     audioSha256: string;
     audioByteLength: number;
     requestReceivedAt: Date;
@@ -2229,6 +2238,11 @@ export class DbStorage implements IStorage {
           transcriptionSessionId: session.id,
           segmentIndex: data.segmentIndex,
           rawSttText: null,
+          captureStartedAt: data.captureStartedAt,
+          captureEndedAt: data.captureEndedAt,
+          captureDurationMs: data.captureDurationMs,
+          audioMimeType: data.audioMimeType,
+          audioByteLength: data.audioByteLength,
           audioSha256: data.audioSha256,
           sttResponseSha256: null,
           sttModel: null,
@@ -2251,20 +2265,34 @@ export class DbStorage implements IStorage {
       .values({
         transcriptionSegmentId: segment.id,
         attemptNumber,
+        captureStartedAt: data.captureStartedAt,
+        captureEndedAt: data.captureEndedAt,
+        captureDurationMs: data.captureDurationMs,
+        audioMimeType: data.audioMimeType,
         audioByteLength: data.audioByteLength,
         audioSha256: data.audioSha256,
         requestReceivedAt: data.requestReceivedAt,
         status: "processing",
       })
       .returning())[0];
-    const updated = await db.update(schema.encounterTranscriptionSegments)
-      .set({
-        audioSha256: data.audioSha256,
-        attemptCount: attemptNumber,
+    // Do not briefly replace an already-completed immutable source slot with
+    // "processing": a late failed retry must never create a visible gap.
+    const segmentUpdate = {
+      audioSha256: data.audioSha256,
+      attemptCount: attemptNumber,
+      ...(segment.status === "completed" ? {} : {
+        captureStartedAt: data.captureStartedAt,
+        captureEndedAt: data.captureEndedAt,
+        captureDurationMs: data.captureDurationMs,
+        audioMimeType: data.audioMimeType,
+        audioByteLength: data.audioByteLength,
         status: "processing",
         failureReason: null,
         finalizedAt: null,
-      })
+      }),
+    };
+    const updated = await db.update(schema.encounterTranscriptionSegments)
+      .set(segmentUpdate)
       .where(eq(schema.encounterTranscriptionSegments.id, segment.id))
       .returning();
     return { segment: updated[0], attempt };
@@ -2278,8 +2306,8 @@ export class DbStorage implements IStorage {
     sttResponseSha256: string | null;
     sttModel: string | null;
     usedFallback: boolean;
-    status: "completed" | "empty" | "failed" | "unintelligible";
-    sttStartedAt: Date;
+    status: "completed" | "empty" | "failed" | "unintelligible" | "audio_capture_failed";
+    sttStartedAt: Date | null;
     sttCompletedAt: Date;
     failureReason?: string | null;
   }): Promise<schema.EncounterTranscriptionSegment> {
@@ -2343,6 +2371,36 @@ export class DbStorage implements IStorage {
       );
     return rows.map((row) => ({
       ...row.segment,
+      sessionSequence: row.sessionSequence,
+      clientSessionId: row.clientSessionId,
+    }));
+  }
+
+  async getEncounterTranscriptionAttempts(encounterId: number): Promise<Array<schema.EncounterTranscriptionAttempt & { segmentIndex: number; sessionSequence: number; clientSessionId: string }>> {
+    const rows = await db.select({
+      attempt: schema.encounterTranscriptionAttempts,
+      segmentIndex: schema.encounterTranscriptionSegments.segmentIndex,
+      sessionSequence: schema.encounterTranscriptionSessions.sessionSequence,
+      clientSessionId: schema.encounterTranscriptionSessions.clientSessionId,
+    })
+      .from(schema.encounterTranscriptionAttempts)
+      .innerJoin(
+        schema.encounterTranscriptionSegments,
+        eq(schema.encounterTranscriptionAttempts.transcriptionSegmentId, schema.encounterTranscriptionSegments.id),
+      )
+      .innerJoin(
+        schema.encounterTranscriptionSessions,
+        eq(schema.encounterTranscriptionSegments.transcriptionSessionId, schema.encounterTranscriptionSessions.id),
+      )
+      .where(eq(schema.encounterTranscriptionSessions.encounterId, encounterId))
+      .orderBy(
+        asc(schema.encounterTranscriptionSessions.sessionSequence),
+        asc(schema.encounterTranscriptionSegments.segmentIndex),
+        asc(schema.encounterTranscriptionAttempts.attemptNumber),
+      );
+    return rows.map((row) => ({
+      ...row.attempt,
+      segmentIndex: row.segmentIndex,
       sessionSequence: row.sessionSequence,
       clientSessionId: row.clientSessionId,
     }));

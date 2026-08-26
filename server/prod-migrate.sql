@@ -106,6 +106,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS encounter_transcription_segments_session_index
   ON encounter_transcription_segments(transcription_session_id, segment_index);
 CREATE INDEX IF NOT EXISTS encounter_transcription_segments_session_index_idx
   ON encounter_transcription_segments(transcription_session_id, segment_index);
+ALTER TABLE encounter_transcription_segments ADD COLUMN IF NOT EXISTS capture_started_at TIMESTAMP;
+ALTER TABLE encounter_transcription_segments ADD COLUMN IF NOT EXISTS capture_ended_at TIMESTAMP;
+ALTER TABLE encounter_transcription_segments ADD COLUMN IF NOT EXISTS capture_duration_ms INTEGER;
+ALTER TABLE encounter_transcription_segments ADD COLUMN IF NOT EXISTS audio_mime_type VARCHAR(160);
+ALTER TABLE encounter_transcription_segments ADD COLUMN IF NOT EXISTS audio_byte_length INTEGER;
 
 -- Per-attempt forensic metadata stays separate from the source slot: retry
 -- completion may replace the slot outcome, but never deletes attempt timing,
@@ -131,6 +136,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS encounter_transcription_attempts_segment_numbe
   ON encounter_transcription_attempts(transcription_segment_id, attempt_number);
 CREATE INDEX IF NOT EXISTS encounter_transcription_attempts_segment_number_idx
   ON encounter_transcription_attempts(transcription_segment_id, attempt_number);
+ALTER TABLE encounter_transcription_attempts ADD COLUMN IF NOT EXISTS capture_started_at TIMESTAMP;
+ALTER TABLE encounter_transcription_attempts ADD COLUMN IF NOT EXISTS capture_ended_at TIMESTAMP;
+ALTER TABLE encounter_transcription_attempts ADD COLUMN IF NOT EXISTS capture_duration_ms INTEGER;
+ALTER TABLE encounter_transcription_attempts ADD COLUMN IF NOT EXISTS audio_mime_type VARCHAR(160);
 
 -- ── New tables (created only if they don't exist) ────────────
 

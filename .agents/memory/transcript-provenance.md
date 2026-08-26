@@ -14,3 +14,9 @@ Clinical review must fetch that ordered server source only after all segment upl
 **Why:** A local browser result can diverge from persisted source, and replacing a source slot alone cannot distinguish capture, provider, transport, persistence, and display failures.
 
 **How to apply:** A late failed retry must not replace an already-completed source segment. Use protected attempt records for forensic analysis; ordinary logs contain only operational errors, not transcript text.
+
+Recorder capture transitions must wait for the preceding recorder's final event cycle before starting another recorder, and final microphone shutdown waits for the final capture/upload settlement. Persist capture timing, MIME, byte size, and hash with the deterministic slot; reject only objectively empty, malformed, or duration-incompatible audio before STT and represent it as an explicit source gap.
+
+**Why:** A timer-based restart or early track shutdown can truncate the final Blob while still creating superficially valid source rows. Treating invalid audio as STT uncertainty would hide a capture defect or invite fabricated replacement dialogue.
+
+**How to apply:** Keep validation conservative so a valid short trailing utterance is retained. Recorder diagnostics must be authenticated and encounter-scoped, expose metadata/outcomes only, and omit protected raw STT text.

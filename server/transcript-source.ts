@@ -22,6 +22,9 @@ export interface TranscriptSource {
 
 function markerFor(segment: ProvenanceSegment): string {
   const label = `session ${segment.sessionSequence + 1}, segment ${segment.segmentIndex + 1}`;
+  if (segment.status === "audio_capture_failed") {
+    return `[AUDIO CAPTURE FAILED — ${label} was invalid and was not sent for transcription]`;
+  }
   if (segment.status === "empty" || segment.status === "unintelligible") {
     return `[UNINTELLIGIBLE — ${label} produced no usable speech]`;
   }

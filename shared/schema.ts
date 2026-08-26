@@ -1400,12 +1400,17 @@ export const encounterTranscriptionSegments = pgTable("encounter_transcription_s
   transcriptionSessionId: integer("transcription_session_id").notNull().references(() => encounterTranscriptionSessions.id, { onDelete: "cascade" }),
   segmentIndex: integer("segment_index").notNull(),
   rawSttText: text("raw_stt_text"),
+  captureStartedAt: timestamp("capture_started_at"),
+  captureEndedAt: timestamp("capture_ended_at"),
+  captureDurationMs: integer("capture_duration_ms"),
+  audioMimeType: varchar("audio_mime_type", { length: 160 }),
+  audioByteLength: integer("audio_byte_length"),
   audioSha256: varchar("audio_sha256", { length: 64 }).notNull(),
   sttResponseSha256: varchar("stt_response_sha256", { length: 64 }),
   sttModel: varchar("stt_model", { length: 80 }),
   usedFallback: boolean("used_fallback").notNull().default(false),
   attemptCount: integer("attempt_count").notNull().default(1),
-  // completed | empty | failed | unintelligible
+  // completed | empty | failed | unintelligible | audio_capture_failed
   status: varchar("status", { length: 30 }).notNull(),
   failureReason: text("failure_reason"),
   derivedTranscriptSha256: varchar("derived_transcript_sha256", { length: 64 }),
@@ -1425,6 +1430,10 @@ export const encounterTranscriptionAttempts = pgTable("encounter_transcription_a
   id: serial("id").primaryKey(),
   transcriptionSegmentId: integer("transcription_segment_id").notNull().references(() => encounterTranscriptionSegments.id, { onDelete: "cascade" }),
   attemptNumber: integer("attempt_number").notNull(),
+  captureStartedAt: timestamp("capture_started_at"),
+  captureEndedAt: timestamp("capture_ended_at"),
+  captureDurationMs: integer("capture_duration_ms"),
+  audioMimeType: varchar("audio_mime_type", { length: 160 }),
   audioByteLength: integer("audio_byte_length").notNull(),
   audioSha256: varchar("audio_sha256", { length: 64 }).notNull(),
   requestReceivedAt: timestamp("request_received_at").notNull(),
@@ -1434,7 +1443,7 @@ export const encounterTranscriptionAttempts = pgTable("encounter_transcription_a
   sttResponseSha256: varchar("stt_response_sha256", { length: 64 }),
   sttModel: varchar("stt_model", { length: 80 }),
   usedFallback: boolean("used_fallback").notNull().default(false),
-  // processing | completed | empty | failed | unintelligible
+  // processing | completed | empty | failed | unintelligible | audio_capture_failed
   status: varchar("status", { length: 30 }).notNull(),
   failureReason: text("failure_reason"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

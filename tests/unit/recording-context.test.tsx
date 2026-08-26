@@ -44,6 +44,8 @@ class MockMediaRecorder {
   static instances: MockMediaRecorder[] = [];
   /** When > 0, the next N constructions throw (simulates restart failure). */
   static failConstructions = 0;
+  /** Simulates browsers that emit final dataavailable after stop() returns. */
+  static deferStop = false;
   static isTypeSupported = () => true;
 
   state: "recording" | "inactive" = "recording";
@@ -61,6 +63,10 @@ class MockMediaRecorder {
   start(_timesliceMs?: number) {}
   stop() {
     this.state = "inactive";
+    if (MockMediaRecorder.deferStop) return;
+    this.finishStop();
+  }
+  finishStop() {
     for (const c of this.chunks) this.ondataavailable?.({ data: c });
     this.onstop?.();
   }
@@ -171,6 +177,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   MockMediaRecorder.instances = [];
   MockMediaRecorder.failConstructions = 0;
+  MockMediaRecorder.deferStop = false;
   vi.stubGlobal("MediaRecorder", MockMediaRecorder as any);
   installFetchMock();
   apiRequestMock.mockClear().mockResolvedValue({});
@@ -361,6 +368,83 @@ describe("MediaRecorder restart failure", () => {
 
     expect(ctx.state).toBe("review");
     expect(ctx.finalTranscript).toBe("minute one\nminute two");
+  });
+});
+
+describe("MediaRecorder final-data lifecycle", () => {
+  test("does not stop microphone tracks until final dataavailable and onstop have queued the final segment", async () => {
+    MockMediaRecorder.deferStop = true;
+    await startRecording();
+    const recorder = MockMediaRecorder.latest();
+    recorder.emitData(2048);
+
+    await act(async () => ctx.stop());
+    expect(trackStop).not.toHaveBeenCalled();
+    expect(fetchCalls).toBe(0);
+
+    await act(async () => recorder.finishStop());
+    await tick(50);
+
+    expect(fetchCalls).toBe(1);
+    expect(trackStop).toHaveBeenCalledTimes(1);
+    expect(ctx.state).toBe("review");
+    const body = transcriptionBodies[0];
+    expect(body.get("captureStartedAt")).toBeTruthy();
+    expect(body.get("captureEndedAt")).toBeTruthy();
+    expect(Number(body.get("captureDurationMs"))).toBeGreaterThanOrEqual(0);
+    expect(body.get("captureMimeType")).toContain("audio/webm");
+  });
+
+  test("waits for prior onstop before starting the next sixty-second recorder", async () => {
+    MockMediaRecorder.deferStop = true;
+    fetchPlan = () => ({ ok: true, body: { transcription: "hello" } });
+    await startRecording();
+    const first = MockMediaRecorder.latest();
+    first.emitData(2048);
+
+    await tick(SEGMENT_MS);
+    expect(MockMediaRecorder.instances).toHaveLength(1);
+    expect(trackStop).not.toHaveBeenCalled();
+
+    await act(async () => first.finishStop());
+    await tick(50);
+    expect(MockMediaRecorder.instances).toHaveLength(2);
+    const second = MockMediaRecorder.latest();
+    second.emitData(2048);
+
+    MockMediaRecorder.deferStop = false;
+    await act(async () => ctx.stop());
+    await tick(50);
+
+    expect(ctx.state).toBe("review");
+    expect(ctx.finalTranscript).toBe("hello\nhello");
+  });
+
+  test("does not retry or fabricate text for a server-confirmed invalid capture", async () => {
+    fetchPlan = () => ({
+      ok: false,
+      body: { error: "audio_capture_failed", message: "Audio capture failed validation" },
+    });
+    authoritativeSourceOverride = {
+      text: "[AUDIO CAPTURE FAILED — session 1, segment 1 was invalid]",
+      kind: "verified_raw",
+      state: "incomplete",
+      hasGaps: true,
+      segmentCount: 1,
+    };
+
+    await startRecording();
+    MockMediaRecorder.latest().emitData(8);
+    await act(async () => ctx.stop());
+    await tick(50);
+
+    expect(fetchCalls).toBe(1);
+    expect(ctx.state).toBe("review");
+    expect(ctx.finalTranscript).toContain("AUDIO CAPTURE FAILED");
+    expect(ctx.finalTranscript).not.toContain("hello");
+    expect(toastMock).toHaveBeenCalledWith(
+      expect.objectContaining({ title: expect.stringContaining("audio capture failed") }),
+    );
   });
 });
 

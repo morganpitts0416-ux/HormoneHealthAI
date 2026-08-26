@@ -133,6 +133,19 @@ const DRIFT_REQUIRED_COLUMNS: Record<string, string[]> = {
     "provider_id",
     "transcript_provenance_state",
   ],
+  encounter_transcription_segments: [
+    "capture_started_at",
+    "capture_ended_at",
+    "capture_duration_ms",
+    "audio_mime_type",
+    "audio_byte_length",
+  ],
+  encounter_transcription_attempts: [
+    "capture_started_at",
+    "capture_ended_at",
+    "capture_duration_ms",
+    "audio_mime_type",
+  ],
   // ── patients: messaging + insurance columns added post-launch ────────────
   patients: [
     "primary_communication_channel",

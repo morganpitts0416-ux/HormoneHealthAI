@@ -64,6 +64,15 @@ describe("authoritative transcript source", () => {
     expect(result.state).toBe("transcription_failed");
     expect(result.hasGaps).toBe(true);
   });
+
+  test("keeps an invalid capture explicit and never substitutes dialogue", () => {
+    const result = assembleVerifiedRawTranscript([
+      segment({ status: "audio_capture_failed", rawSttText: null }),
+    ]);
+    expect(result.text).toContain("[AUDIO CAPTURE FAILED");
+    expect(result.text).not.toContain("default");
+    expect(result.hasGaps).toBe(true);
+  });
 });
 
 describe("STT prompt safety", () => {

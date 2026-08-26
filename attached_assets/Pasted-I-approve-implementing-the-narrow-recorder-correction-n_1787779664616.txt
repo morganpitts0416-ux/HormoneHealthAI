@@ -1,0 +1,108 @@
+I approve implementing the narrow recorder correction now.
+
+We cannot currently retrieve the live provenance rows because the available production query surface does not point to the runtime database. Do not block the recorder safety fix on obtaining those rows.
+
+The static analysis has identified two objectively unsafe capture behaviors that should be corrected regardless of whether either can be proven as the cause of this exact incident:
+
+The next recorder starts after a fixed 150 ms delay rather than waiting for the prior recorder's onstop.
+Manual Stop shuts down the microphone track immediately instead of waiting for the recorder's final dataavailable and onstop cycle.
+Implement the smallest recorder fix
+
+60-second segment transition
+
+When a segment reaches its flush boundary, call stop() on the current MediaRecorder.
+Do not start the next MediaRecorder from a timer.
+Allow the current recorder to emit its final dataavailable, execute onstop, assemble the complete Blob, and queue/persist that segment.
+Start the next recorder only after that lifecycle has completed.
+Keep the underlying microphone stream alive during the transition.
+
+Manual Stop
+
+When the clinician presses Stop, stop the active MediaRecorder first.
+Wait for its final dataavailable and onstop.
+Assemble and queue the final Blob.
+Wait for its upload/retry lifecycle according to the existing provenance design.
+Only then stop the microphone tracks and finalize the recording session.
+
+There must be no point where the stream is terminated before the active recorder has emitted its final data.
+
+Capture observability
+
+Add capture metadata for each deterministic segment:
+
+capture start timestamp;
+capture end timestamp;
+calculated duration;
+MIME type;
+audio byte length;
+audio hash;
+segment index/session ID;
+upload/STT outcome.
+
+Preserve the existing protected attempt-level provenance.
+
+Fail closed on clearly invalid audio
+
+Add server-side validation before STT.
+
+Do not send an empty or clearly implausible audio Blob to the transcription provider.
+
+If the captured audio is invalid, persist:
+
+audio_capture_failed
+
+and represent that segment in the authoritative transcript as an explicit gap/failure marker.
+
+Do not generate replacement dialogue.
+
+Do not use a simplistic hard-coded byte threshold alone if that could reject legitimate very short speech. Use duration + byte size/container validity together and keep the validation conservative.
+
+Important: do not discard a valid short final segment
+
+A clinician may genuinely say a brief final sentence immediately before pressing Stop.
+
+Do not automatically discard a short trailing segment merely because it is short.
+
+The goal is to reject invalid capture, not valid brief speech.
+
+Make the next test diagnosable from the application runtime
+
+Because our external database-query surface cannot currently see the provenance tables used by the deployed runtime, add a minimal authenticated clinician/admin diagnostic view or protected endpoint for the current encounter's transcription provenance.
+
+This should expose metadata necessary for debugging the test recording:
+
+session sequence;
+segment index;
+attempt number;
+duration;
+byte length;
+model/fallback;
+status;
+failure reason;
+timestamps;
+source-state/inclusion status.
+
+It does not need to expose raw transcript text if the transcript is already visible in the encounter UI.
+
+Keep this authenticated and encounter-scoped. Do not expose PHI or transcription data in public/general application logs.
+
+Regression coverage
+
+Test:
+
+manual Stop during a sub-minute recording;
+final dataavailable occurs after Stop is called;
+microphone tracks remain alive until onstop completes;
+60-second boundary transition waits for prior onstop;
+no audio gap or lost chunks across recorder restart;
+multi-segment ordering;
+valid short final utterance is retained;
+empty/malformed segment fails closed;
+pending STT/retry settles before authoritative transcript fetch;
+no fabricated replacement text is generated for a failed segment.
+
+Keep the existing transcript provenance/source-authority design, generic STT prompt, and SOAP source selection unchanged.
+
+Do not modify SOAP, Brain, Patient Communication, Provider Chart Note, June, or Evidence Layer.
+
+Run the focused recorder/transcript tests and production build. Do not deploy automatically.

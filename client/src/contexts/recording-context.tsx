@@ -31,6 +31,18 @@ const gapMarker = (segIdx: number) =>
   `${AUDIO_GAP_MARKER_PREFIX} — minute ${segIdx + 1} of the recording could not be transcribed]`;
 const sleep = (ms: number) => new Promise<void>(res => setTimeout(res, ms));
 
+interface CaptureMetadata {
+  startedAt: Date;
+  endedAt: Date;
+  durationMs: number;
+  mimeType: string;
+}
+
+interface FailedSegmentBlob {
+  blob: Blob;
+  capture: CaptureMetadata;
+}
+
 export interface StartRecordingParams {
   patientId: number;
   patientName: string;
@@ -99,7 +111,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
   const pendingSegmentsRef = useRef(0);
   // Raw audio blobs for segments whose uploads exhausted all retries.
   // Held so finalize() can make one last attempt before writing a gap marker.
-  const failedSegmentBlobsRef = useRef<Map<number, Blob>>(new Map());
+  const failedSegmentBlobsRef = useRef<Map<number, FailedSegmentBlob>>(new Map());
   // Counts MediaRecorder.stop() calls whose onstop has not yet fired.
   // Used so stop() can wait for an in-flight mid-segment flush to land
   // (and bump pendingSegmentsRef from onstop) before deciding to finalize.
@@ -120,6 +132,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
   // Stable opaque identifier sent with every segment in one MediaRecorder
   // session. The server reserves its encounter-local ordering slot.
   const sourceSessionIdRef = useRef("");
+  const startSegmentRecorderRef = useRef<(stream: MediaStream) => void>(() => {});
 
   // Captured at start time — used so finalize/autosave always writes to the
   // ORIGINAL bound patient/encounter, not whatever the UI is currently showing.
@@ -207,7 +220,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
   }, [releaseWakeLock]);
 
   // Single upload+transcribe attempt for one segment blob. Throws on failure.
-  const uploadSegmentOnce = useCallback(async (blob: Blob, segIdx: number) => {
+  const uploadSegmentOnce = useCallback(async (blob: Blob, segIdx: number, capture: CaptureMetadata) => {
     const ext = (blob.type || "audio/webm").includes("ogg") ? "ogg" : "webm";
     const file = new File([blob], `seg-${segIdx}.${ext}`, { type: blob.type || "audio/webm" });
     const formData = new FormData();
@@ -216,6 +229,10 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     formData.append("encounterId", String(boundEncounterIdRef.current ?? ""));
     formData.append("recordingSessionId", sourceSessionIdRef.current);
     formData.append("segmentIndex", String(segIdx));
+    formData.append("captureStartedAt", capture.startedAt.toISOString());
+    formData.append("captureEndedAt", capture.endedAt.toISOString());
+    formData.append("captureDurationMs", String(capture.durationMs));
+    formData.append("captureMimeType", capture.mimeType);
     const res = await fetch("/api/encounters/transcribe", {
       method: "POST",
       body: formData,
@@ -223,7 +240,9 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.message || "Transcription failed");
+      const error = new Error(err.message || "Transcription failed") as Error & { code?: string };
+      error.code = err.error;
+      throw error;
     }
     return (await res.json()) as { transcription?: string; utterances?: DiarizedUtterance[] | null };
   }, []);
@@ -259,10 +278,10 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     // doesn't permanently lose audio we still possess.
     if (failedSegmentBlobsRef.current.size > 0) {
       const failed = Array.from(failedSegmentBlobsRef.current.entries()).sort((a, b) => a[0] - b[0]);
-      for (const [segIdx, blob] of failed) {
+      for (const [segIdx, failedSegment] of failed) {
         if (session !== recordingSessionRef.current) return;
         try {
-          const data = await uploadSegmentOnce(blob, segIdx);
+          const data = await uploadSegmentOnce(failedSegment.blob, segIdx, failedSegment.capture);
           if (session !== recordingSessionRef.current) return;
           transcribedSegmentsRef.current.set(segIdx, data.transcription ?? "");
           transcribedUtterancesRef.current.set(segIdx, data.utterances ?? null);
@@ -328,17 +347,43 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     setState("review");
   }, [fetchAuthoritativeTranscriptSource, toast, uploadSegmentOnce]);
 
-  const transcribeSegment = useCallback(async (blob: Blob, segIdx: number, session: number) => {
+  const settleAfterStop = useCallback((session: number) => {
+    if (
+      session !== recordingSessionRef.current ||
+      !recordingStoppedRef.current ||
+      pendingFlushesRef.current > 0 ||
+      pendingSegmentsRef.current > 0
+    ) return;
+    // Do not end the microphone stream until the active recorder's onstop has
+    // assembled its final Blob and every upload/retry has settled.
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    finalize(session);
+  }, [finalize]);
+
+  const transcribeSegment = useCallback(async (
+    blob: Blob,
+    segIdx: number,
+    session: number,
+    capture: CaptureMetadata,
+  ) => {
+    let captureFailed = false;
     try {
       let data: { transcription?: string; utterances?: DiarizedUtterance[] | null } | null = null;
       let lastErr: any = null;
       for (let attempt = 0; attempt < MAX_UPLOAD_ATTEMPTS; attempt++) {
         if (session !== recordingSessionRef.current) return;
         try {
-          data = await uploadSegmentOnce(blob, segIdx);
+          data = await uploadSegmentOnce(blob, segIdx, capture);
           break;
         } catch (err: any) {
           lastErr = err;
+          if (err?.code === "audio_capture_failed") {
+            captureFailed = true;
+            break;
+          }
           if (attempt < MAX_UPLOAD_ATTEMPTS - 1) {
             await sleep(UPLOAD_BACKOFF_MS[Math.min(attempt, UPLOAD_BACKOFF_MS.length - 1)]);
           }
@@ -367,11 +412,25 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
       }
     } catch (err: any) {
       if (session !== recordingSessionRef.current) return;
+      if (captureFailed) {
+        // The server persisted an explicit audio_capture_failed provenance slot.
+        // Never retry or fabricate replacement dialogue for an invalid capture.
+        transcribedSegmentsRef.current.set(segIdx, gapMarker(segIdx));
+        transcribedUtterancesRef.current.set(segIdx, null);
+        setSegmentsDone(d => d + 1);
+        toast({
+          variant: "destructive",
+          title: `Segment ${segIdx + 1} audio capture failed`,
+          description: "The audio container was invalid and was not sent to transcription. The authoritative transcript marks this segment as an audio gap.",
+          duration: 10000,
+        });
+        return;
+      }
       // All retries exhausted. Write an EXPLICIT gap marker (never a silent
       // empty string) and keep the raw blob so finalize() can try once more.
       transcribedSegmentsRef.current.set(segIdx, gapMarker(segIdx));
       transcribedUtterancesRef.current.set(segIdx, null);
-      failedSegmentBlobsRef.current.set(segIdx, blob);
+      failedSegmentBlobsRef.current.set(segIdx, { blob, capture });
       setSegmentsDone(d => d + 1);
       toast({
         variant: "destructive",
@@ -382,98 +441,98 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     } finally {
       if (session === recordingSessionRef.current) {
         pendingSegmentsRef.current -= 1;
-        if (recordingStoppedRef.current && pendingSegmentsRef.current === 0) {
-          finalize(session);
-        }
+        settleAfterStop(session);
       }
     }
-  }, [toast, finalize, uploadSegmentOnce]);
+  }, [settleAfterStop, toast, uploadSegmentOnce]);
 
   const startSegmentRecorder = useCallback((stream: MediaStream) => {
     const segIdx = segmentIndexRef.current;
     const session = recordingSessionRef.current;
     const localChunks: Blob[] = [];
     const mimeType = mimeTypeRef.current;
+    const captureStartedAt = new Date();
+    let receivedDataEvent = false;
     const mr = new MediaRecorder(stream, {
       ...(mimeType ? { mimeType } : {}),
       audioBitsPerSecond: 16000,
     });
     mediaRecorderRef.current = mr;
 
-    mr.ondataavailable = (e) => { if (e.data.size > 0) localChunks.push(e.data); };
+    mr.ondataavailable = (e) => {
+      receivedDataEvent = true;
+      if (e.data.size > 0) localChunks.push(e.data);
+    };
     mr.onstop = () => {
       // PATIENT-SAFETY: bail BEFORE touching pendingFlushesRef. resetAll()
       // already zeroed the counter on discard, and a new session may have
       // its own non-zero count we must not decrement on its behalf.
       if (session !== recordingSessionRef.current) return;
       if (pendingFlushesRef.current > 0) pendingFlushesRef.current -= 1;
-      if (localChunks.length === 0) {
-        if (recordingStoppedRef.current && pendingSegmentsRef.current === 0 && pendingFlushesRef.current === 0) {
-          finalize(session);
+      if (mediaRecorderRef.current === mr) mediaRecorderRef.current = null;
+      // A browser that emits a dataavailable event with an empty Blob is a
+      // real invalid capture and must be persisted/fail-closed. A recorder
+      // that never emitted any data event at all, however, represents no
+      // capture slot (for example an immediate stop of a just-started next
+      // segment), so it must not create a false gap.
+      if (!receivedDataEvent) {
+        if (!recordingStoppedRef.current && streamRef.current === stream) {
+          try {
+            startSegmentRecorderRef.current(stream);
+          } catch (err: any) {
+            recordingAbortedRef.current = true;
+            recordingStoppedRef.current = true;
+            stream.getTracks().forEach(t => t.stop());
+            streamRef.current = null;
+            releaseWakeLock();
+            setErrorMessage(err?.message || "Recording was interrupted and could not resume.");
+            setState("error");
+          }
+        } else {
+          settleAfterStop(session);
         }
         return;
       }
       const blob = new Blob(localChunks, { type: mimeType || "audio/webm" });
+      const capture: CaptureMetadata = {
+        startedAt: captureStartedAt,
+        endedAt: new Date(),
+        durationMs: Math.max(0, Date.now() - captureStartedAt.getTime()),
+        mimeType: blob.type || mimeType || "audio/webm",
+      };
       pendingSegmentsRef.current += 1;
       setSegmentsTotal(t => t + 1);
-      transcribeSegment(blob, segIdx, session);
+      // Starting the next recorder from onstop ensures every final
+      // dataavailable event has been included in this Blob first. The stream
+      // remains active throughout a normal segment transition.
+      if (!recordingStoppedRef.current && streamRef.current === stream) {
+        try {
+          startSegmentRecorderRef.current(stream);
+        } catch (err: any) {
+          recordingAbortedRef.current = true;
+          recordingStoppedRef.current = true;
+          stream.getTracks().forEach(t => t.stop());
+          streamRef.current = null;
+          releaseWakeLock();
+          setErrorMessage(err?.message || "Recording was interrupted and could not resume.");
+          setState("error");
+        }
+      }
+      transcribeSegment(blob, segIdx, session, capture);
     };
 
     mr.start(1000);
-  }, [finalize, transcribeSegment]);
+  }, [releaseWakeLock, settleAfterStop, transcribeSegment]);
+  startSegmentRecorderRef.current = startSegmentRecorder;
 
-  const flushSegment = useCallback((stream: MediaStream) => {
+  const flushSegment = useCallback(() => {
     const mr = mediaRecorderRef.current;
     if (!mr || mr.state === "inactive") return;
-    const session = recordingSessionRef.current;
     segmentIndexRef.current += 1;
     pendingFlushesRef.current += 1;
     try { mr.stop(); }
     catch { pendingFlushesRef.current = Math.max(0, pendingFlushesRef.current - 1); }
-    setTimeout(() => {
-      // PATIENT-SAFETY: only restart if we're still the active session AND
-      // the user hasn't stopped/discarded.
-      if (session !== recordingSessionRef.current) return;
-      if (!recordingStoppedRef.current && streamRef.current) {
-        // AUTO-RECOVERY: a single restart failure must not silently end an
-        // hour-long encounter recording. Retry the restart a few times with
-        // short delays before giving up loudly.
-        const tryRestart = (attempt: number) => {
-          if (session !== recordingSessionRef.current) return;
-          if (recordingStoppedRef.current || !streamRef.current) return;
-          try {
-            startSegmentRecorder(stream);
-            return;
-          } catch (err: any) {
-            if (attempt < 3) {
-              setTimeout(() => tryRestart(attempt + 1), 500 * attempt);
-              return;
-            }
-            failRecording(err);
-          }
-        };
-        const failRecording = (err: any) => {
-          // Recorder failed to restart mid-recording. Tear everything down
-          // immediately so we don't leak mic tracks / wake lock / timers
-          // while the error banner is shown. recordingAbortedRef blocks any
-          // in-flight segment completion from finalizing into "review".
-          recordingAbortedRef.current = true;
-          recordingStoppedRef.current = true;
-          if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-          if (segmentTimerRef.current) { clearInterval(segmentTimerRef.current); segmentTimerRef.current = null; }
-          if (streamRef.current) {
-            streamRef.current.getTracks().forEach(t => t.stop());
-            streamRef.current = null;
-          }
-          mediaRecorderRef.current = null;
-          releaseWakeLock();
-          setErrorMessage(err?.message || "Recording was interrupted and could not resume.");
-          setState("error");
-        };
-        tryRestart(1);
-      }
-    }, 150);
-  }, [releaseWakeLock, startSegmentRecorder]);
+  }, []);
 
   const start = useCallback(async (params: StartRecordingParams): Promise<boolean> => {
     if (stateRef.current !== "idle") {
@@ -541,7 +600,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     timerRef.current = setInterval(() => setElapsed(p => p + 1), 1000);
     segmentTimerRef.current = setInterval(() => {
       if (!recordingStoppedRef.current && streamRef.current) {
-        flushSegment(streamRef.current);
+        flushSegment();
       }
     }, SEGMENT_MS);
 
@@ -571,15 +630,11 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
       // directly — otherwise we'd hang in 'transcribing' forever.
       finalize(session);
     }
-    // Else: an in-flight flush or transcribe will reach finalize through the
-    // recordingStoppedRef + pendingFlushesRef + pendingSegmentsRef === 0 gate
-    // in onstop / transcribeSegment.finally.
-
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
-      streamRef.current = null;
-    }
-  }, [finalize, releaseWakeLock]);
+    // Else: an in-flight flush or transcribe will reach the settle gate through
+    // onstop / transcribeSegment.finally. That gate ends the stream only after
+    // the final capture and retry lifecycle has settled.
+    settleAfterStop(session);
+  }, [finalize, releaseWakeLock, settleAfterStop]);
 
   const discard = useCallback(() => {
     // Hard-stop everything; do NOT persist any transcript.

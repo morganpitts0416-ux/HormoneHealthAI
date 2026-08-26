@@ -60,6 +60,7 @@ import {
 } from "@shared/patient-visible-supplement-protocol";
 import { normalizeTranscript, enrichWithRxNorm, parseCSV, parseArrayField } from "./medication-normalizer";
 import { resolveTranscriptSource } from "./transcript-source";
+import { validateCapturedAudio } from "./audio-capture-validation";
 import {
   forwardMessageToExternalProvider,
   type ExternalProvider,
@@ -9313,6 +9314,23 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
     const audioByteLength = fs.statSync(filePath).size;
     const audioSha256 = crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
     const requestReceivedAt = new Date();
+    const parseOptionalTimestamp = (value: unknown): Date | null => {
+      if (typeof value !== "string" || !value.trim()) return null;
+      const timestamp = new Date(value);
+      return Number.isNaN(timestamp.getTime()) ? null : timestamp;
+    };
+    const parseOptionalDuration = (value: unknown): number | null => {
+      const duration = Number(value);
+      return Number.isFinite(duration) && duration >= 0 && duration <= 24 * 60 * 60 * 1000
+        ? Math.round(duration)
+        : null;
+    };
+    const captureStartedAt = parseOptionalTimestamp(req.body?.captureStartedAt);
+    const captureEndedAt = parseOptionalTimestamp(req.body?.captureEndedAt);
+    const captureDurationMs = parseOptionalDuration(req.body?.captureDurationMs);
+    const audioMimeType = typeof req.body?.captureMimeType === "string"
+      ? req.body.captureMimeType.trim().slice(0, 160) || null
+      : ((req as any).file?.mimetype || null);
     let attempt: { segment: schema.EncounterTranscriptionSegment; attempt: schema.EncounterTranscriptionAttempt } | null = null;
     let sttStartedAt = requestReceivedAt;
 
@@ -9321,7 +9339,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       sttResponseSha256: string | null;
       sttModel: string | null;
       usedFallback: boolean;
-      status: "completed" | "empty" | "failed" | "unintelligible";
+      status: "completed" | "empty" | "failed" | "unintelligible" | "audio_capture_failed";
       failureReason?: string | null;
     }) => {
       if (!attempt) throw new Error("Transcription attempt was not initialized");
@@ -9344,10 +9362,35 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
         encounterId,
         clientSessionId: recordingSessionId,
         segmentIndex,
+        captureStartedAt,
+        captureEndedAt,
+        captureDurationMs,
+        audioMimeType,
         audioSha256,
         audioByteLength,
         requestReceivedAt,
       });
+      const captureFailure = validateCapturedAudio({
+        audioByteLength,
+        captureDurationMs,
+        bytes: fs.readFileSync(filePath),
+      });
+      if (captureFailure) {
+        await persistSourceOutcome({
+          rawSttText: null,
+          sttResponseSha256: null,
+          sttModel: null,
+          usedFallback: false,
+          status: "audio_capture_failed",
+          failureReason: captureFailure,
+        });
+        cleanupFiles([filePath]);
+        return res.status(422).json({
+          error: "audio_capture_failed",
+          message: "Audio capture failed validation and was not sent for transcription.",
+          sourceStatus: "audio_capture_failed",
+        });
+      }
       sttStartedAt = new Date();
       // Audio transcription requires a direct OpenAI key — the AI Integration proxy
       // does not support the /audio/transcriptions endpoint. Fall back gracefully.
@@ -9725,6 +9768,79 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       res.json({ ...encounter, transcriptSource });
     } catch (err) {
       res.status(500).json({ message: "Failed to load encounter" });
+    }
+  });
+
+  // Authenticated, encounter-scoped recorder diagnostics. This intentionally
+  // excludes raw transcript text while preserving the evidence needed to
+  // investigate a capture/STT incident from the running application.
+  app.get("/api/encounters/:id/transcription-provenance", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const encounterId = parseInt(req.params.id, 10);
+      if (!Number.isInteger(encounterId) || encounterId <= 0) {
+        return res.status(400).json({ message: "Invalid encounter ID" });
+      }
+      const encounter = await storage.getEncounter(encounterId, clinicianId, clinicId);
+      if (!encounter) return res.status(404).json({ message: "Encounter not found" });
+      const [segments, attempts, transcriptSource] = await Promise.all([
+        storage.getEncounterTranscriptionSegments(encounterId),
+        storage.getEncounterTranscriptionAttempts(encounterId),
+        getAuthoritativeTranscriptSource(encounter),
+      ]);
+      logPhiAccess({
+        actorType: "clinician",
+        actorId: clinicianId,
+        clinicId,
+        action: "view_transcription_provenance",
+        resourceId: String(encounterId),
+        ipAddress: ipFromReq(req),
+        userAgent: uaFromReq(req),
+      });
+      res.json({
+        sourceState: transcriptSource.state,
+        sourceHasGaps: transcriptSource.hasGaps,
+        segments: segments.map((segment) => ({
+          recordingSessionId: segment.clientSessionId,
+          sessionSequence: segment.sessionSequence,
+          segmentIndex: segment.segmentIndex,
+          captureStartedAt: segment.captureStartedAt,
+          captureEndedAt: segment.captureEndedAt,
+          captureDurationMs: segment.captureDurationMs,
+          audioMimeType: segment.audioMimeType,
+          audioByteLength: segment.audioByteLength,
+          audioSha256: segment.audioSha256,
+          status: segment.status,
+          failureReason: segment.failureReason,
+          finalizedAt: segment.finalizedAt,
+          sourceInclusion: segment.status === "completed" ? "included" : "explicit_gap",
+          attempts: attempts
+            .filter((attempt) => (
+              attempt.sessionSequence === segment.sessionSequence
+              && attempt.segmentIndex === segment.segmentIndex
+            ))
+            .map((attempt) => ({
+              attemptNumber: attempt.attemptNumber,
+              captureStartedAt: attempt.captureStartedAt,
+              captureEndedAt: attempt.captureEndedAt,
+              captureDurationMs: attempt.captureDurationMs,
+              audioMimeType: attempt.audioMimeType,
+              audioByteLength: attempt.audioByteLength,
+              audioSha256: attempt.audioSha256,
+              requestReceivedAt: attempt.requestReceivedAt,
+              sttStartedAt: attempt.sttStartedAt,
+              sttCompletedAt: attempt.sttCompletedAt,
+              sttModel: attempt.sttModel,
+              usedFallback: attempt.usedFallback,
+              status: attempt.status,
+              failureReason: attempt.failureReason,
+            })),
+        })),
+      });
+    } catch (err) {
+      console.error("[GET transcription provenance]", err);
+      res.status(500).json({ message: "Failed to load transcription provenance" });
     }
   });
 
