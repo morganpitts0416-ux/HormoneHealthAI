@@ -60,6 +60,7 @@ import {
 } from "@shared/patient-visible-supplement-protocol";
 import { normalizeTranscript, enrichWithRxNorm, parseCSV, parseArrayField } from "./medication-normalizer";
 import { resolveTranscriptSource } from "./transcript-source";
+import { isAudioCaptureDiagnosticEnvironment } from "./audio-capture-diagnostic-gate";
 import { validateCapturedAudio } from "./audio-capture-validation";
 import {
   forwardMessageToExternalProvider,
@@ -1058,6 +1059,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     }
     res.json({ ...safeUser, externalMessagingApiKeySet: !!(externalMessagingApiKey), ...membershipInfo });
+  });
+
+  // Browser-only audio capture playback is deliberately available only for an
+  // authenticated clinician on an explicitly enabled test environment. This
+  // endpoint never receives or returns audio, capture metadata, or transcript
+  // text; it only releases a runtime boolean to the signed-in clinician.
+  app.get("/api/diagnostics/audio-capture/config", requireClinicianOnly, (req, res) => {
+    const requested = req.query.audioCaptureDiagnostic === "1";
+    const enabled = requested && isAudioCaptureDiagnosticEnvironment(
+      process.env,
+      req.get("host"),
+    );
+    res.set("Cache-Control", "no-store");
+    res.json({ enabled });
   });
 
   // ── Multi-clinic membership endpoints ───────────────────────────────────

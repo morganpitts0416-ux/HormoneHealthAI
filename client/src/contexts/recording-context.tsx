@@ -24,6 +24,19 @@ export interface CaptureDiagnostic {
   mimeType: string;
   byteLength: number;
   durationMs: number;
+  sttStatus: "pending" | "completed" | "empty" | "failed" | "audio_capture_failed";
+  sttText: string | null;
+}
+
+export interface CaptureInputDevice {
+  label: string | null;
+  deviceId: string | null;
+  groupId: string | null;
+  sampleRate: number | null;
+  channelCount: number | null;
+  echoCancellation: boolean | null;
+  noiseSuppression: boolean | null;
+  autoGainControl: boolean | null;
 }
 
 const SEGMENT_MS = 60_000;
@@ -74,9 +87,11 @@ interface RecordingContextValue {
   finalTranscript: string;
   transcriptSource: TranscriptSourceSummary | null;
   finalUtterances: DiarizedUtterance[] | null;
-  // Development-only, browser-memory playback of the exact Blob handed to STT.
-  // Enabled only with ?audioCaptureDiagnostic=1.
-  captureDiagnostic: CaptureDiagnostic | null;
+  // Browser-memory playback and result metadata for the exact Blobs handed to
+  // STT. It is released only by an authenticated server-side test-environment
+  // gate plus ?audioCaptureDiagnostic=1.
+  captureDiagnostics: CaptureDiagnostic[];
+  captureInputDevice: CaptureInputDevice | null;
   errorMessage: string | null;
   start: (params: StartRecordingParams) => Promise<boolean>;
   stop: () => void;
@@ -107,7 +122,9 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
   const [finalTranscript, setFinalTranscript] = useState("");
   const [transcriptSource, setTranscriptSource] = useState<TranscriptSourceSummary | null>(null);
   const [finalUtterances, setFinalUtterances] = useState<DiarizedUtterance[] | null>(null);
-  const [captureDiagnostic, setCaptureDiagnostic] = useState<CaptureDiagnostic | null>(null);
+  const [captureDiagnostics, setCaptureDiagnostics] = useState<CaptureDiagnostic[]>([]);
+  const [captureInputDevice, setCaptureInputDevice] = useState<CaptureInputDevice | null>(null);
+  const [captureDiagnosticRuntimeEnabled, setCaptureDiagnosticRuntimeEnabled] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Refs for the recorder mechanics
@@ -145,7 +162,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
   // session. The server reserves its encounter-local ordering slot.
   const sourceSessionIdRef = useRef("");
   const startSegmentRecorderRef = useRef<(stream: MediaStream) => void>(() => {});
-  const captureDiagnosticUrlRef = useRef<string | null>(null);
+  const captureDiagnosticUrlsRef = useRef<Set<string>>(new Set());
 
   // Captured at start time — used so finalize/autosave always writes to the
   // ORIGINAL bound patient/encounter, not whatever the UI is currently showing.
@@ -183,29 +200,80 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [acquireWakeLock]);
 
-  const clearCaptureDiagnostic = useCallback(() => {
-    if (captureDiagnosticUrlRef.current) {
-      URL.revokeObjectURL(captureDiagnosticUrlRef.current);
-      captureDiagnosticUrlRef.current = null;
+  const captureDiagnosticRequested = () =>
+    new URLSearchParams(window.location.search).get("audioCaptureDiagnostic") === "1";
+
+  useEffect(() => {
+    if (!captureDiagnosticRequested()) {
+      setCaptureDiagnosticRuntimeEnabled(false);
+      return;
     }
-    setCaptureDiagnostic(null);
+    let active = true;
+    fetch("/api/diagnostics/audio-capture/config?audioCaptureDiagnostic=1", { credentials: "include" })
+      .then(async (response) => response.ok ? response.json() : { enabled: false })
+      .then((data) => {
+        if (active) setCaptureDiagnosticRuntimeEnabled(data?.enabled === true);
+      })
+      .catch(() => {
+        if (active) setCaptureDiagnosticRuntimeEnabled(false);
+      });
+    return () => { active = false; };
+  }, []);
+
+  const clearCaptureDiagnostics = useCallback(() => {
+    captureDiagnosticUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    captureDiagnosticUrlsRef.current.clear();
+    setCaptureDiagnostics([]);
+    setCaptureInputDevice(null);
   }, []);
 
   const saveCaptureDiagnostic = useCallback((blob: Blob, segIdx: number, capture: CaptureMetadata) => {
-    if (!import.meta.env.DEV || new URLSearchParams(window.location.search).get("audioCaptureDiagnostic") !== "1") {
+    if (!captureDiagnosticRuntimeEnabled || !captureDiagnosticRequested()) {
       return;
     }
-    clearCaptureDiagnostic();
     const url = URL.createObjectURL(blob);
-    captureDiagnosticUrlRef.current = url;
-    setCaptureDiagnostic({
+    captureDiagnosticUrlsRef.current.add(url);
+    setCaptureDiagnostics((previous) => [...previous, {
       url,
       segmentIndex: segIdx,
       mimeType: blob.type || capture.mimeType,
       byteLength: blob.size,
       durationMs: capture.durationMs,
-    });
-  }, [clearCaptureDiagnostic]);
+      sttStatus: "pending",
+      sttText: null,
+    }]);
+  }, [captureDiagnosticRuntimeEnabled]);
+
+  const updateCaptureDiagnosticStt = useCallback((
+    segIdx: number,
+    sttStatus: CaptureDiagnostic["sttStatus"],
+    sttText: string | null = null,
+  ) => {
+    setCaptureDiagnostics((previous) => previous.map((diagnostic) =>
+      diagnostic.segmentIndex === segIdx
+        ? { ...diagnostic, sttStatus, sttText }
+        : diagnostic,
+    ));
+  }, []);
+
+  const describeCaptureInputDevice = useCallback((stream: MediaStream): CaptureInputDevice | null => {
+    const track = stream.getAudioTracks()[0];
+    if (!track) return null;
+    const settings = track.getSettings?.() ?? {};
+    const nullableString = (value: unknown) => typeof value === "string" && value ? value : null;
+    const nullableNumber = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : null;
+    const nullableBoolean = (value: unknown) => typeof value === "boolean" ? value : null;
+    return {
+      label: nullableString(track.label),
+      deviceId: nullableString(settings.deviceId),
+      groupId: nullableString(settings.groupId),
+      sampleRate: nullableNumber(settings.sampleRate),
+      channelCount: nullableNumber(settings.channelCount),
+      echoCancellation: nullableBoolean(settings.echoCancellation),
+      noiseSuppression: nullableBoolean(settings.noiseSuppression),
+      autoGainControl: nullableBoolean(settings.autoGainControl),
+    };
+  }, []);
 
   // Cleanup on unmount (i.e. full app teardown)
   useEffect(() => {
@@ -213,7 +281,8 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
       if (timerRef.current) clearInterval(timerRef.current);
       if (segmentTimerRef.current) clearInterval(segmentTimerRef.current);
       if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
-      if (captureDiagnosticUrlRef.current) URL.revokeObjectURL(captureDiagnosticUrlRef.current);
+      captureDiagnosticUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      captureDiagnosticUrlsRef.current.clear();
       releaseWakeLock();
     };
   }, [releaseWakeLock]);
@@ -253,10 +322,10 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     setFinalTranscript("");
     setTranscriptSource(null);
     setFinalUtterances(null);
-    clearCaptureDiagnostic();
+    clearCaptureDiagnostics();
     setErrorMessage(null);
     setState("idle");
-  }, [clearCaptureDiagnostic, releaseWakeLock]);
+  }, [clearCaptureDiagnostics, releaseWakeLock]);
 
   // Single upload+transcribe attempt for one segment blob. Throws on failure.
   const uploadSegmentOnce = useCallback(async (blob: Blob, segIdx: number, capture: CaptureMetadata) => {
@@ -324,6 +393,11 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
           if (session !== recordingSessionRef.current) return;
           transcribedSegmentsRef.current.set(segIdx, data.transcription ?? "");
           transcribedUtterancesRef.current.set(segIdx, data.utterances ?? null);
+            updateCaptureDiagnosticStt(
+              segIdx,
+              data.sourceStatus === "empty" ? "empty" : "completed",
+              data.transcription ?? null,
+            );
           failedSegmentBlobsRef.current.delete(segIdx);
         } catch {
           // Gap marker already in place for this segment — leave it.
@@ -384,7 +458,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
 
     if (session !== recordingSessionRef.current) return;
     setState("review");
-  }, [fetchAuthoritativeTranscriptSource, toast, uploadSegmentOnce]);
+  }, [fetchAuthoritativeTranscriptSource, toast, updateCaptureDiagnosticStt, uploadSegmentOnce]);
 
   const settleAfterStop = useCallback((session: number) => {
     if (
@@ -410,7 +484,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
   ) => {
     let captureFailed = false;
     try {
-      let data: { transcription?: string; utterances?: DiarizedUtterance[] | null } | null = null;
+       let data: { transcription?: string; utterances?: DiarizedUtterance[] | null; sourceStatus?: "completed" | "empty" } | null = null;
       let lastErr: any = null;
       for (let attempt = 0; attempt < MAX_UPLOAD_ATTEMPTS; attempt++) {
         if (session !== recordingSessionRef.current) return;
@@ -436,6 +510,11 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
       if (session !== recordingSessionRef.current) return;
       transcribedSegmentsRef.current.set(segIdx, data.transcription ?? "");
       transcribedUtterancesRef.current.set(segIdx, data.utterances ?? null);
+       updateCaptureDiagnosticStt(
+         segIdx,
+         data.sourceStatus === "empty" ? "empty" : "completed",
+         data.transcription ?? null,
+       );
       setSegmentsDone(d => d + 1);
 
       // Update live transcript so subscribers (dock, encounter editor) see it
@@ -456,6 +535,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
         // Never retry or fabricate replacement dialogue for an invalid capture.
         transcribedSegmentsRef.current.set(segIdx, gapMarker(segIdx));
         transcribedUtterancesRef.current.set(segIdx, null);
+         updateCaptureDiagnosticStt(segIdx, "audio_capture_failed");
         setSegmentsDone(d => d + 1);
         toast({
           variant: "destructive",
@@ -469,6 +549,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
       // empty string) and keep the raw blob so finalize() can try once more.
       transcribedSegmentsRef.current.set(segIdx, gapMarker(segIdx));
       transcribedUtterancesRef.current.set(segIdx, null);
+       updateCaptureDiagnosticStt(segIdx, "failed");
       failedSegmentBlobsRef.current.set(segIdx, { blob, capture });
       setSegmentsDone(d => d + 1);
       toast({
@@ -483,7 +564,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
         settleAfterStop(session);
       }
     }
-  }, [settleAfterStop, toast, uploadSegmentOnce]);
+  }, [settleAfterStop, toast, updateCaptureDiagnosticStt, uploadSegmentOnce]);
 
   const startSegmentRecorder = useCallback((stream: MediaStream) => {
     const segIdx = segmentIndexRef.current;
@@ -631,13 +712,18 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     setFinalTranscript("");
     setTranscriptSource(null);
     setFinalUtterances(null);
-    clearCaptureDiagnostic();
+    clearCaptureDiagnostics();
     setErrorMessage(null);
 
     mimeTypeRef.current = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
       ? "audio/webm;codecs=opus"
       : MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
 
+    setCaptureInputDevice(
+      captureDiagnosticRuntimeEnabled && captureDiagnosticRequested()
+        ? describeCaptureInputDevice(stream)
+        : null,
+    );
     startSegmentRecorder(stream);
     setState("recording");
 
@@ -650,7 +736,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
 
     acquireWakeLock();
     return true;
-  }, [acquireWakeLock, clearCaptureDiagnostic, flushSegment, startSegmentRecorder, toast]);
+  }, [acquireWakeLock, captureDiagnosticRuntimeEnabled, clearCaptureDiagnostics, describeCaptureInputDevice, flushSegment, startSegmentRecorder, toast]);
 
   const stop = useCallback(() => {
     if (stateRef.current !== "recording") return;
@@ -721,7 +807,8 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     finalTranscript,
     transcriptSource,
     finalUtterances,
-    captureDiagnostic,
+    captureDiagnostics,
+    captureInputDevice,
     errorMessage,
     start,
     stop,

@@ -19,7 +19,13 @@ Recorder capture transitions must wait for the preceding recorder's final event 
 
 **Why:** A timer-based restart or early track shutdown can truncate the final Blob while still creating superficially valid source rows. Treating invalid audio as STT uncertainty would hide a capture defect or invite fabricated replacement dialogue.
 
-**How to apply:** Keep validation conservative so a valid short trailing utterance is retained. Recorder diagnostics must be authenticated and encounter-scoped, expose metadata/outcomes only, and omit protected raw STT text.
+**How to apply:** Keep validation conservative so a valid short trailing utterance is retained. Ordinary recorder diagnostics must be authenticated and encounter-scoped, expose metadata/outcomes only, and omit protected raw STT text.
+
+The dedicated audio-boundary playback diagnostic is the narrow exception: it may display each segment's returned STT text beside a local player for the exact captured Blob, but only for an authenticated clinician who explicitly activates it on an operator-enabled tagged test revision. It must never persist the Blob or diagnostic text, write either to application logs or the chart, or be reachable through the ordinary production hostname.
+
+**Why:** Comparing local playback with that segment's STT result is required to identify whether the first bad boundary is browser capture or the later request/provider path; server persistence would add unnecessary PHI exposure.
+
+**How to apply:** Require the explicit query parameter plus a server-side feature flag and a matching tagged Cloud Run hostname (and runtime revision presence in production). Revoke every object URL and clear all diagnostic state when the recording is discarded, dismissed, or the page unmounts.
 
 The OpenAI Node SDK converts a server `fs.ReadStream` into a fresh multipart file that preserves the filename and bytes but has no inferred MIME type; its multipart part is therefore `application/octet-stream` even for a valid `.webm`/Opus capture.
 

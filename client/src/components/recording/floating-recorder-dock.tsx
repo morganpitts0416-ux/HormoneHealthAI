@@ -139,7 +139,7 @@ export function FloatingRecorderDock() {
             </div>
           )}
 
-          {recording.captureDiagnostic && (
+          {recording.captureDiagnostics.length > 0 && (
             <div
               className="rounded-md px-2.5 py-2 border space-y-1.5"
               style={{ backgroundColor: "#fff7e8", borderColor: "#d6a24a", color: "#5f430e" }}
@@ -148,18 +148,35 @@ export function FloatingRecorderDock() {
               <p className="text-[11px] font-semibold">
                 Capture diagnostic — local browser audio only
               </p>
+              {recording.captureInputDevice && (
+                <p className="text-[10px] leading-snug">
+                  Input: {recording.captureInputDevice.label || "browser did not expose a microphone label"}
+                  {recording.captureInputDevice.deviceId ? ` · device ${recording.captureInputDevice.deviceId}` : ""}
+                  {recording.captureInputDevice.sampleRate ? ` · ${recording.captureInputDevice.sampleRate} Hz` : ""}
+                  {recording.captureInputDevice.channelCount ? ` · ${recording.captureInputDevice.channelCount} channel${recording.captureInputDevice.channelCount === 1 ? "" : "s"}` : ""}
+                </p>
+              )}
+              {recording.captureDiagnostics.map((diagnostic) => (
+                <div key={diagnostic.url} className="border-t pt-1.5 space-y-1" style={{ borderColor: "#e6c987" }}>
+                  <p className="text-[10px] leading-snug">
+                    Segment {diagnostic.segmentIndex + 1} · {(diagnostic.durationMs / 1000).toFixed(1)} sec · {diagnostic.byteLength.toLocaleString()} bytes · {diagnostic.mimeType || "unknown MIME"}
+                  </p>
+                  <audio
+                    controls
+                    preload="metadata"
+                    src={diagnostic.url}
+                    className="w-full h-8"
+                    data-testid={`audio-capture-diagnostic-player-${diagnostic.segmentIndex}`}
+                  />
+                  <p className="text-[10px] leading-snug">
+                    STT: {diagnostic.sttStatus === "pending"
+                      ? "pending"
+                      : diagnostic.sttText?.trim() || diagnostic.sttStatus}
+                  </p>
+                </div>
+              ))}
               <p className="text-[10px] leading-snug">
-                Segment {recording.captureDiagnostic.segmentIndex + 1} · {recording.captureDiagnostic.byteLength.toLocaleString()} bytes · {recording.captureDiagnostic.mimeType || "unknown MIME"}
-              </p>
-              <audio
-                controls
-                preload="metadata"
-                src={recording.captureDiagnostic.url}
-                className="w-full h-8"
-                data-testid="audio-capture-diagnostic-player"
-              />
-              <p className="text-[10px] leading-snug">
-                This is the exact assembled Blob passed to transcription. It stays only in this browser tab and is removed when the recording is dismissed.
+                Each player uses the exact assembled Blob passed to transcription. Audio stays only in this browser tab and is removed when the recording is dismissed.
               </p>
             </div>
           )}
