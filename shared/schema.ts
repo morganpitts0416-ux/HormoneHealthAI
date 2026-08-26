@@ -1360,6 +1360,11 @@ export const clinicalEncounters = pgTable("clinical_encounters", {
   // ── Note typing: provider SOAP, nurse note, or phone note ────────────────
   noteType: varchar("note_type", { length: 30 }).notNull().default("soap_provider"),
   phoneContact: jsonb("phone_contact").$type<{ contactedWith?: string; direction?: 'incoming' | 'outgoing'; durationMinutes?: number }>(),
+  // "verified_raw" only when immutable, server-owned segment provenance exists.
+  // Historical records intentionally remain "legacy_unverified".
+  transcriptProvenanceState: varchar("transcript_provenance_state", { length: 30 })
+    .notNull()
+    .default("legacy_unverified"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -1369,6 +1374,48 @@ export const insertClinicalEncounterSchema = createInsertSchema(clinicalEncounte
   id: true, createdAt: true, updatedAt: true, soapGeneratedAt: true, summaryPublishedAt: true,
 });
 export type InsertClinicalEncounter = z.infer<typeof insertClinicalEncounterSchema>;
+
+// ─── Immutable Transcription Provenance ───────────────────────────────────────
+// A recording session reserves a deterministic position in an encounter before
+// any STT request completes. Segment assembly therefore never depends on model
+// completion order, retry timing, or database insertion order.
+export const encounterTranscriptionSessions = pgTable("encounter_transcription_sessions", {
+  id: serial("id").primaryKey(),
+  encounterId: integer("encounter_id").notNull().references(() => clinicalEncounters.id, { onDelete: "cascade" }),
+  clientSessionId: varchar("client_session_id", { length: 120 }).notNull(),
+  sessionSequence: integer("session_sequence").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  encounterSessionUnique: uniqueIndex("encounter_transcription_sessions_encounter_client_uq").on(t.encounterId, t.clientSessionId),
+  encounterSequenceUnique: uniqueIndex("encounter_transcription_sessions_encounter_sequence_uq").on(t.encounterId, t.sessionSequence),
+}));
+export type EncounterTranscriptionSession = typeof encounterTranscriptionSessions.$inferSelect;
+
+// The rawSttText column is the first provider transcription artifact for the
+// deterministic segment slot. It is written only by the server STT endpoint;
+// editable `clinical_encounters.transcription` and derived diarization are
+// deliberately separate.
+export const encounterTranscriptionSegments = pgTable("encounter_transcription_segments", {
+  id: serial("id").primaryKey(),
+  transcriptionSessionId: integer("transcription_session_id").notNull().references(() => encounterTranscriptionSessions.id, { onDelete: "cascade" }),
+  segmentIndex: integer("segment_index").notNull(),
+  rawSttText: text("raw_stt_text"),
+  audioSha256: varchar("audio_sha256", { length: 64 }).notNull(),
+  sttResponseSha256: varchar("stt_response_sha256", { length: 64 }),
+  sttModel: varchar("stt_model", { length: 80 }),
+  usedFallback: boolean("used_fallback").notNull().default(false),
+  attemptCount: integer("attempt_count").notNull().default(1),
+  // completed | empty | failed | unintelligible
+  status: varchar("status", { length: 30 }).notNull(),
+  failureReason: text("failure_reason"),
+  derivedTranscriptSha256: varchar("derived_transcript_sha256", { length: 64 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  finalizedAt: timestamp("finalized_at"),
+}, (t) => ({
+  sessionSegmentUnique: uniqueIndex("encounter_transcription_segments_session_index_uq").on(t.transcriptionSessionId, t.segmentIndex),
+  sessionIndex: index("encounter_transcription_segments_session_index_idx").on(t.transcriptionSessionId, t.segmentIndex),
+}));
+export type EncounterTranscriptionSegment = typeof encounterTranscriptionSegments.$inferSelect;
 
 // ─── Appointments (native scheduling + Boulevard sync via Zapier) ──────────
 // `source` distinguishes native (created in ClinIQ) vs boulevard (mirrored from Zapier webhook).

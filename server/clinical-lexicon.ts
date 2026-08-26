@@ -434,74 +434,11 @@ export function buildMedicalTermsList(visitType: string): string {
  * Staying at ~180 leaves headroom for the visit-type suffix.
  */
 export function buildWhisperPrompt(visitType: string): string {
-  // IMPORTANT: This prompt is a vocabulary hint, NOT a clinical statement.
-  // It must NOT use phrases like "Patient's medications include..." because
-  // both gpt-4o-transcribe and whisper-1 will hallucinate those phrases
-  // verbatim into the transcript. The format below is clearly labeled as
-  // vocabulary/glossary context so the model uses it for spelling, not content.
-
-  const visitLabel: Record<string, string> = {
-    "new-patient": "new patient hormone and metabolic evaluation",
-    "follow-up": "hormone and metabolic follow-up visit",
-    "lab-review": "lab review appointment",
-    "wellness": "annual wellness and preventive care visit",
-    "acute": "acute care visit",
-    "telemedicine": "telemedicine hormone follow-up",
-    "procedure": "procedure visit (pellet, phlebotomy, or injection)",
-  };
-
-  const label = visitLabel[visitType] ?? visitLabel["follow-up"];
-
-  // Medications listed as a glossary, NOT as a patient medication list.
-  // This teaches the model correct spellings without generating hallucinated content.
-  const medGlossary =
-    "semaglutide, tirzepatide, Ozempic, Wegovy, Mounjaro, Zepbound, " +
-    "testosterone cypionate, micronized progesterone, estradiol, anastrozole, " +
-    "letrozole, DHEA, levothyroxine, liothyronine, Armour thyroid, metformin, " +
-    "empagliflozin, dapagliflozin, rosuvastatin, atorvastatin, ezetimibe, " +
-    "evolocumab, inclisiran, spironolactone, apixaban, rivaroxaban, " +
-    "losartan, Cozaar, lisinopril, amlodipine, metoprolol, carvedilol, " +
-    "hydrochlorothiazide, chlorthalidone, valsartan, olmesartan, telmisartan, " +
-    "ACCRUFeR, ferric maltol, ferric carboxymaltose, Injectafer, ferumoxytol, " +
-    "naltrexone, low-dose naltrexone, trazodone, vortioxetine, Trintellix, " +
-    "sertraline, escitalopram, citalopram, fluoxetine, bupropion, venlafaxine, " +
-    "duloxetine, buspirone, alprazolam, lorazepam, clonazepam, hydroxyzine, " +
-    "zolpidem, omeprazole, pantoprazole, famotidine, albuterol, montelukast, " +
-    "cetirizine, berberine, myo-inositol, CoQ10.";
-
-  // Lab markers listed as a glossary.
-  const labGlossary =
-    "HbA1c, HOMA-IR, ApoB, Lp(a), hs-CRP, eGFR, FIB-4, IGF-1, " +
-    "SHBG, DHEA-S, LH, FSH, TSH, free T3, free T4, reverse T3, " +
-    "ferritin, TIBC, transferrin saturation, 25-hydroxyvitamin D, " +
-    "CBC, CMP, lipid panel, ASCVD, GLP-1, PCOS.";
-
-  const groups = getRelevantLexiconGroups(visitType);
-  const extras: string[] = [];
-  if (groups.includes("hormones_and_menopause")) {
-    extras.push(
-      "perimenopause, vasomotor symptoms, bioidentical hormone therapy, " +
-      "compounded HRT, aromatase inhibitor, clomiphene, hypogonadism"
-    );
-  }
-  if (groups.includes("metabolic_and_weight")) {
-    extras.push(
-      "insulin resistance, metabolic syndrome, hepatic steatosis, NAFLD, MASLD"
-    );
-  }
-  if (groups.includes("lipid_and_cardiometabolic")) {
-    extras.push(
-      "PREVENT score, homocysteine, bempedoic acid, Nexletol, lipoprotein(a), sacubitril-valsartan, Entresto"
-    );
-  }
-
-  const extrasClause = extras.length ? ` Additional vocabulary: ${extras.join("; ")}.` : "";
-
-  return (
-    `Clinical encounter type: ${label}. ` +
-    `Medication glossary (spelling reference only — do not insert into transcript): ${medGlossary} ` +
-    `Lab marker glossary: ${labGlossary}${extrasClause}`
-  );
+  // STT prompts can leak primed language into low-audio or silent portions.
+  // Keep this intentionally generic: medical spelling corrections belong in
+  // explicitly reviewable derived assistance, never in source transcription.
+  void visitType;
+  return "Transcribe exactly what is spoken. Do not infer, complete, summarize, or add content that is not audible.";
 }
 
 export function buildNormalizationRules(visitType: string): string {

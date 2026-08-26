@@ -59,6 +59,7 @@ import {
   resolvePatientVisibleSupplementProtocol,
 } from "@shared/patient-visible-supplement-protocol";
 import { normalizeTranscript, enrichWithRxNorm, parseCSV, parseArrayField } from "./medication-normalizer";
+import { resolveTranscriptSource } from "./transcript-source";
 import {
   forwardMessageToExternalProvider,
   type ExternalProvider,
@@ -322,6 +323,11 @@ function getClinicianId(req: Request): number {
   const sess = req.session as any;
   if (sess.staffClinicianId) return sess.staffClinicianId as number;
   return (req.user as any).id;
+}
+
+async function getAuthoritativeTranscriptSource(encounter: schema.ClinicalEncounter) {
+  const segments = await storage.getEncounterTranscriptionSegments(encounter.id);
+  return resolveTranscriptSource(encounter, segments);
 }
 
 // Safely parse a date-only string (YYYY-MM-DD) as local noon so that no
@@ -9280,14 +9286,52 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
     });
   }
 
-  // POST /api/encounters/transcribe — upload audio → raw segments + text (no diarization here)
-  // Stage 1 of the clinical AI pipeline. Tries gpt-4o-transcribe first, falls back to whisper-1.
+  // POST /api/encounters/transcribe — server-owned immutable STT source artifact.
+  // Every retry upserts the same deterministic (session, segment) slot. The
+  // route never accepts clinical text from the client as source evidence.
   app.post("/api/encounters/transcribe", requireAuth, audioUpload.single('audio'), async (req, res) => {
     const filePath = (req as any).file?.path;
     if (!filePath) return res.status(400).json({ message: "No audio file provided" });
 
     const cleanupFiles = (paths: string[]) => paths.forEach(p => fs.unlink(p, () => {}));
     const visitType: string = (req.body?.visitType as string) || "follow-up";
+    const encounterId = parseInt(String(req.body?.encounterId), 10);
+    const recordingSessionId = String(req.body?.recordingSessionId ?? "").trim();
+    const segmentIndex = parseInt(String(req.body?.segmentIndex), 10);
+    if (!Number.isInteger(encounterId) || encounterId <= 0 || !recordingSessionId || !Number.isInteger(segmentIndex) || segmentIndex < 0) {
+      cleanupFiles([filePath]);
+      return res.status(400).json({ message: "encounterId, recordingSessionId, and non-negative segmentIndex are required" });
+    }
+
+    const clinicianId = getClinicianId(req);
+    const clinicId = getEffectiveClinicId(req);
+    const encounter = await storage.getEncounter(encounterId, clinicianId, clinicId);
+    if (!encounter) {
+      cleanupFiles([filePath]);
+      return res.status(404).json({ message: "Encounter not found" });
+    }
+    const audioSha256 = crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+
+    const persistSourceOutcome = async (outcome: {
+      rawSttText: string | null;
+      sttResponseSha256: string | null;
+      sttModel: string | null;
+      usedFallback: boolean;
+      status: "completed" | "empty" | "failed" | "unintelligible";
+      failureReason?: string | null;
+    }) => {
+      const segment = await storage.upsertEncounterTranscriptionSegment({
+        encounterId,
+        clientSessionId: recordingSessionId,
+        segmentIndex,
+        audioSha256,
+        ...outcome,
+      });
+      await storage.updateEncounter(encounterId, clinicianId, {
+        transcriptProvenanceState: "verified_raw",
+      } as any, clinicId);
+      return segment;
+    };
 
     try {
       // Audio transcription requires a direct OpenAI key — the AI Integration proxy
@@ -9314,12 +9358,15 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
         audioSegments = [filePath];
       }
 
-      const clinicalPrompt = buildWhisperPrompt(visitType);
+      const transcriptionPrompt = buildWhisperPrompt(visitType);
 
       type RawSegment = { id: number; start: number; end: number; text: string };
       const allSegments: RawSegment[] = [];
       const textParts: string[] = [];
+      const providerResponses: unknown[] = [];
       let segOffset = 0;
+      let usedFallback = false;
+      let modelUsed = "gpt-4o-transcribe";
 
       for (const seg of audioSegments) {
         const stream = fs.createReadStream(seg);
@@ -9333,21 +9380,25 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
             file: stream,
             response_format: 'json',
             language: 'en',
-            prompt: clinicalPrompt,
+            prompt: transcriptionPrompt,
           } as any);
           // json format returns { text } only — no segments
           verboseResult = { text: typeof result === 'string' ? result : (result as any).text || '', segments: [] };
+          providerResponses.push(verboseResult);
         } catch (modelErr: any) {
           console.warn('[Transcribe] gpt-4o-transcribe unavailable, falling back to whisper-1:', modelErr.message);
           const stream2 = fs.createReadStream(seg);
+          usedFallback = true;
+          modelUsed = "whisper-1";
           verboseResult = await openai.audio.transcriptions.create({
             model: 'whisper-1',
             file: stream2,
             response_format: 'verbose_json',
             language: 'en',
-            prompt: clinicalPrompt,
+            prompt: transcriptionPrompt,
             temperature: 0,
           } as any);
+          providerResponses.push(verboseResult);
         }
 
         const text: string = verboseResult?.text || (typeof verboseResult === 'string' ? verboseResult : '');
@@ -9368,6 +9419,17 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       cleanupFiles(splitUsed ? [filePath, ...audioSegments] : [filePath]);
 
       const transcription = textParts.join(' ').trim();
+      const status = transcription ? "completed" : "empty";
+      const responseSha256 = crypto.createHash("sha256")
+        .update(JSON.stringify(providerResponses))
+        .digest("hex");
+      await persistSourceOutcome({
+        rawSttText: transcription || null,
+        sttResponseSha256: responseSha256,
+        sttModel: modelUsed,
+        usedFallback,
+        status,
+      });
 
       // Convert segments to raw utterances with unknown speaker (diarization is next stage)
       const rawUtterances = allSegments.length > 0
@@ -9381,10 +9443,22 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
           }))
         : null;
 
-      res.json({ transcription, utterances: rawUtterances });
-    } catch (err) {
+      res.json({ transcription, utterances: rawUtterances, sourceStatus: status });
+    } catch (err: any) {
       cleanupFiles([filePath]);
       console.error('[Transcribe] Error:', err);
+      try {
+        await persistSourceOutcome({
+          rawSttText: null,
+          sttResponseSha256: null,
+          sttModel: null,
+          usedFallback: false,
+          status: "failed",
+          failureReason: err?.message ?? "Transcription failed",
+        });
+      } catch (persistErr) {
+        console.error("[Transcribe] Failed to persist source failure:", persistErr);
+      }
       res.status(500).json({ message: "Transcription failed. Please try again or paste notes manually." });
     }
   });
@@ -9632,7 +9706,8 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       const encounter = await storage.getEncounter(parseInt(req.params.id), clinicianId, clinicId);
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
       logPhiAccess({ actorType: "clinician", actorId: clinicianId, clinicId, action: "view_encounter", resourceId: req.params.id, ipAddress: ipFromReq(req), userAgent: uaFromReq(req) });
-      res.json(encounter);
+      const transcriptSource = await getAuthoritativeTranscriptSource(encounter);
+      res.json({ ...encounter, transcriptSource });
     } catch (err) {
       res.status(500).json({ message: "Failed to load encounter" });
     }
@@ -9644,7 +9719,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
-      const { visitDate, visitType, chiefComplaint, transcription, audioProcessed, linkedLabResultId, clinicianNotes, phoneContact, diarizedTranscript, clinicalExtraction, evidenceSuggestions, expectedPatientId } = req.body;
+      const { visitDate, visitType, chiefComplaint, transcription, audioProcessed, linkedLabResultId, clinicianNotes, phoneContact, clinicalExtraction, evidenceSuggestions, expectedPatientId } = req.body;
 
       // PATIENT-SAFETY: stale-context tripwire. If the client tells us which
       // patient the UI thinks this encounter belongs to and it doesn't match,
@@ -9684,7 +9759,6 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
         ...(linkedLabResultId !== undefined && { linkedLabResultId: linkedLabResultId ? parseInt(linkedLabResultId) : null }),
         ...(clinicianNotes !== undefined && { clinicianNotes }),
         ...(phoneContact !== undefined && { phoneContact }),
-        ...(diarizedTranscript !== undefined && { diarizedTranscript }),
         ...(clinicalExtraction !== undefined && { clinicalExtraction }),
         ...(evidenceSuggestions !== undefined && { evidenceSuggestions }),
       }, clinicId);
@@ -10006,12 +10080,10 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
         }
       }
 
-      const rawUtterances: any[] | null = req.body.utterances ?? null;
-      const rawText: string = req.body.transcription ?? encounter.transcription ?? "";
+      const source = await getAuthoritativeTranscriptSource(encounter);
+      const rawText = source.text;
 
-      if (!rawText && (!rawUtterances || rawUtterances.length === 0)) {
-        return res.status(400).json({ message: "No transcription or utterances to normalize" });
-      }
+      if (!rawText) return res.status(400).json({ message: "No authoritative transcript is available to normalize" });
 
       const openai = new OpenAI({
         apiKey: process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -10022,9 +10094,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       const lexiconRules = buildNormalizationRules(visitType);
 
       // Build input for normalization
-      const inputText = rawUtterances && rawUtterances.length > 0
-        ? rawUtterances.map((u: any, i: number) => `[${i}] (${u.start?.toFixed(1) ?? '?'}s) ${u.text}`).join('\n')
-        : rawText;
+      const inputText = rawText;
 
       const systemPrompt = `You are a clinical medical transcription specialist. Your task has TWO parts:
 
@@ -10120,6 +10190,10 @@ Return ONLY the JSON array, no explanation.`;
       }));
 
       await storage.updateEncounter(id, clinicianId, { diarizedTranscript: diarized }, clinicId);
+      await storage.setEncounterTranscriptionDerivedHash(
+        id,
+        crypto.createHash("sha256").update(JSON.stringify(diarized)).digest("hex"),
+      );
 
       res.json({ diarizedTranscript: diarized });
     } catch (err) {
@@ -10152,21 +10226,18 @@ Return ONLY the JSON array, no explanation.`;
         }
       }
 
-      const diarized = encounter.diarizedTranscript as any[] | null;
-      const rawText = encounter.transcription ?? "";
-
-      if (!diarized?.length && !rawText) {
-        return res.status(400).json({ message: "Normalize the transcript first" });
-      }
+      const source = await getAuthoritativeTranscriptSource(encounter);
+      const rawText = source.text;
+      if (!rawText) return res.status(400).json({ message: "No authoritative transcript is available" });
 
       const openai = new OpenAI({
         apiKey: process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
         ...(process.env.OPENAI_API_KEY ? {} : { baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL }),
       });
 
-      const transcriptInput = diarized?.length
-        ? diarized.map((u: any) => `[ID:${u.id}] ${u.speaker.toUpperCase()}: ${u.normalizedText ?? u.text}`).join('\n')
-        : rawText;
+      // Structured extraction is grounded in the same immutable raw source as
+      // SOAP generation. Normalized/diarized text is review assistance only.
+      const transcriptInput = rawText;
 
       const systemPrompt = `You are a clinical documentation specialist. Extract structured clinical facts from the provided visit transcript.
 
@@ -12438,7 +12509,8 @@ If nothing is found, return: { "social_history_items": [] }`,
       const id = parseInt(req.params.id);
       const encounter = await storage.getEncounter(id, clinicianId, clinicId);
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
-      if (!encounter.transcription && !encounter.diarizedTranscript) {
+      const transcriptSource = await getAuthoritativeTranscriptSource(encounter);
+      if (!transcriptSource.text) {
         return res.status(400).json({ message: "No transcription available. Please record or add session notes first." });
       }
 
@@ -12467,15 +12539,12 @@ If nothing is found, return: { "social_history_items": [] }`,
       });
 
       // ── Limited production trial: Mode B GPT-5.6 Sol ─────────────────────
-      // Branch before normalization and extraction. The trial intentionally
-      // operates on the stored diarized transcript (when available) or raw
-      // transcription, matching the read-only comparison endpoint's Mode B.
+        // Branch before normalization and extraction. Provenance-backed raw
+        // text is the source; normalized text is never selected automatically.
       if (resolveProductionSoapGenerator() === MODE_B_SOL_SOAP_PRODUCTION_GENERATOR) {
-        const diarized = (encounter.diarizedTranscript as any[]) ?? [];
-        const wasNormalized = diarized.length > 0;
-        const transcriptText = wasNormalized
-          ? diarized.map((u: any) => `${u.speaker.toUpperCase()}: ${u.normalizedText ?? u.text}`).join("\n")
-          : (encounter.transcription ?? "");
+        const diarized: any[] = [];
+        const wasNormalized = false;
+        const transcriptText = transcriptSource.text;
 
         if (!transcriptText.trim()) {
           return res.status(400).json({ message: "No transcription available. Please record or add session notes first." });
@@ -12540,7 +12609,7 @@ If nothing is found, return: { "social_history_items": [] }`,
       const NORMALIZATION_CHAR_LIMIT = 48000;
       let diarized: any[] = [];
       try {
-        const rawInputText = encounter.transcription ?? "";
+        const rawInputText = transcriptSource.text;
         if (rawInputText.length > NORMALIZATION_CHAR_LIMIT) {
           // Transcript too long for single-call normalization (60-90 min sessions are
           // ~60-90k chars; the model's 16k output cap can't return all utterances as
@@ -12620,30 +12689,31 @@ Return ONLY the JSON array, no explanation.`;
           diarized = [];
         } else {
           await storage.updateEncounter(id, clinicianId, { diarizedTranscript: diarized }, clinicId);
+          await storage.setEncounterTranscriptionDerivedHash(
+            id,
+            crypto.createHash("sha256").update(JSON.stringify(diarized)).digest("hex"),
+          );
         }
         } // end else (transcript within normalization limit)
       } catch (normErr) {
         console.warn("[SOAP Pipeline] Normalization failed, falling back:", normErr);
-        diarized = (encounter.diarizedTranscript as any[]) ?? [];
+        diarized = [];
       }
 
-      // Build transcript text — normalized preferred, raw fallback.
-      // Always keep the raw transcript available for trigger matching and context.
-      const rawTranscript = encounter.transcription ?? "";
-      const wasNormalized = diarized.length > 0;
-      const transcriptText = wasNormalized
-        ? diarized.map((u: any) => `${u.speaker.toUpperCase()}: ${u.normalizedText ?? u.text}`).join('\n')
-        : rawTranscript;
-      const transcriptLabel = wasNormalized ? "TRANSCRIPT (normalized)" : "TRANSCRIPT (raw — not normalized)";
+      // Never promote normalization into source text. It remains an optional
+      // derived view, while every clinical decision below is grounded in raw.
+      const rawTranscript = transcriptSource.text;
+      diarized = [];
+      const wasNormalized = false;
+      const transcriptText = rawTranscript;
+      const transcriptLabel = "TRANSCRIPT (verified raw / legacy raw)";
 
       // ── PIPELINE STEP 2: Extract clinical facts (always fresh) ────────────
       const useStructuredV2 = process.env.SOAP_STRUCTURED_ACTIONS_V2 === 'true';
 
       let freshExtraction: any = null;
       try {
-        const extractInput = wasNormalized
-          ? diarized.map((u: any) => `[ID:${u.id}] ${u.speaker.toUpperCase()}: ${u.normalizedText ?? u.text}`).join('\n')
-          : transcriptText;
+        const extractInput = transcriptText;
         const extractCompletion = await openai.chat.completions.create({
           model: "gpt-4o",
           messages: [
@@ -13441,13 +13511,11 @@ If nothing is found, return: { "social_history_items": [] }`,
     const temperatureOmitted = true;  // gpt-5.6-sol rejects temperature != 1
 
     try {
-      // ── Build diarized / transcriptText (same as production) ────────────
-      const rawDiarized = (encounter.diarizedTranscript as any[]) ?? [];
-      const diarized = rawDiarized;
-      const wasNormalized = diarized.length > 0;
-      const transcriptText = wasNormalized
-        ? diarized.map((u: any) => `${u.speaker.toUpperCase()}: ${u.normalizedText ?? u.text}`).join('\n')
-        : (encounter.transcription ?? "");
+      // ── Build authoritative raw transcript (same as production) ──────────
+      const transcriptSource = await getAuthoritativeTranscriptSource(encounter);
+      const diarized: any[] = [];
+      const wasNormalized = false;
+      const transcriptText = transcriptSource.text;
 
       if (!transcriptText.trim()) {
         return res.status(400).json({ error: "Encounter has no transcript to test against" });
@@ -13632,7 +13700,8 @@ If nothing is found, return: { "social_history_items": [] }`,
 
       const encounter = await storage.getEncounter(id, clinicianId, clinicId);
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
-      if (!encounter.transcription && !encounter.diarizedTranscript) {
+      const transcriptSource = await getAuthoritativeTranscriptSource(encounter);
+      if (!transcriptSource.text) {
         return res.status(400).json({ message: "No transcription available. Please record or add session notes first." });
       }
 
@@ -13652,11 +13721,10 @@ If nothing is found, return: { "social_history_items": [] }`,
         ...(process.env.OPENAI_API_KEY ? {} : { baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL }),
       });
 
-      // Build transcript text from diarized or raw
-      const diarized = (encounter.diarizedTranscript as any[]) ?? [];
-      const transcriptText = diarized.length > 0
-        ? diarized.map((u: any) => `${u.speaker.toUpperCase()}: ${u.normalizedText ?? u.text}`).join('\n')
-        : (encounter.transcription ?? "");
+      // Template extraction is also source-grounded; derived diarization is
+      // never chosen automatically for clinical content.
+      const diarized: any[] = [];
+      const transcriptText = transcriptSource.text;
 
       // ── Step 1: Field Extraction ─────────────────────────────────────────
       // AI reads transcript + template field descriptions and returns extracted values.

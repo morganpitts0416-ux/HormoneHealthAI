@@ -329,6 +329,7 @@ type RecorderState = "idle" | "recording" | "transcribing";
     const [uploadFile, setUploadFile] = useState<File | null>(null);
     const [starting, setStarting] = useState(false);
     const fileRef = useRef<HTMLInputElement>(null);
+    const uploadSessionRef = useRef<string>("");
     const { toast } = useToast();
 
     const onTranscribedRef = useRef(onTranscribed);
@@ -376,11 +377,24 @@ type RecorderState = "idle" | "recording" | "transcribing";
     };
 
     const sendToWhisper = async (file: File) => {
+      if (!currentEncounterId) {
+        toast({
+          variant: "destructive",
+          title: "Save the encounter first",
+          description: "Choose a patient and create the encounter before uploading audio so the original transcription can be safely recorded.",
+        });
+        return;
+      }
       setIsTranscribing(true);
       try {
         const formData = new FormData();
         formData.append("audio", file);
         formData.append("visitType", visitType);
+        uploadSessionRef.current ||= globalThis.crypto?.randomUUID?.()
+          ?? `upload-${Math.random().toString(36).slice(2)}`;
+        formData.append("encounterId", String(currentEncounterId));
+        formData.append("recordingSessionId", uploadSessionRef.current);
+        formData.append("segmentIndex", "0");
         const res = await fetch("/api/encounters/transcribe", {
           method: "POST", body: formData, credentials: "include",
         });

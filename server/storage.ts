@@ -247,6 +247,21 @@ export interface IStorage {
   createEncounter(data: InsertClinicalEncounter): Promise<ClinicalEncounter>;
   updateEncounter(id: number, clinicianId: number, data: Partial<InsertClinicalEncounter> & { soapNote?: any; soapGeneratedAt?: Date; summaryPublished?: boolean; summaryPublishedAt?: Date; diarizedTranscript?: any; clinicalExtraction?: any; evidenceSuggestions?: import("@shared/schema").EvidenceOverlay | any; patternMatch?: import("@shared/schema").PatternMatchResult | any; updatedAt?: Date }, clinicId?: number | null): Promise<ClinicalEncounter | undefined>;
   deleteEncounter(id: number, clinicianId: number, clinicId?: number | null): Promise<boolean>;
+  getOrCreateEncounterTranscriptionSession(encounterId: number, clientSessionId: string): Promise<schema.EncounterTranscriptionSession>;
+  upsertEncounterTranscriptionSegment(data: {
+    encounterId: number;
+    clientSessionId: string;
+    segmentIndex: number;
+    rawSttText: string | null;
+    audioSha256: string;
+    sttResponseSha256: string | null;
+    sttModel: string | null;
+    usedFallback: boolean;
+    status: "completed" | "empty" | "failed" | "unintelligible";
+    failureReason?: string | null;
+  }): Promise<schema.EncounterTranscriptionSegment>;
+  getEncounterTranscriptionSegments(encounterId: number): Promise<Array<schema.EncounterTranscriptionSegment & { sessionSequence: number; clientSessionId: string }>>;
+  setEncounterTranscriptionDerivedHash(encounterId: number, derivedTranscriptSha256: string): Promise<void>;
   getPublishedEncountersByPatient(patientId: number): Promise<Pick<ClinicalEncounter, 'id' | 'visitDate' | 'visitType' | 'chiefComplaint' | 'patientSummary' | 'summaryPublishedAt'>[]>;
 
   // Appointments (native + Boulevard sync via Zapier)
@@ -2143,6 +2158,130 @@ export class DbStorage implements IStorage {
       .where(and(eq(schema.clinicalEncounters.id, id), eq(schema.clinicalEncounters.clinicianId, clinicianId)))
       .returning();
     return result.length > 0;
+  }
+
+  async getOrCreateEncounterTranscriptionSession(encounterId: number, clientSessionId: string): Promise<schema.EncounterTranscriptionSession> {
+    // The client session ID is stable for the lifetime of one MediaRecorder
+    // session. Reserve its sequence before any segment completion can affect
+    // ordering; concurrent first-segment uploads resolve to this same row.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const existing = await db.select().from(schema.encounterTranscriptionSessions)
+        .where(and(
+          eq(schema.encounterTranscriptionSessions.encounterId, encounterId),
+          eq(schema.encounterTranscriptionSessions.clientSessionId, clientSessionId),
+        ));
+      if (existing[0]) return existing[0];
+
+      const maxRow = await db.select({
+        maxSequence: sql<number>`coalesce(max(${schema.encounterTranscriptionSessions.sessionSequence}), -1)`,
+      }).from(schema.encounterTranscriptionSessions)
+        .where(eq(schema.encounterTranscriptionSessions.encounterId, encounterId));
+      const nextSequence = Number(maxRow[0]?.maxSequence ?? -1) + 1;
+
+      try {
+        const inserted = await db.insert(schema.encounterTranscriptionSessions)
+          .values({ encounterId, clientSessionId, sessionSequence: nextSequence })
+          .returning();
+        return inserted[0];
+      } catch (err: any) {
+        // A concurrent upload for this same session wins harmlessly. A distinct
+        // concurrent session may have claimed the next sequence; retry to
+        // reserve a new deterministic slot rather than using completion order.
+        const raced = await db.select().from(schema.encounterTranscriptionSessions)
+          .where(and(
+            eq(schema.encounterTranscriptionSessions.encounterId, encounterId),
+            eq(schema.encounterTranscriptionSessions.clientSessionId, clientSessionId),
+          ));
+        if (raced[0]) return raced[0];
+        if (attempt === 2) throw err;
+      }
+    }
+    throw new Error("Unable to reserve transcription session");
+  }
+
+  async upsertEncounterTranscriptionSegment(data: {
+    encounterId: number;
+    clientSessionId: string;
+    segmentIndex: number;
+    rawSttText: string | null;
+    audioSha256: string;
+    sttResponseSha256: string | null;
+    sttModel: string | null;
+    usedFallback: boolean;
+    status: "completed" | "empty" | "failed" | "unintelligible";
+    failureReason?: string | null;
+  }): Promise<schema.EncounterTranscriptionSegment> {
+    const session = await this.getOrCreateEncounterTranscriptionSession(data.encounterId, data.clientSessionId);
+    const existing = await db.select().from(schema.encounterTranscriptionSegments)
+      .where(and(
+        eq(schema.encounterTranscriptionSegments.transcriptionSessionId, session.id),
+        eq(schema.encounterTranscriptionSegments.segmentIndex, data.segmentIndex),
+      ));
+    const attemptCount = (existing[0]?.attemptCount ?? 0) + 1;
+    const values = {
+      rawSttText: data.rawSttText,
+      audioSha256: data.audioSha256,
+      sttResponseSha256: data.sttResponseSha256,
+      sttModel: data.sttModel,
+      usedFallback: data.usedFallback,
+      attemptCount,
+      status: data.status,
+      failureReason: data.failureReason ?? null,
+      finalizedAt: new Date(),
+    };
+
+    if (existing[0]) {
+      const updated = await db.update(schema.encounterTranscriptionSegments)
+        .set(values)
+        .where(eq(schema.encounterTranscriptionSegments.id, existing[0].id))
+        .returning();
+      return updated[0];
+    }
+
+    const inserted = await db.insert(schema.encounterTranscriptionSegments)
+      .values({
+        transcriptionSessionId: session.id,
+        segmentIndex: data.segmentIndex,
+        ...values,
+      })
+      .returning();
+    return inserted[0];
+  }
+
+  async getEncounterTranscriptionSegments(encounterId: number): Promise<Array<schema.EncounterTranscriptionSegment & { sessionSequence: number; clientSessionId: string }>> {
+    const rows = await db.select({
+      segment: schema.encounterTranscriptionSegments,
+      sessionSequence: schema.encounterTranscriptionSessions.sessionSequence,
+      clientSessionId: schema.encounterTranscriptionSessions.clientSessionId,
+    })
+      .from(schema.encounterTranscriptionSegments)
+      .innerJoin(
+        schema.encounterTranscriptionSessions,
+        eq(schema.encounterTranscriptionSegments.transcriptionSessionId, schema.encounterTranscriptionSessions.id),
+      )
+      .where(eq(schema.encounterTranscriptionSessions.encounterId, encounterId))
+      .orderBy(
+        asc(schema.encounterTranscriptionSessions.sessionSequence),
+        asc(schema.encounterTranscriptionSegments.segmentIndex),
+      );
+    return rows.map((row) => ({
+      ...row.segment,
+      sessionSequence: row.sessionSequence,
+      clientSessionId: row.clientSessionId,
+    }));
+  }
+
+  async setEncounterTranscriptionDerivedHash(encounterId: number, derivedTranscriptSha256: string): Promise<void> {
+    const sessions = await db.select({ id: schema.encounterTranscriptionSessions.id })
+      .from(schema.encounterTranscriptionSessions)
+      .where(eq(schema.encounterTranscriptionSessions.encounterId, encounterId));
+    if (sessions.length === 0) return;
+    await db.update(schema.encounterTranscriptionSegments)
+      .set({ derivedTranscriptSha256 })
+      .where(inArray(
+        schema.encounterTranscriptionSegments.transcriptionSessionId,
+        sessions.map((session) => session.id),
+      ));
   }
 
   async getPublishedEncountersByPatient(patientId: number): Promise<Pick<ClinicalEncounter, 'id' | 'visitDate' | 'visitType' | 'chiefComplaint' | 'patientSummary' | 'summaryPublishedAt'>[]> {

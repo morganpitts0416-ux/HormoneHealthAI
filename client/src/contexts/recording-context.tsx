@@ -100,6 +100,9 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
   // stale. This prevents late results from a discarded recording from leaking
   // into a subsequent recording bound to a DIFFERENT patient/encounter.
   const recordingSessionRef = useRef(0);
+  // Stable opaque identifier sent with every segment in one MediaRecorder
+  // session. The server reserves its encounter-local ordering slot.
+  const sourceSessionIdRef = useRef("");
 
   // Captured at start time — used so finalize/autosave always writes to the
   // ORIGINAL bound patient/encounter, not whatever the UI is currently showing.
@@ -166,6 +169,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     recordingStoppedRef.current = false;
     finalizedRef.current = false;
     recordingAbortedRef.current = false;
+    sourceSessionIdRef.current = "";
     boundPatientIdRef.current = null;
     boundEncounterIdRef.current = null;
     visitTypeRef.current = "follow-up";
@@ -191,6 +195,9 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     const formData = new FormData();
     formData.append("audio", file);
     formData.append("visitType", visitTypeRef.current);
+    formData.append("encounterId", String(boundEncounterIdRef.current ?? ""));
+    formData.append("recordingSessionId", sourceSessionIdRef.current);
+    formData.append("segmentIndex", String(segIdx));
     const res = await fetch("/api/encounters/transcribe", {
       method: "POST",
       body: formData,
@@ -266,37 +273,15 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
       });
     }
 
+    // Source text was already persisted, one immutable deterministic segment
+    // at a time, by /transcribe. Do not mirror it into the editable encounter
+    // transcription field here. Refresh consumers so they obtain the
+    // authoritative raw source through the encounter endpoint.
     const encounterId = boundEncounterIdRef.current;
-    const patientId = boundPatientIdRef.current;
-
-    if (encounterId && patientId) {
-      try {
-        // PATIENT-SAFETY: always send expectedPatientId so the server's
-        // 409 tripwire prevents writing this transcript to the wrong chart
-        // even if the bound encounter was reassigned by a concurrent edit.
-        const body: any = {
-          transcription: fullTranscript || null,
-          expectedPatientId: patientId,
-        };
-        if (utterances) body.diarizedTranscript = utterances;
-        await apiRequest("PUT", `/api/encounters/${encounterId}`, body);
-        // PATIENT-SAFETY: post-await guard — if the user discarded (or the
-        // app started a new recording) while the PUT was in flight, do NOT
-        // overwrite the new session's state with this prior session's
-        // success/error. The PUT already used the prior session's bound
-        // ids so the server stored it correctly; just don't surface UI.
-        if (session !== recordingSessionRef.current) return;
-        // Refresh the open notes / encounter detail caches so any visible
-        // editor or list reflects the saved transcript.
-        queryClient.invalidateQueries({ queryKey: ["/api/encounters", encounterId] });
-        queryClient.invalidateQueries({ queryKey: ["/api/encounters"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/encounters/open"] });
-      } catch (err: any) {
-        if (session !== recordingSessionRef.current) return;
-        setErrorMessage(err?.message || "Failed to save transcript to encounter");
-        setState("error");
-        return;
-      }
+    if (encounterId) {
+      queryClient.invalidateQueries({ queryKey: ["/api/encounters", encounterId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/encounters"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/encounters/open"] });
     }
 
     if (session !== recordingSessionRef.current) return;
@@ -476,6 +461,8 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     // any in-flight callbacks from a prior (discarded/aborted) session see a
     // stale session id and bail.
     recordingSessionRef.current += 1;
+    sourceSessionIdRef.current = globalThis.crypto?.randomUUID?.()
+      ?? `recording-${recordingSessionRef.current}-${Math.random().toString(36).slice(2)}`;
 
     streamRef.current = stream;
     segmentIndexRef.current = 0;

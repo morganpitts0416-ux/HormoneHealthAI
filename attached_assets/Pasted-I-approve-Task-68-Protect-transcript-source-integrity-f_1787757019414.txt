@@ -1,0 +1,37 @@
+I approve Task #68 — Protect transcript source integrity for direct implementation.
+
+Please implement the approved plan with one additional requirement:
+
+Verified raw transcript assembly must preserve deterministic recording order.
+
+Each immutable STT segment should have a recording-session identifier and deterministic segment sequence/index. The verified raw transcript must be assembled according to that sequence, not STT completion time, retry completion time, database insertion time, or another timing-dependent order.
+
+A retry may replace/finalize the transcription outcome associated with that segment according to the approved provenance design, but it must never create duplicate clinical text or move the segment to a different position in the encounter.
+
+Preserve all previously approved invariants:
+
+remove the broad clinical glossary from STT prompting;
+immutable server-owned per-segment raw STT provenance;
+audio and response hashes plus model/fallback/retry metadata;
+existing transcription remains editable/legacy text and is not represented as original STT evidence;
+diarized_transcript remains derived assistance and cannot automatically become authoritative;
+verified segment-backed raw STT is the default downstream source for new encounters;
+legacy encounters remain readable but explicitly have unverified provenance;
+failed, empty, unintelligible, or missing audio fails closed with an explicit gap/failure state rather than reconstructed dialogue;
+general encounter updates cannot overwrite immutable STT source records;
+stale derived transcript cannot supersede a newer raw source;
+SOAP/extraction/clinical reasoning use the centralized authoritative transcript-source selector;
+no historical transcript should be retroactively labeled provenance-verified without supporting segment records.
+
+Also make sure the regression suite tests out-of-order STT completion/retry and confirms that the final verified transcript still assembles in original recording order without duplicate segments.
+
+Keep this change focused on transcript source integrity. Do not modify SOAP-writing behavior, Brain algorithms, Patient Communication, Provider Chart Note, Evidence Layer, or June as part of this task.
+
+After implementation:
+
+run the focused transcript/provenance regression tests;
+run existing recording/retry/gap tests;
+run SOAP regression tests to make sure transcript-source selection did not break generation;
+run the production build;
+show me the files/schema/routes changed and verification results;
+do not deploy automatically.

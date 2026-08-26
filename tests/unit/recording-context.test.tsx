@@ -78,11 +78,14 @@ class MockMediaRecorder {
 type FetchPlan = (callIndex: number) => { ok: boolean; body?: any };
 let fetchPlan: FetchPlan = () => ({ ok: true, body: { transcription: "hello" } });
 let fetchCalls = 0;
+let transcriptionBodies: FormData[] = [];
 
 function installFetchMock() {
   fetchCalls = 0;
-  vi.stubGlobal("fetch", vi.fn(async (url: any) => {
+  transcriptionBodies = [];
+  vi.stubGlobal("fetch", vi.fn(async (url: any, init?: RequestInit) => {
     if (String(url).includes("/api/encounters/transcribe")) {
+      transcriptionBodies.push(init?.body as FormData);
       const plan = fetchPlan(fetchCalls++);
       return {
         ok: plan.ok,
@@ -177,12 +180,32 @@ describe("segment upload failures", () => {
     expect(ctx.state).toBe("review");
     expect(ctx.finalTranscript).toBe("minute one text");
     expect(ctx.finalTranscript).not.toContain(AUDIO_GAP_MARKER_PREFIX);
-    // Transcript persisted with the patient-safety tripwire field
-    expect(apiRequestMock).toHaveBeenCalledWith(
-      "PUT",
-      "/api/encounters/7",
-      expect.objectContaining({ transcription: "minute one text", expectedPatientId: 42 }),
+    // Per-segment source evidence is persisted by the STT endpoint. The client
+    // must not copy assembled raw text into the editable encounter field.
+    expect(apiRequestMock).not.toHaveBeenCalled();
+    expect(invalidateQueriesMock).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ["/api/encounters", 7] }),
     );
+  });
+
+  test("retry submits the same immutable source slot instead of creating a second segment", async () => {
+    fetchPlan = (i) => i === 0
+      ? { ok: false, body: { message: "temporary outage" } }
+      : { ok: true, body: { transcription: "recovered" } };
+
+    await startRecording();
+    MockMediaRecorder.latest().emitData();
+    await tick(SEGMENT_MS);
+    await tick(2000);
+
+    expect(transcriptionBodies).toHaveLength(2);
+    const [first, retry] = transcriptionBodies;
+    expect(first.get("encounterId")).toBe("7");
+    expect(first.get("segmentIndex")).toBe("0");
+    expect(first.get("recordingSessionId")).toBeTruthy();
+    expect(retry.get("encounterId")).toBe(first.get("encounterId"));
+    expect(retry.get("segmentIndex")).toBe(first.get("segmentIndex"));
+    expect(retry.get("recordingSessionId")).toBe(first.get("recordingSessionId"));
   });
 
   test("permanent failure writes an explicit [AUDIO GAP] marker and warns loudly — never a silent drop", async () => {
@@ -216,14 +239,9 @@ describe("segment upload failures", () => {
         title: expect.stringContaining("INCOMPLETE"),
       }),
     );
-    // The gap marker is persisted so the legal record shows the hole
-    expect(apiRequestMock).toHaveBeenCalledWith(
-      "PUT",
-      "/api/encounters/7",
-      expect.objectContaining({
-        transcription: expect.stringContaining(AUDIO_GAP_MARKER_PREFIX),
-      }),
-    );
+    // The server has already persisted a failed source-segment outcome; the
+    // client cannot overwrite it through the general encounter update route.
+    expect(apiRequestMock).not.toHaveBeenCalled();
   });
 
   test("finalize-time last-chance retry recovers a failed blob and removes the gap marker", async () => {

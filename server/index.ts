@@ -93,6 +93,8 @@ const DRIFT_REQUIRED_TABLES = [
   "clinical_block_defaults",
   "encounter_templates",
   "diagnosis_presets",
+  "encounter_transcription_sessions",
+  "encounter_transcription_segments",
 ];
 
 const DRIFT_REQUIRED_COLUMNS: Record<string, string[]> = {
@@ -128,6 +130,7 @@ const DRIFT_REQUIRED_COLUMNS: Record<string, string[]> = {
     "is_amended",
     "clinic_id",
     "provider_id",
+    "transcript_provenance_state",
   ],
   // ── patients: messaging + insurance columns added post-launch ────────────
   patients: [

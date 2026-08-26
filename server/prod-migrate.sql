@@ -70,6 +70,42 @@ ALTER TABLE clinical_encounters ADD COLUMN IF NOT EXISTS amended_at TIMESTAMP;
 ALTER TABLE clinical_encounters ADD COLUMN IF NOT EXISTS encounter_versions JSONB;
 ALTER TABLE clinical_encounters ADD COLUMN IF NOT EXISTS clinic_id INTEGER;
 ALTER TABLE clinical_encounters ADD COLUMN IF NOT EXISTS provider_id INTEGER;
+ALTER TABLE clinical_encounters ADD COLUMN IF NOT EXISTS transcript_provenance_state VARCHAR(30) NOT NULL DEFAULT 'legacy_unverified';
+
+-- Immutable source evidence for new audio transcription. Existing encounter
+-- text remains intentionally legacy/unverified and is not backfilled here.
+CREATE TABLE IF NOT EXISTS encounter_transcription_sessions (
+  id SERIAL PRIMARY KEY,
+  encounter_id INTEGER NOT NULL REFERENCES clinical_encounters(id) ON DELETE CASCADE,
+  client_session_id VARCHAR(120) NOT NULL,
+  session_sequence INTEGER NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS encounter_transcription_sessions_encounter_client_uq
+  ON encounter_transcription_sessions(encounter_id, client_session_id);
+CREATE UNIQUE INDEX IF NOT EXISTS encounter_transcription_sessions_encounter_sequence_uq
+  ON encounter_transcription_sessions(encounter_id, session_sequence);
+
+CREATE TABLE IF NOT EXISTS encounter_transcription_segments (
+  id SERIAL PRIMARY KEY,
+  transcription_session_id INTEGER NOT NULL REFERENCES encounter_transcription_sessions(id) ON DELETE CASCADE,
+  segment_index INTEGER NOT NULL,
+  raw_stt_text TEXT,
+  audio_sha256 VARCHAR(64) NOT NULL,
+  stt_response_sha256 VARCHAR(64),
+  stt_model VARCHAR(80),
+  used_fallback BOOLEAN NOT NULL DEFAULT FALSE,
+  attempt_count INTEGER NOT NULL DEFAULT 1,
+  status VARCHAR(30) NOT NULL,
+  failure_reason TEXT,
+  derived_transcript_sha256 VARCHAR(64),
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  finalized_at TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS encounter_transcription_segments_session_index_uq
+  ON encounter_transcription_segments(transcription_session_id, segment_index);
+CREATE INDEX IF NOT EXISTS encounter_transcription_segments_session_index_idx
+  ON encounter_transcription_segments(transcription_session_id, segment_index);
 
 -- ── New tables (created only if they don't exist) ────────────
 
