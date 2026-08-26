@@ -256,6 +256,7 @@ When the exact drug identity is uncertain from the transcript, PRESERVE the pati
   - NEVER pair two different medications as interchangeable: "pantoprazole (Nexium)" is incorrect because they are distinct drugs in the same class.
   - Same-class ≠ same drug: esomeprazole ≠ pantoprazole ≠ omeprazole; progesterone ≠ medroxyprogesterone; testosterone cypionate ≠ testosterone enanthate; levothyroxine ≠ liothyronine.
   - When drug identity is genuinely uncertain, always set confidence = "requires_confirmation" and preserve the patient's exact wording in the name field.
+  - "requires_confirmation" is an internal extraction-confidence state, not a patient-facing instruction. Do not turn it into a Care Plan task to confirm, clarify, or verify the medication solely because the exact product name is unavailable.
 
 MEDICATION TIMING SEPARATION — PRE-VISIT VS AT-VISIT:
 Maintain strict separation between medications the patient was on at the START of this encounter (status: "current") and medications prescribed or changed AT this visit (status: "new", "adjusted", "discontinued"):
@@ -1881,11 +1882,19 @@ This gate OVERRIDES the Four-Location Mandate for discussed-status medications. 
 PRESCRIPTION DETAIL COMPLETENESS IS NOT DECISION UNCERTAINTY:
 When the final treatment decision is clear, document the treatment using only the medication details established in the transcript. Do not invent missing dose, concentration, quantity, route, frequency, or SIG details. Do not add "dose requires confirmation," "exact concentration not captured," "verify before initiation," or similar reconciliation language solely because a prescription-level field was not spoken.
 
-Missing detail alone does not create a provider review flag. Use review or uncertainty language only for a genuine clinically consequential ambiguity or contradiction, such as conflicting doses, unresolved route, unclear medication identity, uncertainty whether treatment was initiated versus discussed, or an unresolved final treatment decision.
+Missing detail alone does not create a provider review flag. Use review or uncertainty language only for a genuine clinically consequential ambiguity or contradiction, such as conflicting doses, unresolved route, an unclear medication identity that would require choosing among materially different treatments, uncertainty whether treatment was initiated versus discussed, or an unresolved final treatment decision.
 
 Example: if the transcript establishes that testosterone injections will be initiated twice weekly but does not establish the mg dose, write "Initiate testosterone IM twice weekly." Do not append a dose-verification warning. Never infer or invent the missing dose.
 
-This rule does not suppress safeguards for conflicting doses or routes, unclear medication identity, unclear start-versus-discussion state, or any ambiguity that could materially affect patient safety.
+IDENTITY COMPLETENESS IS NOT PATIENT VERIFICATION:
+When the treatment category and action are clear but the exact product or prescription details are not recoverable, document the established clinical plan at the supported level of specificity. For example, if the transcript clearly establishes starting a low-dose blood-pressure medication but does not identify the product or dose, write "Initiate low-dose antihypertensive therapy" and preserve any stated route, frequency, monitoring, or follow-up. Do not invent a product, dose, concentration, quantity, or directions.
+  - Internal extraction uncertainty about the exact product must never create a patient-facing instruction to confirm, clarify, or verify the medication name, dose, concentration, route, frequency, or directions with the clinic or pharmacy.
+  - Absence of sufficient transcript detail is not itself a patient-facing action and must not become a Care Plan bullet.
+  - If an incompletely identified intervention is not sufficiently established as active treatment even at the category/action level, omit that specific intervention from the active Plan and Care Plan rather than manufacturing a verification task. It may remain in the appropriate clinical context or internal review field when supported.
+  - For example, if a second nasal spray is mentioned but its product identity and active-treatment decision are not established, omit that specific spray from the active Plan and Care Plan; do not create a patient task to verify it.
+  - Preserve genuine provider-review safeguards when identifiable medications, doses, routes, or treatment decisions conflict in a way that could materially affect care. This exception does not authorize silently choosing between competing treatments.
+
+This rule does not suppress safeguards for conflicting doses or routes, clinically consequential unclear identity, unclear start-versus-discussion state, or any ambiguity that could materially affect patient safety.
 
 ═══════════════════════════════════════
 FOUR-LOCATION MANDATE
@@ -3057,7 +3066,7 @@ When a generalized phrase has replaced specific clinical content from the transc
    - Route omitted when provider stated a specific route (e.g., "testosterone" without stating IM/SQ/topical)
    - Frequency omitted when provider stated a specific frequency (e.g., "testosterone" without stating "weekly")
    - Administration instructions omitted when counseling was given (e.g., injection site rotation instructions not in Care Plan)
-   Do NOT treat a dose, concentration, quantity, route, frequency, or complete SIG that was not spoken as a missing-note error. Missing prescription detail alone is not a provider review flag and must not be rewritten as "requires confirmation." Preserve genuine ambiguity only when conflicting details, unclear identity/route, unclear start-versus-discussion status, or another clinically consequential unresolved decision exists.
+   Do NOT treat a dose, concentration, quantity, route, or complete SIG that was not spoken as a missing-note error. Missing prescription detail alone is not a provider review flag and must not be rewritten as "requires confirmation." If the treatment category and action are clear but the exact product is not recoverable, document the category-level plan without inventing details or adding a patient-facing confirm/clarify/verify instruction. If the intervention is not sufficiently established as active treatment at that level, omit it from the active Plan/Care Plan. Preserve genuine provider-review safeguards only when conflicting identifiable details, clinically consequential unclear identity/route, unclear start-versus-discussion status, or another clinically consequential unresolved decision exists.
    Flag each omission as important and add the missing specifics from the transcript. A plan entry that says only "Start tirzepatide" when the transcript specified "tirzepatide 5mg subcutaneously weekly" is inadequate.
 
 52. MAJOR TREATMENT TOPIC MISSING FROM ASSESSMENT: Compare the structured extraction's treatment_decision_rationale (if present) against the numbered Assessment items. For each decision documented in treatment_decision_rationale, verify a corresponding numbered Assessment item exists. If a major treatment decision is present in the extraction (estrogen route selection rationale, testosterone deferral reasoning, GLP-1 dose escalation, smoking cessation counseling) but has no corresponding Assessment entry → flag CRITICAL and add the Assessment item with the full Clinical Rationale drawn from the extraction's treatment_decision_rationale.
@@ -3635,7 +3644,7 @@ function buildExtractionSummary(extraction: any): string {
         discontinued_today: "DISCONTINUED (must not appear as continued or active)",
         discussed_only: "Discussed only — NOT an active prescription",
         future_consideration: "Future consideration ONLY — not decided at this visit",
-        uncertain_dose_or_identity: "UNCERTAIN identity or conflicting/consequential dose — flag for clinician verification",
+        uncertain_dose_or_identity: "UNCERTAIN identity or conflicting/consequential dose — do not infer; use provider review only when the ambiguity could materially affect care",
       }[status] ?? status;
       lines.push(`Medication status [${label}]: ${items.join("; ")}`);
     }

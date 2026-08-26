@@ -14,3 +14,11 @@ The SOAP pipeline has multiple layered rule systems (generation critical violati
 **Why:** Broad completeness rules can cause the model to replay the same history, counseling exchange, and alternatives discussion across every SOAP section. “Focused” must never be treated as permission to summarize away meaningful clinical content.
 
 **How to apply:** When revising writer or QA rules, distinguish repetition of safety-critical action details from repetition of clinical narrative. Align writer injection blocks and QA coverage rules with section function. Preserve the resolved clinically-consequential decision-state ambiguity guardrail; do not broaden or alter that QA check without explicit user approval.
+
+### Medication identity uncertainty versus patient action
+
+Internal extraction confidence for an unrecoverable medication/product name must not become a patient-facing confirmation task. When the treatment category and decision are established, document that supported plan without inventing product details; when the intervention is not established as active treatment, omit it from active Plan/Care Plan. Reserve provider review for clinically consequential conflicts among identifiable treatments, doses, routes, or decisions.
+
+**Why:** A broad "unclear identity" safeguard can turn missing transcript detail into unsafe or artificial instructions for patients to verify a medication with the clinic or pharmacy.
+
+**How to apply:** Align normalization, writer, QA, and injected extraction-summary language. Preserve stated medication details and true conflict flags, but never create Care Plan work solely because the transcript lacks prescription detail.

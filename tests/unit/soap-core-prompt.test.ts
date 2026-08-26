@@ -105,16 +105,40 @@ describe("shared ClinIQ SOAP core prompt", () => {
     expect(prompt).toContain('write "Initiate testosterone IM twice weekly."');
     expect(prompt).toContain("Do not append a dose-verification warning.");
     expect(prompt).toContain('Do not add "dose requires confirmation," "exact concentration not captured," "verify before initiation,"');
-    expect(prompt).toContain("This rule does not suppress safeguards for conflicting doses or routes, unclear medication identity, unclear start-versus-discussion state");
+    expect(prompt).toContain("This rule does not suppress safeguards for conflicting doses or routes, clinically consequential unclear identity, unclear start-versus-discussion state");
     expect(pipelineSource).toContain("If a prescription-level field was simply not spoken, document only the known details and do not flag or narrate the field's absence.");
     expect(pipelineSource).toContain('Missing prescription detail alone is not a provider review flag and must not be rewritten as "requires confirmation."');
+  });
+
+  test("documents clear category-level treatment without turning identity gaps into patient tasks", () => {
+    expect(prompt).toContain("IDENTITY COMPLETENESS IS NOT PATIENT VERIFICATION:");
+    expect(prompt).toContain("When the treatment category and action are clear but the exact product or prescription details are not recoverable");
+    expect(prompt).toContain('write "Initiate low-dose antihypertensive therapy"');
+    expect(prompt).toContain("Internal extraction uncertainty about the exact product must never create a patient-facing instruction");
+    expect(prompt).toContain("Absence of sufficient transcript detail is not itself a patient-facing action");
+    expect(prompt).toContain("omit that specific intervention from the active Plan and Care Plan rather than manufacturing a verification task");
+    expect(pipelineSource).toContain("\"requires_confirmation\" is an internal extraction-confidence state, not a patient-facing instruction");
+  });
+
+  test("omits an incompletely identified second nasal spray from active treatment", () => {
+    expect(prompt).toContain("if a second nasal spray is mentioned but its product identity and active-treatment decision are not established");
+    expect(prompt).toContain("omit that specific spray from the active Plan and Care Plan");
+    expect(prompt).toContain("do not create a patient task to verify it");
+  });
+
+  test("keeps true identity conflicts as provider-review safeguards", () => {
+    expect(prompt).toContain("an unclear medication identity that would require choosing among materially different treatments");
+    expect(prompt).toContain("Preserve genuine provider-review safeguards when identifiable medications, doses, routes, or treatment decisions conflict in a way that could materially affect care");
+    expect(pipelineSource).toContain("clinically consequential unclear identity/route");
+    expect(prompt).toContain("Do not invent a product, dose, concentration, quantity, or directions");
+    expect(pipelineSource).toContain("PRESERVE the patient's stated name");
   });
 
   test("preserves spoken medication details and true ambiguity safeguards", () => {
     expect(pipelineSource).toContain("MISSING ROUTE / DOSE / FREQUENCY WHEN TRANSCRIPT PROVIDES THEM");
     expect(pipelineSource).toContain("verify the note includes the route, dose, and frequency when the transcript stated them.");
     expect(pipelineSource).toContain("If the transcript provides conflicting values or another genuine clinically consequential ambiguity");
-    expect(pipelineSource).toContain("conflicting details, unclear identity/route, unclear start-versus-discussion status");
+    expect(pipelineSource).toContain("conflicting identifiable details, clinically consequential unclear identity/route, unclear start-versus-discussion status");
     expect(prompt).toContain("Every medication START in the A/P must appear as a Care Plan bullet");
     expect(prompt).toContain("Every STOP or HOLD in the A/P must appear in the Care Plan");
     expect(prompt).toContain("Every lab order, referral, and follow-up from the A/P must appear in the Care Plan");
