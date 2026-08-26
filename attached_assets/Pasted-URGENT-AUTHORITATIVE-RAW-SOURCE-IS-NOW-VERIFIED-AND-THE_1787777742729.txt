@@ -1,0 +1,106 @@
+URGENT — AUTHORITATIVE RAW SOURCE IS NOW VERIFIED, AND THE AUDIO/STT PIPELINE IS BROKEN.
+
+I tested the latest transcript-integrity revision after the authoritative-source UI correction.
+
+The UI correctly reports:
+
+Verified raw source · 2 segments
+
+But the entire authoritative raw transcript is:
+
+25
+
+The first day is tomorrow.
+
+I spoke a normal HRT follow-up test encounter containing substantially more speech, including estradiol 0.025 mg, progesterone 100 mg, improvement in symptoms, prior breakthrough bleeding, and adding transdermal testosterone.
+
+Therefore this is no longer a UI/source-selection question. The immutable segment-backed raw source itself is wrong.
+
+Use the new encounter_transcription_attempts observability to inspect this exact latest test before changing anything.
+
+First, show me the actual evidence for both segments
+
+For each of the 2 verified source segments, report:
+
+recording session ID
+session sequence
+segment index
+attempt number
+audio byte length
+audio SHA-256
+request-received timestamp
+STT-started timestamp
+STT-completed timestamp
+model actually used
+fallback status
+attempt status
+failure reason
+protected raw STT text
+final deterministic segment status
+
+I specifically need to know whether the uploaded audio blobs are a realistic size for the amount of speech recorded.
+
+Inspect the browser MediaRecorder path
+
+Trace exactly how the recorder creates the blob sent for each segment.
+
+Determine:
+
+Whether MediaRecorder is actually capturing continuously from microphone start until stop.
+Whether recorded dataavailable chunks are being accumulated correctly.
+Whether a segment flush/restart clears the chunk array before the Blob is constructed.
+Whether only the final dataavailable chunk is being uploaded instead of all chunks belonging to that segment.
+Whether requestData(), stop(), and recorder restart are racing each other.
+Whether the code waits for the final dataavailable event before constructing/uploading the segment Blob.
+Whether calling stop on the encounter creates an extremely short final segment.
+Whether the microphone stream remains active across segment restarts.
+Whether the correct audio MIME type/container is sent to OpenAI after each restart.
+Whether the first and second segments contain actual microphone audio or nearly empty/silent audio.
+This is the likely failure class
+
+The symptom strongly suggests:
+
+provider speaks normally
+→ MediaRecorder captures/segments incorrectly
+→ tiny or incomplete audio Blob reaches server
+→ STT faithfully or hallucinatorily produces a tiny fragment
+→ provenance correctly preserves that bad STT output
+
+Do not weaken provenance, restore browser-local transcript authority, restore normalized text as the source, or reintroduce the clinical glossary.
+
+Desired recorder behavior
+
+For every recording segment:
+
+all MediaRecorder dataavailable chunks belonging to that segment
+→ assembled into one complete audio Blob
+→ nontrivial byte length validated
+→ uploaded once using its deterministic session/segment identity
+→ STT
+→ immutable source segment
+
+The recorder must wait for the final dataavailable event before finalizing a segment.
+
+If a generated audio Blob is unexpectedly empty/tiny, fail closed and persist an audio-capture failure/gap rather than sending unusable audio to STT.
+
+Add capture-level safeguards
+
+Propose the smallest correction that also adds:
+
+minimum viable Blob validation before STT upload;
+recording duration for each segment;
+audio byte length relative to duration;
+explicit audio_capture_failed state for empty/implausibly small segments;
+protection against a tiny trailing segment on stop being treated as valid speech;
+regression tests for dataavailable → stop → final event → blob assembly;
+multi-segment recording across the 60-second boundary;
+manual stop before 60 seconds;
+recording longer than 60 seconds;
+final segment flushing;
+no loss of earlier chunks during recorder restart.
+
+Do not change SOAP, transcript-source authority, Brain, Patient Communication, or downstream clinical AI.
+
+If the provenance rows show normal-size audio blobs containing the expected recording duration, then investigate the STT request/provider next. But determine that from the persisted evidence rather than guessing.
+
+Show me the two segment evidence rows and root cause first. Then propose the smallest recorder fix. Do not deploy automatically.
