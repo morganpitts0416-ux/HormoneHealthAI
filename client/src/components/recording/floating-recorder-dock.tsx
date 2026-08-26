@@ -139,6 +139,31 @@ export function FloatingRecorderDock() {
             </div>
           )}
 
+          {recording.captureDiagnostic && (
+            <div
+              className="rounded-md px-2.5 py-2 border space-y-1.5"
+              style={{ backgroundColor: "#fff7e8", borderColor: "#d6a24a", color: "#5f430e" }}
+              data-testid="capture-audio-diagnostic"
+            >
+              <p className="text-[11px] font-semibold">
+                Capture diagnostic — local browser audio only
+              </p>
+              <p className="text-[10px] leading-snug">
+                Segment {recording.captureDiagnostic.segmentIndex + 1} · {recording.captureDiagnostic.byteLength.toLocaleString()} bytes · {recording.captureDiagnostic.mimeType || "unknown MIME"}
+              </p>
+              <audio
+                controls
+                preload="metadata"
+                src={recording.captureDiagnostic.url}
+                className="w-full h-8"
+                data-testid="audio-capture-diagnostic-player"
+              />
+              <p className="text-[10px] leading-snug">
+                This is the exact assembled Blob passed to transcription. It stays only in this browser tab and is removed when the recording is dismissed.
+              </p>
+            </div>
+          )}
+
           {isReview && (
             <p className="text-[12px]" style={{ color: "#3a4630" }}>
               The transcript was saved to this patient's encounter. You can open it now to review and generate a SOAP note.

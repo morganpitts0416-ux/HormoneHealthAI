@@ -20,3 +20,9 @@ Recorder capture transitions must wait for the preceding recorder's final event 
 **Why:** A timer-based restart or early track shutdown can truncate the final Blob while still creating superficially valid source rows. Treating invalid audio as STT uncertainty would hide a capture defect or invite fabricated replacement dialogue.
 
 **How to apply:** Keep validation conservative so a valid short trailing utterance is retained. Recorder diagnostics must be authenticated and encounter-scoped, expose metadata/outcomes only, and omit protected raw STT text.
+
+The OpenAI Node SDK converts a server `fs.ReadStream` into a fresh multipart file that preserves the filename and bytes but has no inferred MIME type; its multipart part is therefore `application/octet-stream` even for a valid `.webm`/Opus capture.
+
+**Why:** The browser upload can correctly identify `audio/webm;codecs=opus` while the final server-to-OpenAI request does not. Do not mistake this MIME difference for corruption without a controlled transcription comparison.
+
+**How to apply:** Preserve the `.webm` extension, verify byte equality at the server boundary, and use a non-PHI WebM/Opus control file through the exact SDK path before changing recorder mechanics or transcription models.

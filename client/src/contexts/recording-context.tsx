@@ -18,6 +18,14 @@ export interface TranscriptSourceSummary {
   segmentCount: number;
 }
 
+export interface CaptureDiagnostic {
+  url: string;
+  segmentIndex: number;
+  mimeType: string;
+  byteLength: number;
+  durationMs: number;
+}
+
 const SEGMENT_MS = 60_000;
 // Upload retry policy: transient network/server failures must NOT silently
 // drop a minute of clinical audio. Each segment upload is attempted up to
@@ -66,6 +74,9 @@ interface RecordingContextValue {
   finalTranscript: string;
   transcriptSource: TranscriptSourceSummary | null;
   finalUtterances: DiarizedUtterance[] | null;
+  // Development-only, browser-memory playback of the exact Blob handed to STT.
+  // Enabled only with ?audioCaptureDiagnostic=1.
+  captureDiagnostic: CaptureDiagnostic | null;
   errorMessage: string | null;
   start: (params: StartRecordingParams) => Promise<boolean>;
   stop: () => void;
@@ -96,6 +107,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
   const [finalTranscript, setFinalTranscript] = useState("");
   const [transcriptSource, setTranscriptSource] = useState<TranscriptSourceSummary | null>(null);
   const [finalUtterances, setFinalUtterances] = useState<DiarizedUtterance[] | null>(null);
+  const [captureDiagnostic, setCaptureDiagnostic] = useState<CaptureDiagnostic | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Refs for the recorder mechanics
@@ -133,6 +145,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
   // session. The server reserves its encounter-local ordering slot.
   const sourceSessionIdRef = useRef("");
   const startSegmentRecorderRef = useRef<(stream: MediaStream) => void>(() => {});
+  const captureDiagnosticUrlRef = useRef<string | null>(null);
 
   // Captured at start time — used so finalize/autosave always writes to the
   // ORIGINAL bound patient/encounter, not whatever the UI is currently showing.
@@ -170,12 +183,37 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [acquireWakeLock]);
 
+  const clearCaptureDiagnostic = useCallback(() => {
+    if (captureDiagnosticUrlRef.current) {
+      URL.revokeObjectURL(captureDiagnosticUrlRef.current);
+      captureDiagnosticUrlRef.current = null;
+    }
+    setCaptureDiagnostic(null);
+  }, []);
+
+  const saveCaptureDiagnostic = useCallback((blob: Blob, segIdx: number, capture: CaptureMetadata) => {
+    if (!import.meta.env.DEV || new URLSearchParams(window.location.search).get("audioCaptureDiagnostic") !== "1") {
+      return;
+    }
+    clearCaptureDiagnostic();
+    const url = URL.createObjectURL(blob);
+    captureDiagnosticUrlRef.current = url;
+    setCaptureDiagnostic({
+      url,
+      segmentIndex: segIdx,
+      mimeType: blob.type || capture.mimeType,
+      byteLength: blob.size,
+      durationMs: capture.durationMs,
+    });
+  }, [clearCaptureDiagnostic]);
+
   // Cleanup on unmount (i.e. full app teardown)
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (segmentTimerRef.current) clearInterval(segmentTimerRef.current);
       if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+      if (captureDiagnosticUrlRef.current) URL.revokeObjectURL(captureDiagnosticUrlRef.current);
       releaseWakeLock();
     };
   }, [releaseWakeLock]);
@@ -215,9 +253,10 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     setFinalTranscript("");
     setTranscriptSource(null);
     setFinalUtterances(null);
+    clearCaptureDiagnostic();
     setErrorMessage(null);
     setState("idle");
-  }, [releaseWakeLock]);
+  }, [clearCaptureDiagnostic, releaseWakeLock]);
 
   // Single upload+transcribe attempt for one segment blob. Throws on failure.
   const uploadSegmentOnce = useCallback(async (blob: Blob, segIdx: number, capture: CaptureMetadata) => {
@@ -500,6 +539,10 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
         durationMs: Math.max(0, Date.now() - captureStartedAt.getTime()),
         mimeType: blob.type || mimeType || "audio/webm",
       };
+      // Diagnostic only: this retains a browser-memory URL for the exact
+      // assembled Blob below. It is never uploaded separately, transformed,
+      // persisted, or included in the clinical transcript.
+      saveCaptureDiagnostic(blob, segIdx, capture);
       pendingSegmentsRef.current += 1;
       setSegmentsTotal(t => t + 1);
       // Starting the next recorder from onstop ensures every final
@@ -522,7 +565,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     };
 
     mr.start(1000);
-  }, [releaseWakeLock, settleAfterStop, transcribeSegment]);
+  }, [releaseWakeLock, saveCaptureDiagnostic, settleAfterStop, transcribeSegment]);
   startSegmentRecorderRef.current = startSegmentRecorder;
 
   const flushSegment = useCallback(() => {
@@ -588,6 +631,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     setFinalTranscript("");
     setTranscriptSource(null);
     setFinalUtterances(null);
+    clearCaptureDiagnostic();
     setErrorMessage(null);
 
     mimeTypeRef.current = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
@@ -606,7 +650,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
 
     acquireWakeLock();
     return true;
-  }, [acquireWakeLock, flushSegment, startSegmentRecorder, toast]);
+  }, [acquireWakeLock, clearCaptureDiagnostic, flushSegment, startSegmentRecorder, toast]);
 
   const stop = useCallback(() => {
     if (stateRef.current !== "recording") return;
@@ -677,6 +721,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     finalTranscript,
     transcriptSource,
     finalUtterances,
+    captureDiagnostic,
     errorMessage,
     start,
     stop,

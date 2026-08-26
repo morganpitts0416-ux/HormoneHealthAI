@@ -1,0 +1,71 @@
+DIAGNOSE THIS AT THE AUDIO→STT BOUNDARY. NO MORE SPECULATIVE FIXES.
+
+The current tagged test is still catastrophically failing. I spoke a normal multi-sentence HRT follow-up, yet the verified raw transcript contains only:
+
+25
+The first day is tomorrow.
+butterfly
+context:
+
+Only 25 corresponds to anything I actually said.
+
+I want you to determine whether the defect is:
+
+A. browser microphone/audio capture
+B. MediaRecorder/blob construction
+C. request encoding/file handling
+D. OpenAI transcription model behavior
+
+Do not modify code yet.
+
+First, inspect the exact request format sent to OpenAI
+
+For the current implementation, show me:
+
+the model name used;
+exact transcription endpoint;
+MIME type sent;
+filename/extension supplied with the audio file;
+how the WebM Blob is converted to the file object passed to the OpenAI SDK;
+whether the server changes/re-encodes the Blob;
+whether the full uploaded byte buffer is passed to OpenAI or only part of it;
+whether any stream/buffer is consumed once before the transcription request;
+whether retries reuse an already-consumed stream/buffer;
+whether Content-Type, file extension, and actual WebM/Opus container agree.
+Then add ONE diagnostic that gives us a definitive answer
+
+On the tagged test revision only, allow the authenticated clinician to play back the exact assembled audio Blob before it is uploaded to STT, or download/play it locally in the browser without permanently storing it.
+
+I need to hear whether ClinIQ itself captured my speech correctly.
+
+If playback clearly contains my entire speech, stop changing MediaRecorder. The defect is downstream in file/request handling or STT.
+
+If playback is missing/clipped/silent/garbled, the defect is still audio capture/Blob construction.
+
+Also perform a direct controlled STT comparison
+
+Take one known-good short WebM/Opus test file containing a clearly spoken sentence and send the exact same audio file through:
+
+the current gpt-4o-transcribe path;
+whisper-1;
+if supported by the current SDK/API, the newer GPT-Transcribe model.
+
+Compare the outputs.
+
+Do not use patient audio for this controlled model comparison; use a synthetic/non-PHI test recording.
+
+This will tell us whether the current model/API path itself is malfunctioning independently of ClinIQ's recorder.
+
+Critical
+
+Do not switch models just because a newer transcription model exists.
+
+First determine whether the exact captured audio is good and whether the exact file reaching OpenAI is valid.
+
+I want a root-cause report showing:
+
+microphone → browser Blob → uploaded bytes → server file object → OpenAI request → STT response
+
+and identify the first stage where the content stops matching what was actually spoken.
+
+No implementation or deployment until that boundary is proven.
