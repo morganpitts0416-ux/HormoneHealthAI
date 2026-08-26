@@ -596,19 +596,9 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
       // capture slot (for example an immediate stop of a just-started next
       // segment), so it must not create a false gap.
       if (!receivedDataEvent) {
-        if (!recordingStoppedRef.current && streamRef.current === stream) {
-          try {
-            startSegmentRecorderRef.current(stream);
-          } catch (err: any) {
-            recordingAbortedRef.current = true;
-            recordingStoppedRef.current = true;
-            stream.getTracks().forEach(t => t.stop());
-            streamRef.current = null;
-            releaseWakeLock();
-            setErrorMessage(err?.message || "Recording was interrupted and could not resume.");
-            setState("error");
-          }
-        } else {
+        // The independent flush timer owns recorder restart. Even an onstop
+        // without data must not start another recorder from this callback.
+        if (recordingStoppedRef.current) {
           settleAfterStop(session);
         }
         return;
@@ -626,22 +616,6 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
       saveCaptureDiagnostic(blob, segIdx, capture);
       pendingSegmentsRef.current += 1;
       setSegmentsTotal(t => t + 1);
-      // Starting the next recorder from onstop ensures every final
-      // dataavailable event has been included in this Blob first. The stream
-      // remains active throughout a normal segment transition.
-      if (!recordingStoppedRef.current && streamRef.current === stream) {
-        try {
-          startSegmentRecorderRef.current(stream);
-        } catch (err: any) {
-          recordingAbortedRef.current = true;
-          recordingStoppedRef.current = true;
-          stream.getTracks().forEach(t => t.stop());
-          streamRef.current = null;
-          releaseWakeLock();
-          setErrorMessage(err?.message || "Recording was interrupted and could not resume.");
-          setState("error");
-        }
-      }
       transcribeSegment(blob, segIdx, session, capture);
     };
 
@@ -649,14 +623,53 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
   }, [releaseWakeLock, saveCaptureDiagnostic, settleAfterStop, transcribeSegment]);
   startSegmentRecorderRef.current = startSegmentRecorder;
 
-  const flushSegment = useCallback(() => {
+  const flushSegment = useCallback((stream: MediaStream) => {
     const mr = mediaRecorderRef.current;
     if (!mr || mr.state === "inactive") return;
+    const session = recordingSessionRef.current;
     segmentIndexRef.current += 1;
     pendingFlushesRef.current += 1;
     try { mr.stop(); }
     catch { pendingFlushesRef.current = Math.max(0, pendingFlushesRef.current - 1); }
-  }, []);
+    // Preserve the known-working transition: stopping the current recorder
+    // schedules the next recorder independently of the prior onstop callback.
+    // The prior onstop still assembles and uploads its own captured Blob.
+    setTimeout(() => {
+      if (session !== recordingSessionRef.current) return;
+      if (recordingStoppedRef.current || !streamRef.current) return;
+
+      const failRecording = (err: any) => {
+        recordingAbortedRef.current = true;
+        recordingStoppedRef.current = true;
+        if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+        if (segmentTimerRef.current) { clearInterval(segmentTimerRef.current); segmentTimerRef.current = null; }
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(t => t.stop());
+          streamRef.current = null;
+        }
+        mediaRecorderRef.current = null;
+        releaseWakeLock();
+        setErrorMessage(err?.message || "Recording was interrupted and could not resume.");
+        setState("error");
+      };
+
+      const tryRestart = (attempt: number) => {
+        if (session !== recordingSessionRef.current) return;
+        if (recordingStoppedRef.current || !streamRef.current) return;
+        try {
+          startSegmentRecorder(stream);
+        } catch (err: any) {
+          if (attempt < 3) {
+            setTimeout(() => tryRestart(attempt + 1), 500 * attempt);
+            return;
+          }
+          failRecording(err);
+        }
+      };
+
+      tryRestart(1);
+    }, 150);
+  }, [releaseWakeLock, startSegmentRecorder]);
 
   const start = useCallback(async (params: StartRecordingParams): Promise<boolean> => {
     if (stateRef.current !== "idle") {
@@ -730,7 +743,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     timerRef.current = setInterval(() => setElapsed(p => p + 1), 1000);
     segmentTimerRef.current = setInterval(() => {
       if (!recordingStoppedRef.current && streamRef.current) {
-        flushSegment();
+        flushSegment(streamRef.current);
       }
     }, SEGMENT_MS);
 

@@ -1,0 +1,53 @@
+I approve the minimal rollback identified in the Git regression analysis.
+
+Implement a targeted restoration of the pre-4f019d5 segment restart lifecycle only.
+
+Restore the known-working behavior:
+
+60-second boundary
+→ stop current recorder
+→ independently wait 150 ms
+→ start the next recorder
+
+Do not make starting the next recorder dependent on the prior recorder’s onstop callback.
+
+Preserve all of the transcript-integrity work that does not alter physical capture:
+
+generic exact-transcription STT prompt with no clinical glossary;
+immutable server-side raw STT provenance;
+deterministic session/segment identifiers;
+server-side ordered transcript assembly;
+authenticated encounter/session binding;
+raw STT as authoritative source;
+diarized/normalized text remaining derived only;
+source-state indicators;
+provenance/attempt metadata;
+protected diagnostic endpoint;
+existing OpenAI transcription model path.
+
+Do not roll back Task #68 wholesale.
+
+Do not restore browser-local transcription as authoritative.
+
+Do not restore the medical glossary.
+
+Do not change SOAP, Brain, Patient Communication, Provider Chart Note, June, or Evidence Layer.
+
+Keep the current capture-validation/provenance metadata unless it directly depends on the restart-inside-onstop behavior. If any validation code must be adjusted to support the restored lifecycle, make the smallest compatible change.
+
+Add/adjust regression tests proving:
+
+the next recorder starts independently after the 150 ms transition;
+segment restart does not depend on prior onstop;
+prior segment still completes Blob assembly/upload when its onstop fires;
+no duplicate segment index is created;
+segment ordering remains deterministic;
+provenance still records the completed prior segment;
+manual Stop still preserves the final audio Blob;
+SOAP continues to use the authoritative server transcript.
+
+Run the focused recorder/transcript-source tests and production build.
+
+Do not deploy automatically.
+
+After implementation, show me the exact diff and confirm that the only functional capture-lifecycle change is restoration of the known-working pre-4f019d5 segment transition.

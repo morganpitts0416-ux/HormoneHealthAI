@@ -15,11 +15,11 @@ Clinical review must fetch that ordered server source only after all segment upl
 
 **How to apply:** A late failed retry must not replace an already-completed source segment. Use protected attempt records for forensic analysis; ordinary logs contain only operational errors, not transcript text.
 
-Recorder capture transitions must wait for the preceding recorder's final event cycle before starting another recorder, and final microphone shutdown waits for the final capture/upload settlement. Persist capture timing, MIME, byte size, and hash with the deterministic slot; reject only objectively empty, malformed, or duration-incompatible audio before STT and represent it as an explicit source gap.
+Recorder segment transitions restart the next recorder on an independent 150 ms timer after stopping the prior one; never make the next capture contingent on the prior recorder's `onstop`. The prior `onstop` still exclusively assembles and uploads its Blob, while final microphone shutdown waits for final capture/upload settlement. Persist capture timing, MIME, byte size, and hash with the deterministic slot; reject only objectively empty, malformed, or duration-incompatible audio before STT and represent it as an explicit source gap.
 
-**Why:** A timer-based restart or early track shutdown can truncate the final Blob while still creating superficially valid source rows. Treating invalid audio as STT uncertainty would hide a capture defect or invite fabricated replacement dialogue.
+**Why:** The known-working recorder used the independent transition. A later `onstop`-gated restart was the first browser lifecycle change following a regression to near-empty captures. Separating restart from Blob finalization restores capture continuity without weakening immutable source provenance.
 
-**How to apply:** Keep validation conservative so a valid short trailing utterance is retained. Ordinary recorder diagnostics must be authenticated and encounter-scoped, expose metadata/outcomes only, and omit protected raw STT text.
+**How to apply:** Keep validation conservative so a valid short trailing utterance is retained. Guard timer callbacks by recording session and stopped state, retain deterministic segment slots, and never start a second recorder from `onstop`. Ordinary recorder diagnostics must be authenticated and encounter-scoped, expose metadata/outcomes only, and omit protected raw STT text.
 
 The dedicated audio-boundary playback diagnostic is the narrow exception: it may display each segment's returned STT text beside a local player for the exact captured Blob, but only for an authenticated clinician who explicitly activates it on an operator-enabled tagged test revision. It must never persist the Blob or diagnostic text, write either to application logs or the chart, or be reachable through the ordinary production hostname.
 

@@ -395,7 +395,7 @@ describe("MediaRecorder final-data lifecycle", () => {
     expect(body.get("captureMimeType")).toContain("audio/webm");
   });
 
-  test("waits for prior onstop before starting the next sixty-second recorder", async () => {
+  test("starts the next recorder independently before prior onstop", async () => {
     MockMediaRecorder.deferStop = true;
     fetchPlan = () => ({ ok: true, body: { transcription: "hello" } });
     await startRecording();
@@ -406,10 +406,15 @@ describe("MediaRecorder final-data lifecycle", () => {
     expect(MockMediaRecorder.instances).toHaveLength(1);
     expect(trackStop).not.toHaveBeenCalled();
 
-    await act(async () => first.finishStop());
-    await tick(50);
+    await tick(150);
     expect(MockMediaRecorder.instances).toHaveLength(2);
     const second = MockMediaRecorder.latest();
+    expect(second).not.toBe(first);
+
+    await act(async () => first.finishStop());
+    await tick(50);
+    expect(fetchCalls).toBe(1);
+    expect(transcriptionBodies[0].get("segmentIndex")).toBe("0");
     second.emitData(2048);
 
     MockMediaRecorder.deferStop = false;
@@ -418,6 +423,11 @@ describe("MediaRecorder final-data lifecycle", () => {
 
     expect(ctx.state).toBe("review");
     expect(ctx.finalTranscript).toBe("hello\nhello");
+    expect(transcriptionBodies.map((body) => body.get("segmentIndex"))).toEqual(["0", "1"]);
+    expect(transcriptionBodies[1].get("recordingSessionId")).toBe(
+      transcriptionBodies[0].get("recordingSessionId"),
+    );
+    expect(sourceFetchCalls).toBe(1);
   });
 
   test("does not retry or fabricate text for a server-confirmed invalid capture", async () => {
