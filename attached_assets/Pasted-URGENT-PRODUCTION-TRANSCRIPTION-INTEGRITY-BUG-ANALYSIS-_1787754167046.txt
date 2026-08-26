@@ -1,0 +1,66 @@
+URGENT PRODUCTION TRANSCRIPTION INTEGRITY BUG — ANALYSIS ONLY. DO NOT IMPLEMENT OR DEPLOY YET.
+
+I have reproduced a severe failure in the listener/transcription pipeline where the stored raw transcript itself contains fabricated clinical content that was never spoken during the encounter.
+
+This is not a SOAP-generation problem. The source transcript is wrong upstream.
+
+The fabricated transcript includes statements about:
+
+HbA1c 5.7%
+insulin resistance
+HOMA-IR
+semaglutide
+Ozempic → Mounjaro
+GLP-1 treatment
+trouble sleeping
+compounded testosterone cypionate
+
+None of those topics were discussed in the actual encounter.
+
+The real encounter was an HRT follow-up. The patient has been taking progesterone 100 mg and estradiol patch 0.025 mg. She reported feeling better, had breakthrough bleeding that has now stopped, and we discussed adding transdermal testosterone.
+
+This is a critical source-fidelity failure. AI-generated clinical content must never be inserted into a raw transcript.
+
+I have rolled production back to revision hormonehealthai-00554-rek while this is investigated.
+
+Do not modify SOAP prompts or try to solve this downstream.
+
+Trace the entire transcription/listener path for the affected encounter and show me:
+
+Which route/function accepted the recording.
+Which transcription model/service produced the first transcript.
+Whether any LLM is ever allowed to generate, reconstruct, “repair,” infer, complete, normalize, or replace transcript text.
+Whether diarization or speaker-role normalization can introduce new utterances rather than only label/reformat existing words.
+Every retry/fallback/recovery path when transcription fails, times out, returns empty text, has audio gaps, or receives malformed output.
+Whether any prior transcript, encounter template, clinical extraction, historical chart context, synthetic test text, example prompt text, or cached response can leak into the raw transcript.
+Whether the recent recording retry/gap/restart logic can substitute generated clinical content when audio segments are missing.
+Whether any “transcript-direct,” normalization, gap-repair, or QA model output is persisted back into the field presented as the raw transcript.
+Which database fields store:
+original speech-to-text output
+diarized transcript
+normalized transcript
+repaired transcript
+extraction
+and whether any of these are being confused in the UI.
+What changed between production revision 00554-rek and revisions 00556-xit / 00557-zuc that could possibly touch recording, transcription, transcript retrieval, transcript persistence, or shared AI context—even if those tasks were intended to be prompt-only.
+For this affected encounter, reconstruct a forensic trace:
+
+audio/upload → transcription request → raw model response → any retry/fallback → diarization/normalization → database write → transcript returned to UI
+
+Show the exact value at every stage where available.
+
+Required safety invariant
+
+The raw transcript must be append-only source evidence from speech-to-text.
+
+An LLM may label speakers, normalize formatting, or flag gaps only if those transformations are stored separately. It must never fabricate missing speech, infer clinical content, complete an incomplete conversation, or persist generated language as raw transcript.
+
+If audio is missing or transcription fails, the correct result is:
+
+[AUDIO GAP]
+
+or an explicit transcription failure/review flag — never reconstructed clinical dialogue.
+
+Do not implement a fix yet.
+
+First show me the root cause, the exact code path that allowed fabricated text to become a transcript, whether 00554-rek is actually unaffected, and the smallest fail-closed correction.
