@@ -109,6 +109,16 @@ export function FloatingRecorderDock() {
           )}
         </div>
 
+          <div
+            className="max-w-[128px] text-right text-[10px] leading-tight"
+            style={{ color: recording.audioCaptureDiagnosticStatus.enabled ? "#557a38" : "#7a8a64" }}
+            data-testid="audio-capture-diagnostic-status"
+          >
+            {recording.audioCaptureDiagnosticStatus.enabled
+              ? "Audio diagnostic: ENABLED"
+              : `Audio diagnostic: DISABLED — ${recording.audioCaptureDiagnosticStatus.reason}`}
+          </div>
+
         {isRecording && microphoneSignal && (
           <div
             className="w-12 flex-shrink-0"

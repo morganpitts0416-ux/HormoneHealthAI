@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { DiarizedUtterance } from "@shared/schema";
+import { rememberAudioCaptureDiagnosticRequest } from "@/lib/audio-capture-diagnostic";
 
 export type RecordingState = "idle" | "recording" | "transcribing" | "review" | "error";
 export type TranscriptSourceState =
@@ -49,6 +50,11 @@ export interface MicrophoneSignalDiagnostic {
   audioContextState: string | null;
   transitions: string[];
   error: string | null;
+}
+
+export interface AudioCaptureDiagnosticStatus {
+  enabled: boolean;
+  reason: string;
 }
 
 interface MicrophoneSignalStateSnapshot {
@@ -114,6 +120,7 @@ interface RecordingContextValue {
   captureDiagnostics: CaptureDiagnostic[];
   captureInputDevice: CaptureInputDevice | null;
   microphoneSignalDiagnostic: MicrophoneSignalDiagnostic | null;
+  audioCaptureDiagnosticStatus: AudioCaptureDiagnosticStatus;
   errorMessage: string | null;
   start: (params: StartRecordingParams) => Promise<boolean>;
   stop: () => void;
@@ -148,6 +155,12 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
   const [captureInputDevice, setCaptureInputDevice] = useState<CaptureInputDevice | null>(null);
   const [microphoneSignalDiagnostic, setMicrophoneSignalDiagnostic] = useState<MicrophoneSignalDiagnostic | null>(null);
   const [captureDiagnosticRuntimeEnabled, setCaptureDiagnosticRuntimeEnabled] = useState(false);
+  const [audioCaptureDiagnosticStatus, setAudioCaptureDiagnosticStatus] = useState<AudioCaptureDiagnosticStatus>(() => ({
+    enabled: false,
+    reason: rememberAudioCaptureDiagnosticRequest()
+      ? "waiting for authenticated server approval"
+      : "initial ?audioCaptureDiagnostic=1 query flag was not present in this tab",
+  }));
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Refs for the recorder mechanics
@@ -230,22 +243,43 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [acquireWakeLock]);
 
-  const captureDiagnosticRequested = () =>
-    new URLSearchParams(window.location.search).get("audioCaptureDiagnostic") === "1";
+  const captureDiagnosticRequested = () => rememberAudioCaptureDiagnosticRequest();
 
   useEffect(() => {
     if (!captureDiagnosticRequested()) {
       setCaptureDiagnosticRuntimeEnabled(false);
+      setAudioCaptureDiagnosticStatus({
+        enabled: false,
+        reason: "initial ?audioCaptureDiagnostic=1 query flag was not present in this tab",
+      });
       return;
     }
     let active = true;
+    setAudioCaptureDiagnosticStatus({ enabled: false, reason: "waiting for authenticated server approval" });
     fetch("/api/diagnostics/audio-capture/config?audioCaptureDiagnostic=1", { credentials: "include" })
-      .then(async (response) => response.ok ? response.json() : { enabled: false })
+      .then(async (response) => {
+        if (response.ok) return response.json();
+        if (response.status === 401) return { enabled: false, reason: "authentication is required" };
+        if (response.status === 403) return { enabled: false, reason: "clinician authorization is required" };
+        return { enabled: false, reason: `server gate request failed (${response.status})` };
+      })
       .then((data) => {
-        if (active) setCaptureDiagnosticRuntimeEnabled(data?.enabled === true);
+        if (!active) return;
+        const enabled = data?.enabled === true;
+        setCaptureDiagnosticRuntimeEnabled(enabled);
+        setAudioCaptureDiagnosticStatus({
+          enabled,
+          reason: typeof data?.reason === "string"
+            ? data.reason
+            : enabled
+              ? "server approved diagnostic"
+              : "server did not approve the diagnostic",
+        });
       })
       .catch(() => {
-        if (active) setCaptureDiagnosticRuntimeEnabled(false);
+        if (!active) return;
+        setCaptureDiagnosticRuntimeEnabled(false);
+        setAudioCaptureDiagnosticStatus({ enabled: false, reason: "server gate request could not be reached" });
       });
     return () => { active = false; };
   }, []);
@@ -258,7 +292,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const saveCaptureDiagnostic = useCallback((blob: Blob, segIdx: number, capture: CaptureMetadata) => {
-    if (!captureDiagnosticRuntimeEnabled || !captureDiagnosticRequested()) {
+    if (!captureDiagnosticRuntimeEnabled) {
       return;
     }
     const url = URL.createObjectURL(blob);
@@ -900,12 +934,8 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
       ? "audio/webm;codecs=opus"
       : MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
 
-    setCaptureInputDevice(
-      captureDiagnosticRuntimeEnabled && captureDiagnosticRequested()
-        ? describeCaptureInputDevice(stream)
-        : null,
-    );
-    if (captureDiagnosticRuntimeEnabled && captureDiagnosticRequested()) {
+    setCaptureInputDevice(captureDiagnosticRuntimeEnabled ? describeCaptureInputDevice(stream) : null);
+    if (captureDiagnosticRuntimeEnabled) {
       startMicrophoneSignalDiagnostic(stream);
     }
     startSegmentRecorder(stream);
@@ -995,6 +1025,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     captureDiagnostics,
     captureInputDevice,
     microphoneSignalDiagnostic,
+    audioCaptureDiagnosticStatus,
     errorMessage,
     start,
     stop,

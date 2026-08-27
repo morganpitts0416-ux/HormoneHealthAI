@@ -74,6 +74,12 @@ import { AppHeader } from "@/components/app-header";
 import { RecordingProvider } from "@/contexts/recording-context";
 import { FloatingRecorderDock } from "@/components/recording/floating-recorder-dock";
 import { SoapNoteContextProvider } from "@/contexts/soap-note-context";
+import { rememberAudioCaptureDiagnosticRequest } from "@/lib/audio-capture-diagnostic";
+
+// This runs before RootRedirect or ProtectedRoute can replace a diagnostic URL.
+// It preserves only the initial opt-in request for this browser tab; the server
+// continues to authorize the feature after clinician authentication.
+rememberAudioCaptureDiagnosticRequest();
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();

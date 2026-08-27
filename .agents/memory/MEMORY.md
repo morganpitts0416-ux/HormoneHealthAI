@@ -19,3 +19,4 @@
 - [SOAP model test endpoint](soap-test-endpoint.md) — gpt-5.6-sol comparison route; temperature must be omitted; Mode A uses buildSoapGenerationMessages; Mode B uses buildSoapCoreSystemPrompt; strictly read-only
 - [Evidence overlay flow](evidence-overlay-flow.md) — generate after SOAP persistence, not in a hidden background race; all UIs use the shared citation schema
 - [Transcript provenance](transcript-provenance.md) — raw STT is immutable server-owned evidence; retries replace deterministic slots and downstream clinical generation resolves raw first
+- [Audio diagnostic session gate](audio-diagnostic-session-gate.md) — preserve initial test opt-in across SPA redirects; server authorization remains mandatory

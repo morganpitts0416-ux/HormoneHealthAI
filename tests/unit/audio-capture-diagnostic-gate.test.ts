@@ -1,5 +1,8 @@
 import { describe, expect, test } from "vitest";
-import { isAudioCaptureDiagnosticEnvironment } from "../../server/audio-capture-diagnostic-gate";
+import {
+  getAudioCaptureDiagnosticEnvironmentGate,
+  isAudioCaptureDiagnosticEnvironment,
+} from "../../server/audio-capture-diagnostic-gate";
 
 describe("audio capture diagnostic environment gate", () => {
   test("requires an explicit operator feature flag", () => {
@@ -35,5 +38,20 @@ describe("audio capture diagnostic environment gate", () => {
       { ...env, AUDIO_CAPTURE_DIAGNOSTIC_TAG: "" },
       "audio-boundary-test---cliniq-abc-uc.a.run.app",
     )).toBe(false);
+  });
+
+  test("returns an operator-visible reason for the rejected gate", () => {
+    expect(getAudioCaptureDiagnosticEnvironmentGate(
+      {
+        NODE_ENV: "production",
+        AUDIO_CAPTURE_DIAGNOSTIC_ENABLED: "true",
+        AUDIO_CAPTURE_DIAGNOSTIC_TAG: "audio-boundary-test",
+        K_REVISION: "cliniq-audio-boundary-test-00001",
+      },
+      "cliniq-abc-uc.a.run.app",
+    )).toEqual({
+      enabled: false,
+      reason: "tagged test hostname is required",
+    });
   });
 });

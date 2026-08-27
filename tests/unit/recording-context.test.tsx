@@ -164,7 +164,10 @@ function installFetchMock() {
     if (String(url).includes("/api/diagnostics/audio-capture/config")) {
       return {
         ok: true,
-        json: async () => ({ enabled: diagnosticGateEnabled }),
+        json: async () => ({
+          enabled: diagnosticGateEnabled,
+          reason: diagnosticGateEnabled ? "server approved tagged test revision" : "server diagnostic gate is off",
+        }),
       } as any;
     }
     if (String(url).includes("/api/encounters/transcribe")) {
@@ -257,6 +260,7 @@ const SEGMENT_MS = 60_000;
 async function renderWithDiagnosticGate() {
   diagnosticGateEnabled = true;
   window.history.replaceState({}, "", "/?audioCaptureDiagnostic=1");
+  window.sessionStorage.clear();
   cleanup();
   render(
     <RecordingProvider>
@@ -273,6 +277,7 @@ beforeEach(() => {
   MockMediaRecorder.deferStop = false;
   MockAudioContext.instances = [];
   diagnosticGateEnabled = false;
+  window.sessionStorage.clear();
   vi.stubGlobal("MediaRecorder", MockMediaRecorder as any);
   vi.stubGlobal("AudioContext", MockAudioContext as any);
   installFetchMock();
@@ -556,6 +561,19 @@ describe("MediaRecorder final-data lifecycle", () => {
 });
 
 describe("microphone signal diagnostic", () => {
+  test("keeps the initial diagnostic request across SPA URL replacement", async () => {
+    await renderWithDiagnosticGate();
+    window.history.replaceState({}, "", "/encounters?encounterId=7");
+
+    expect(ctx.audioCaptureDiagnosticStatus).toEqual({
+      enabled: true,
+      reason: "server approved tagged test revision",
+    });
+
+    await startRecording();
+    expect(MockAudioContext.instances).toHaveLength(1);
+  });
+
   test("observes the exact stream passed to MediaRecorder and reflects live track state", async () => {
     await renderWithDiagnosticGate();
     await startRecording();

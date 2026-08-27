@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, getQueryFn } from "@/lib/queryClient";
 import { useLocation } from "wouter";
+import { clearAudioCaptureDiagnosticRequest } from "@/lib/audio-capture-diagnostic";
 
 export interface AuthUser {
   id: number;
@@ -55,6 +56,7 @@ export function useAuth() {
       await apiRequest("POST", "/api/auth/logout");
     },
     onSuccess: () => {
+      clearAudioCaptureDiagnosticRequest();
       queryClient.setQueryData(["/api/auth/me"], null);
       queryClient.clear();
       setLocation("/login");
