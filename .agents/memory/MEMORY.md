@@ -10,6 +10,7 @@
 - [Clinic branding architecture](clinic-branding.md) — logo + footerText now on clinics table (authoritative); user.clinicLogo kept as fallback in GET only; all PDF callers use useClinicBranding().data, not user object
 - [SOAP prompt-rule conflicts](soap-prompt-rule-conflicts.md) — new SOAP pipeline prompt rules must be checked against existing bans (boilerplate, diagnosis preservation, voice); new extraction fields need 3-point wiring (schema, writer injection, QA block)
 - [SOAP Pipeline V2](soap-v2-pipeline.md) — 9-phase improvement behind SOAP_STRUCTURED_ACTIONS_V2 env flag; phases 1-9 all wired; E66.x BMI fix; deterministic validation backstop
+- [SOAP development freeze](soap-development-freeze.md) — no SOAP, transcription, recorder, STT, provenance, prompt, model, segmentation, or diagnostic changes before explicit restart
 - [prod-migrate column gap](prod-migrate-column-gap.md) — every new schema.ts column needs ALTER TABLE … ADD COLUMN IF NOT EXISTS in prod-migrate.sql or prod gets "column does not exist" 500s
 - [Note template block persistence](note-template-blocks.md) — ManualSoapBuilder saves {fullNote,blocks,chiefComplaint,visitDate,visitType}; unsigned block notes reopen in their builder via initialEncounterId; signed notes → AmendTextarea
 - [Floating panel pattern](floating-panel-pattern.md) — useFloatingPanel() hook shared by chart-side panels (lab eval, SOAP builder) needing drag/minimize instead of a blocking Dialog; pair with localStorage draft autosave
