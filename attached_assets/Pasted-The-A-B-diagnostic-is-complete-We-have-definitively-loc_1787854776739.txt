@@ -1,0 +1,70 @@
+The A/B diagnostic is complete. We have definitively localized the failure before MediaRecorder.
+
+During an active recording, the analyser attached to the exact same MediaStream used by MediaRecorder does not respond when I speak.
+
+The subsequently captured Blob also plays back with no audible speech.
+
+Therefore:
+
+microphone permission granted
+→ MediaStream created
+→ analyser receives essentially no voice signal
+→ MediaRecorder correctly records that near-silent stream
+→ STT receives silence/near-silence and hallucinates fragments
+
+Stop investigating STT, MediaRecorder encoding, bitrate, segmentation, Blob construction, provenance, and SOAP.
+
+The active device reported by the browser is:
+
+Microphone Array (AMD Audio Device)
+
+I now want the smallest safe input-device correction.
+
+Add microphone selection to the recorder
+
+Before recording, enumerate available audio input devices after microphone permission has been granted.
+
+Allow the clinician to select the microphone ClinIQ should use.
+
+Persist the selected deviceId locally for that browser/device only — not in the patient record and not as PHI.
+
+Then request the selected device explicitly using getUserMedia, e.g. an exact deviceId constraint rather than relying exclusively on the browser's default input.
+
+If the saved device no longer exists, fall back gracefully and require/select another available audio input.
+
+Add pre-recording signal verification
+
+Once the selected stream is acquired, use the existing analyser to verify that the input has audible signal.
+
+The UI should show a live microphone level before and during recording.
+
+Do not silently block a clinician merely because the room is temporarily quiet, but if the track remains essentially flat while recording begins, show a clear warning such as:
+
+No microphone input detected. Check or change your microphone before continuing.
+
+Do not send a long near-silent recording to STT and treat hallucinated text as valid source evidence.
+
+Display selected input
+
+Clearly show:
+
+Microphone: <device label>
+
+with a Change microphone control.
+
+This should make it obvious if ClinIQ is listening to Microphone Array (AMD Audio Device) when the clinician intended a headset, webcam mic, USB microphone, etc.
+
+Preserve everything else
+
+Do not change:
+
+STT models or prompt
+MediaRecorder encoding
+bitrate
+60-second segmentation
+immutable transcript provenance
+SOAP
+Brain
+Patient Communication
+
+Before implementing, show me the smallest UI/data-flow change required for microphone selection and saved browser-local preference. Do not deploy automatically.
