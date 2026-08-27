@@ -1,0 +1,73 @@
+We now have hard evidence from the live GCP realdata provenance tables.
+
+Failed recording:
+
+Segment 0
+duration: 60,006 ms
+audio size: 27,965 bytes
+MIME: audio/webm;codecs=opus
+model: gpt-4o-transcribe
+fallback: false
+STT result: "The council will"
+
+Segment 1
+duration: 13,095 ms
+audio size: 6,303 bytes
+MIME: audio/webm;codecs=opus
+model: gpt-4o-transcribe
+fallback: false
+STT result: "context:"
+
+Both segments were successfully uploaded and processed. Their file sizes scale at only approximately 470–480 bytes/second despite substantial speech being spoken.
+
+This strongly indicates that MediaRecorder is encoding mostly silence/near-silence for the full capture duration.
+
+Do not change STT models, STT prompt, segmentation, provenance, SOAP, or downstream AI.
+
+I want an analysis of the live microphone track itself.
+
+Trace the recorder from:
+
+getUserMedia → MediaStreamTrack → MediaRecorder
+
+and identify anything that can cause the stream to exist and run while carrying little/no audible signal.
+
+Specifically inspect:
+
+track.enabled
+track.muted
+track.readyState
+stream.active
+track.getSettings()
+selected deviceId
+microphone label
+sample rate
+channel count
+whether another track/stream reference is accidentally being passed to MediaRecorder
+whether the intended microphone track is replaced, disabled, muted, or stopped after acquisition
+whether any React cleanup/effect/state transition can affect the microphone track after recording begins
+whether any recent Task #68 changes altered stream ownership/ref handling even if getUserMedia() itself did not change.
+
+Most importantly, add or use a non-persistent audio-level diagnostic before MediaRecorder using the Web Audio API:
+
+MediaStream → AudioContext/AnalyserNode → RMS/peak level
+
+During a controlled test, show a simple microphone level indicator.
+
+If I speak and the meter does not move, the problem exists before MediaRecorder.
+
+If the meter moves normally but the captured Blob remains nearly silent, the problem is MediaRecorder/Blob encoding.
+
+Also display the exact active input-device label and track state while recording.
+
+This diagnostic must not persist audio or PHI.
+
+Before implementing another behavioral fix, show me the smallest diagnostic needed to distinguish:
+
+microphone track has no signal
+
+versus
+
+microphone track has signal but MediaRecorder loses it.
+
+Do not deploy automatically.
