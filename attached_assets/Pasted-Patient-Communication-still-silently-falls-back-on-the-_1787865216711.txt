@@ -1,0 +1,48 @@
+Patient Communication still silently falls back on the production candidate. Vitamin D and the Brain supplement logic are working correctly, but the AI Patient Communication draft is not.
+
+On candidate revision 00575-rey, the generated Patient Communication is the generic fallback:
+
+We've reviewed your recent lab results...
+
+rather than a real Brain-informed draft.
+
+Cloud Run logs around the attempt did not surface an OpenAI/Patient Summary error; they only showed an unrelated workflow-engine DB timeout.
+
+This confirms the current silent-failure behavior is hiding the actual cause.
+
+I want a narrow Patient Communication observability correction only.
+
+Do not change Brain logic, supplements, SOAP, recording, transcription, or deployment behavior.
+
+In AIService.generatePatientSummary():
+
+Stop swallowing the underlying AI error without any protected diagnostic.
+Log a concise, non-PHI error event containing:
+function name (generatePatientSummary);
+model used;
+error class/code/status;
+whether the response was empty;
+token/context-length error if applicable;
+request ID if returned by OpenAI;
+no patient identifiers, lab values, prompt contents, or generated text.
+Preserve the existing fallback behavior for now so the clinician is not blocked.
+Add a clear marker in the returned result such as:
+generationStatus: "fallback_due_to_error"
+rather than making fallback text indistinguishable from a successful AI draft.
+Surface that status to the provider UI as a warning:
+“AI draft could not be generated. Showing fallback text.”
+
+Then trace why 00575-rey is falling back:
+
+exact model name used for Patient Communication;
+whether the OpenAI request throws;
+whether response content is empty;
+whether structured Brain/supplement context is exceeding a context/token limit;
+whether parsing/response extraction fails;
+whether the OpenAI key/model configuration differs from the SOAP path.
+
+Run focused tests and production build.
+
+Do not deploy automatically.
+
+SOAP development remains frozen.
