@@ -1,0 +1,51 @@
+STOP production promotion temporarily. I found a lab-evaluation regression in the current live app that needs to be traced before we move the newer build live.
+
+Current production is hormonehealthai-00567-gub, which uses the exact image from 00557-zuc.
+
+I just generated/re-generated a lab evaluation and observed two problems:
+
+The Patient Communication / Health Assessment generation did not work.
+The patient had vitamin D = 30. The evaluation recognized/flagged the low vitamin D value, but the Supplement Protocol contained no vitamin D recommendation at all.
+
+This should be traced separately from the transcription work.
+
+First confirm from Git/image history whether 00557-zuc includes the previously implemented:
+
+canonical Patient Communication Summary;
+completed-Brain-before-communication generation;
+resolved patient-visible supplement context;
+supplement priority overrides;
+vitamin D supplement algorithm/rule that should fire at vitamin D = 30.
+
+Do not assume the DB-password recovery reverted these features. 00567-gub was deliberately created from the immutable 00557-zuc image.
+
+Then trace the current lab-evaluation path for vitamin D:
+
+vitamin D lab value = 30
+→ interpretation/flag
+→ supplement rule evaluation
+→ generated supplements array
+→ resolved patient-visible supplement protocol
+→ Patient Communication context
+
+Determine exactly where the vitamin D recommendation disappears.
+
+I need to know whether:
+
+the vitamin D supplement rule did not fire;
+the rule fired but the recommendation was removed by priority/capping;
+the recommendation was hidden by provider overrides;
+custom-only supplement mode suppressed it;
+de-duplication/resolution removed it;
+the recommendation exists in the structured protocol but is only missing from Patient Communication;
+or the Patient Communication generation itself failed for an independent reason.
+
+Also compare the lab-evaluation/Patient Communication code in the current live image lineage (00557-zuc / 00567-gub) with current HEAD / 00573-mak.
+
+Tell me whether 00573-mak already contains a correction that 00567-gub does not.
+
+Do not modify code or deploy anything yet.
+
+I want a root-cause trace and exact version comparison first.
+
+Keep SOAP development frozen.
