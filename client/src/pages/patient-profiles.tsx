@@ -706,6 +706,12 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
   const [communicationSummary, setCommunicationSummary] = useState(
     lab.patientCommunicationSummary || ''
   );
+  const [patientSummaryGenerationStatus, setPatientSummaryGenerationStatus] = useState<
+    InterpretationResult["patientSummaryGenerationStatus"]
+  >(() => interp?.patientSummaryGenerationStatus);
+  const [patientSummaryClinicianEdited, setPatientSummaryClinicianEdited] = useState(
+    lab.patientCommunicationSummaryClinicianEdited === true,
+  );
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const summarySaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -747,6 +753,7 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
       return res.json();
     },
     onSuccess: () => {
+      setPatientSummaryClinicianEdited(true);
       setSaveStatus('saved');
       queryClient.invalidateQueries({ queryKey: ['/api/patients', patient.id, 'labs'] });
     },
@@ -786,10 +793,15 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
       if (!res.ok) {
         throw new Error("Could not regenerate Patient Communication");
       }
-      return res.json() as Promise<{ patientSummary: string }>;
+      return res.json() as Promise<{
+        patientSummary: string;
+        generationStatus?: InterpretationResult["patientSummaryGenerationStatus"];
+      }>;
     },
     onSuccess: (data) => {
       setCommunicationSummary(data.patientSummary);
+      setPatientSummaryGenerationStatus(data.generationStatus);
+      setPatientSummaryClinicianEdited(false);
       setSaveStatus('saved');
       queryClient.invalidateQueries({ queryKey: ['/api/patients', patient.id, 'labs'] });
       toast({
@@ -806,6 +818,7 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
       });
     },
   });
+
 
   const updateOverrides = useCallback((updater: (prev: ProviderOverrides) => ProviderOverrides) => {
     setOverrides(prev => {
@@ -835,6 +848,7 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
 
   const updatePatientSummary = useCallback((value: string) => {
     setCommunicationSummary(value);
+    setPatientSummaryClinicianEdited(true);
     setSaveStatus('unsaved');
     if (summarySaveTimerRef.current) clearTimeout(summarySaveTimerRef.current);
     summarySaveTimerRef.current = setTimeout(() => {
@@ -1292,6 +1306,11 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
                 saveStatus={saveStatus}
                 onRegenerate={regeneratePatientSummary}
                 isRegenerating={regeneratePatientSummaryMutation.isPending}
+                generationStatus={
+                  patientSummaryClinicianEdited
+                    ? undefined
+                    : patientSummaryGenerationStatus
+                }
               />
 
               {/* Provider SOAP Note — generated from curated eval */}

@@ -1824,7 +1824,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const aiRecommendations = await AIService.generateRecommendations(
         labs, redFlags, interpretations, 'male', trendContext || undefined, therapyContext,
       );
-      const patientSummary = await AIService.generatePatientSummary(
+      const patientSummaryResult = await AIService.generatePatientSummary(
         labs, interpretations, redFlags.length > 0, preventRisk, 'male', therapyContext,
         {
           redFlags,
@@ -1839,6 +1839,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           trendContext: trendContext || undefined,
         },
       );
+      const patientSummary = patientSummaryResult.text;
 
       // Step 9: Generate SOAP note
       const soapNote = await AIService.generateSOAPNote(
@@ -1852,6 +1853,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         interpretations,
         aiRecommendations,
         patientSummary,
+        patientSummaryGenerationStatus: patientSummaryResult.generationStatus,
         recheckWindow,
         preventRisk,
         preventMissingFields: preventMissingFields.length > 0 ? preventMissingFields : undefined,
@@ -2252,7 +2254,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const aiRecommendations = await AIService.generateRecommendations(
         labs, redFlags, interpretations, 'female', trendContext || undefined, therapyContext,
       );
-      const patientSummary = await AIService.generatePatientSummary(
+      const patientSummaryResult = await AIService.generatePatientSummary(
         labs, interpretations, redFlags.length > 0, preventRisk, 'female', therapyContext,
         {
           redFlags,
@@ -2267,6 +2269,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           trendContext: trendContext || undefined,
         },
       );
+      const patientSummary = patientSummaryResult.text;
 
       // Step 12: Generate SOAP note
       const soapNote = await AIService.generateSOAPNote(
@@ -2280,6 +2283,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         interpretations,
         aiRecommendations,
         patientSummary,
+        patientSummaryGenerationStatus: patientSummaryResult.generationStatus,
         recheckWindow,
         preventRisk,
         preventMissingFields: preventMissingFields.length > 0 ? preventMissingFields : undefined,
@@ -5844,7 +5848,7 @@ Return ONLY this JSON structure:
       const gender: "male" | "female" = patient.gender === "female" ? "female" : "male";
       const labs = (labResult.labValues ?? {}) as LabValues | FemaleLabValues;
 
-      const patientSummary = await AIService.generatePatientSummary(
+      const patientSummaryResult = await AIService.generatePatientSummary(
         labs,
         interpretation.interpretations ?? [],
         (interpretation.redFlags?.length ?? 0) > 0,
@@ -5864,15 +5868,23 @@ Return ONLY this JSON structure:
           stopBangRisk: interpretation.stopBangRisk,
         },
       );
+      const patientSummary = patientSummaryResult.text;
 
+      const updatedInterpretation = {
+        ...interpretation,
+        patientSummary,
+        patientSummaryGenerationStatus: patientSummaryResult.generationStatus,
+      };
       await storage.updateLabResult(labId, {
         patientCommunicationSummary: patientSummary,
         patientCommunicationSummaryClinicianEdited: false,
+        interpretationResult: updatedInterpretation,
       });
 
       res.json({
         message: "Patient Communication regenerated",
         patientSummary,
+        generationStatus: patientSummaryResult.generationStatus,
         clinicianEdited: false,
         supplementCount: resolvedProtocol.length,
       });

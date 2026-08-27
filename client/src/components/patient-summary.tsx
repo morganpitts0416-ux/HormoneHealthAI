@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Copy, Check, RefreshCw } from "lucide-react";
+import { Copy, Check, RefreshCw, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import type { LabValues } from "@shared/schema";
+import type { LabValues, PatientSummaryGenerationStatus } from "@shared/schema";
 
 interface PatientSummaryProps {
   summary: string;
@@ -14,6 +14,7 @@ interface PatientSummaryProps {
   saveStatus?: 'saved' | 'saving' | 'unsaved';
   onRegenerate?: () => void;
   isRegenerating?: boolean;
+  generationStatus?: PatientSummaryGenerationStatus;
 }
 
 export function PatientSummary({
@@ -23,6 +24,7 @@ export function PatientSummary({
   saveStatus,
   onRegenerate,
   isRegenerating = false,
+  generationStatus,
 }: PatientSummaryProps) {
   const [editableSummary, setEditableSummary] = useState(summary);
   const [copied, setCopied] = useState(false);
@@ -59,6 +61,16 @@ export function PatientSummary({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {generationStatus === "fallback_due_to_error" && (
+          <div
+            className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200"
+            role="alert"
+            data-testid="alert-patient-summary-fallback"
+          >
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>AI draft could not be generated. Showing fallback text.</span>
+          </div>
+        )}
         <Textarea
           value={editableSummary}
           onChange={(e) => { setEditableSummary(e.target.value); onSummaryChange?.(e.target.value); }}

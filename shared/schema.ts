@@ -539,12 +539,21 @@ export const mitoScoreResultSchema = z.object({
 export type MitoScoreDomain = z.infer<typeof mitoScoreDomainSchema>;
 export type MitoScoreResult = z.infer<typeof mitoScoreResultSchema>;
 
+export const patientSummaryGenerationStatusSchema = z.enum([
+  "generated",
+  "fallback_due_to_error",
+]);
+export type PatientSummaryGenerationStatus = z.infer<
+  typeof patientSummaryGenerationStatusSchema
+>;
+
 // Complete Interpretation Result
 export const interpretationResultSchema = z.object({
   redFlags: z.array(redFlagSchema),
   interpretations: z.array(labInterpretationSchema),
   aiRecommendations: z.string(),
   patientSummary: z.string(),
+  patientSummaryGenerationStatus: patientSummaryGenerationStatusSchema.optional(),
   recheckWindow: z.string(),
   ascvdRisk: ascvdRiskResultSchema.optional(),
   preventRisk: preventRiskResultSchema.optional(),

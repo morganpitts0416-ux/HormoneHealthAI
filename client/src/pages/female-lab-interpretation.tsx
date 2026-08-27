@@ -778,6 +778,7 @@ export default function FemaleLabInterpretation() {
                 <PatientSummary
                   summary={interpretationResult.patientSummary}
                   labValues={labValues as any}
+                   generationStatus={interpretationResult.patientSummaryGenerationStatus}
                 />
 
                 {/* 10. SOAP Note */}

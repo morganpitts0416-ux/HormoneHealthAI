@@ -2,7 +2,17 @@
 // Using Replit AI Integrations (blueprint:javascript_openai_ai_integrations)
 
 import OpenAI from "openai";
-import type { LabValues, FemaleLabValues, RedFlag, LabInterpretation, ASCVDRiskResult, PREVENTRiskResult, SupplementRecommendation, InsulinResistanceScreening } from "@shared/schema";
+import type {
+  LabValues,
+  FemaleLabValues,
+  RedFlag,
+  LabInterpretation,
+  ASCVDRiskResult,
+  PREVENTRiskResult,
+  SupplementRecommendation,
+  InsulinResistanceScreening,
+  PatientSummaryGenerationStatus,
+} from "@shared/schema";
 import {
   type TherapyContext,
   buildTherapyPromptBlock,
@@ -19,6 +29,85 @@ const openai = new OpenAI({
   apiKey: _aiApiKey,
   ...(_aiBaseURL ? { baseURL: _aiBaseURL } : {}),
 });
+
+const PATIENT_SUMMARY_MODEL = "gpt-5-mini";
+
+export interface PatientSummaryGenerationResult {
+  text: string;
+  generationStatus: PatientSummaryGenerationStatus;
+}
+
+function readStringProperty(value: unknown, key: string): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = (value as Record<string, unknown>)[key];
+  return typeof candidate === "string" && candidate.length > 0 ? candidate : undefined;
+}
+
+function readNumberProperty(value: unknown, key: string): number | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = (value as Record<string, unknown>)[key];
+  return typeof candidate === "number" && Number.isFinite(candidate) ? candidate : undefined;
+}
+
+function readErrorCode(value: unknown): string | number | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = (value as Record<string, unknown>).code;
+  if (typeof candidate === "string" && candidate.length > 0) return candidate;
+  if (typeof candidate === "number" && Number.isFinite(candidate)) return candidate;
+  return undefined;
+}
+
+function openAIRequestId(value: unknown): string | undefined {
+  return (
+    readStringProperty(value, "_request_id") ??
+    readStringProperty(value, "request_id") ??
+    readStringProperty(value, "requestId")
+  );
+}
+
+function contextLengthError(value: unknown): boolean {
+  const code = readStringProperty(value, "code")?.toLowerCase();
+  const type = readStringProperty(value, "type")?.toLowerCase();
+  const message = readStringProperty(value, "message")?.toLowerCase() ?? "";
+  return (
+    code === "context_length_exceeded" ||
+    type === "context_length_exceeded" ||
+    /context length|maximum context|token limit|max(?:imum)? tokens/.test(message)
+  );
+}
+
+function logPatientSummaryGenerationFailure(args: {
+  failureKind: "exception" | "empty_response";
+  error?: unknown;
+  emptyResponse: boolean;
+  requestId?: string;
+}): void {
+  const errorClass =
+    args.error && typeof args.error === "object"
+      ? (args.error as { constructor?: { name?: string } }).constructor?.name
+      : undefined;
+  const errorCode = readErrorCode(args.error);
+  const httpStatus =
+    readNumberProperty(args.error, "status") ??
+    readNumberProperty(args.error, "statusCode");
+
+  // Keep this event deliberately allowlisted. Never log the error object,
+  // message, prompt, lab values, identifiers, or generated text.
+  console.error(
+    "[Patient Communication] generation_failure",
+    JSON.stringify({
+      function: "generatePatientSummary",
+      model: PATIENT_SUMMARY_MODEL,
+      failureKind: args.failureKind,
+      errorClass: errorClass ?? null,
+      errorCode: errorCode ?? null,
+      httpStatus: httpStatus ?? null,
+      emptyResponse: args.emptyResponse,
+      contextLengthError: contextLengthError(args.error),
+      requestId: args.requestId ?? openAIRequestId(args.error) ?? null,
+    }),
+  );
+}
 
 export class AIService {
   /**
@@ -125,7 +214,7 @@ ${gender === 'female' ? `- Consider menstrual cycle phase when interpreting horm
       stopBangRisk?: { riskDescription?: string; recommendations?: string };
       trendContext?: string;
     },
-  ): Promise<string> {
+  ): Promise<PatientSummaryGenerationResult> {
     // Categorize findings
     const abnormalFindings = interpretations.filter(i => i.status === 'abnormal' || i.status === 'critical');
     const borderlineFindings = interpretations.filter(i => i.status === 'borderline');
@@ -235,7 +324,7 @@ This patient is actively on female Hormone Replacement Therapy. Apply these rule
       const clinicType = gender === 'female' ? "women's health clinic" : "men's health clinic";
       
       const response = await openai.chat.completions.create({
-        model: "gpt-5-mini",
+        model: PATIENT_SUMMARY_MODEL,
         messages: [
           {
             role: "system",
@@ -265,14 +354,32 @@ CONTENT
       const summary = response.choices[0]?.message?.content;
       console.log('[AI Service] Patient summary generated, length:', summary?.length || 0);
 
-      return annotatePatientSummary(summary || this.getDefaultPatientSummary(), therapyContext);
-    } catch (error) {
-      console.error("Error generating patient summary:", error);
-      if (error instanceof Error) {
-        console.error("Error details:", error.message);
-        console.error("Error stack:", error.stack);
+      if (typeof summary !== "string" || summary.trim().length === 0) {
+        logPatientSummaryGenerationFailure({
+          failureKind: "empty_response",
+          emptyResponse: true,
+          requestId: openAIRequestId(response),
+        });
+        return {
+          text: this.getDefaultPatientSummary(),
+          generationStatus: "fallback_due_to_error",
+        };
       }
-      return this.getDefaultPatientSummary();
+
+      return {
+        text: annotatePatientSummary(summary, therapyContext),
+        generationStatus: "generated",
+      };
+    } catch (error) {
+      logPatientSummaryGenerationFailure({
+        failureKind: "exception",
+        error,
+        emptyResponse: false,
+      });
+      return {
+        text: this.getDefaultPatientSummary(),
+        generationStatus: "fallback_due_to_error",
+      };
     }
   }
 

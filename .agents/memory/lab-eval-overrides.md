@@ -55,6 +55,19 @@ protocol-only; it never turns priority into a mechanical supplement list.
 `clinicianEdited` flag is false for an AI draft (safe to refresh on rerun) and becomes
 true only when a clinician saves text. Never infer authorship merely because text exists.
 
+Patient Communication generation status is a separate interpretation-result contract:
+successful AI output is unmarked in provider UI; generation errors or empty model output
+retain the generic fallback text and carry an explicit fallback status. Clinician-authored
+canonical text suppresses the AI-failure warning, and patient portal content never receives
+the diagnostic warning or error metadata.
+
+**Why:** The patient-facing summary string must remain stable while providers need to know
+when they are reviewing fallback copy rather than a real draft.
+
+**How to apply:** Failure logging is allowlisted to function/model, failure kind,
+error class/code/status, empty-response and context-limit signals, and request ID. Never
+serialize the error object or log prompts, lab values, identifiers, or generated text.
+
 Portal GET (`GET /api/portal/labs`) applies all overrides server-side — never send raw data.
 
 Publish flow computes effective supplements from the lab's overrides before posting.
