@@ -39,6 +39,27 @@ export interface CaptureInputDevice {
   autoGainControl: boolean | null;
 }
 
+export interface MicrophoneSignalDiagnostic {
+  rms: number;
+  peak: number;
+  trackEnabled: boolean | null;
+  trackMuted: boolean | null;
+  trackReadyState: string | null;
+  streamActive: boolean | null;
+  audioContextState: string | null;
+  transitions: string[];
+  error: string | null;
+}
+
+interface MicrophoneSignalStateSnapshot {
+  trackEnabled: boolean | null;
+  trackMuted: boolean | null;
+  trackReadyState: string | null;
+  streamActive: boolean | null;
+  audioContextState: string | null;
+  input: CaptureInputDevice | null;
+}
+
 const SEGMENT_MS = 60_000;
 // Upload retry policy: transient network/server failures must NOT silently
 // drop a minute of clinical audio. Each segment upload is attempted up to
@@ -92,6 +113,7 @@ interface RecordingContextValue {
   // gate plus ?audioCaptureDiagnostic=1.
   captureDiagnostics: CaptureDiagnostic[];
   captureInputDevice: CaptureInputDevice | null;
+  microphoneSignalDiagnostic: MicrophoneSignalDiagnostic | null;
   errorMessage: string | null;
   start: (params: StartRecordingParams) => Promise<boolean>;
   stop: () => void;
@@ -124,6 +146,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
   const [finalUtterances, setFinalUtterances] = useState<DiarizedUtterance[] | null>(null);
   const [captureDiagnostics, setCaptureDiagnostics] = useState<CaptureDiagnostic[]>([]);
   const [captureInputDevice, setCaptureInputDevice] = useState<CaptureInputDevice | null>(null);
+  const [microphoneSignalDiagnostic, setMicrophoneSignalDiagnostic] = useState<MicrophoneSignalDiagnostic | null>(null);
   const [captureDiagnosticRuntimeEnabled, setCaptureDiagnosticRuntimeEnabled] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -151,6 +174,13 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
   // Blocks any later finalize() from overwriting the error state with a
   // normal "review" transition — the clinician MUST see the interruption.
   const recordingAbortedRef = useRef(false);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioAnalyserRef = useRef<AnalyserNode | null>(null);
+  const audioSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const audioLevelTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const microphoneSignalSnapshotRef = useRef<MicrophoneSignalStateSnapshot | null>(null);
+  const microphoneSignalTransitionsRef = useRef<string[]>([]);
+  const microphoneSignalStartedAtRef = useRef(0);
 
   // PATIENT-SAFETY: Every start() bumps this generation counter. Async callbacks
   // (onstop, transcribeSegment, finalize, flushSegment timeouts) capture the
@@ -275,17 +305,154 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  const stopMicrophoneSignalDiagnostic = useCallback(() => {
+    if (audioLevelTimerRef.current) {
+      clearInterval(audioLevelTimerRef.current);
+      audioLevelTimerRef.current = null;
+    }
+    audioSourceRef.current?.disconnect();
+    audioSourceRef.current = null;
+    audioAnalyserRef.current?.disconnect();
+    audioAnalyserRef.current = null;
+    const audioContext = audioContextRef.current;
+    audioContextRef.current = null;
+    if (audioContext && audioContext.state !== "closed") {
+      void audioContext.close().catch(() => {});
+    }
+    microphoneSignalSnapshotRef.current = null;
+    microphoneSignalTransitionsRef.current = [];
+    microphoneSignalStartedAtRef.current = 0;
+    setMicrophoneSignalDiagnostic(null);
+  }, []);
+
+  const startMicrophoneSignalDiagnostic = useCallback((stream: MediaStream) => {
+    stopMicrophoneSignalDiagnostic();
+
+    const AudioContextConstructor = window.AudioContext
+      ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    const track = stream.getAudioTracks()[0] ?? null;
+    if (!AudioContextConstructor) {
+      setMicrophoneSignalDiagnostic({
+        rms: 0,
+        peak: 0,
+        trackEnabled: track?.enabled ?? null,
+        trackMuted: track?.muted ?? null,
+        trackReadyState: track?.readyState ?? null,
+        streamActive: stream.active,
+        audioContextState: "unavailable",
+        transitions: [],
+        error: "Web Audio is unavailable in this browser.",
+      });
+      return;
+    }
+
+    try {
+      const audioContext = new AudioContextConstructor();
+      audioContextRef.current = audioContext;
+      const analyser = audioContext.createAnalyser();
+      audioAnalyserRef.current = analyser;
+      analyser.fftSize = 2048;
+      const source = audioContext.createMediaStreamSource(stream);
+      audioSourceRef.current = source;
+      // Observes the same stream passed to MediaRecorder without connecting
+      // to speakers, recording, persisting, or uploading any extra audio.
+      source.connect(analyser);
+      const samples = new Float32Array(analyser.fftSize);
+
+      microphoneSignalStartedAtRef.current = performance.now();
+      void audioContext.resume().catch(() => {});
+
+      const sampleLevel = () => {
+        if (audioContextRef.current !== audioContext) return;
+        analyser.getFloatTimeDomainData(samples);
+        let sum = 0;
+        let peak = 0;
+        for (let index = 0; index < samples.length; index += 1) {
+          const sample = samples[index];
+          sum += sample * sample;
+          peak = Math.max(peak, Math.abs(sample));
+        }
+        const activeTrack = stream.getAudioTracks()[0] ?? track;
+        const input = describeCaptureInputDevice(stream);
+        const snapshot: MicrophoneSignalStateSnapshot = {
+          trackEnabled: activeTrack?.enabled ?? null,
+          trackMuted: activeTrack?.muted ?? null,
+          trackReadyState: activeTrack?.readyState ?? null,
+          streamActive: stream.active,
+          audioContextState: audioContext.state,
+          input,
+        };
+        const previousSnapshot = microphoneSignalSnapshotRef.current;
+        if (previousSnapshot) {
+          const changedStates: string[] = [];
+          if (previousSnapshot.trackEnabled !== snapshot.trackEnabled) {
+            changedStates.push(`track.enabled: ${previousSnapshot.trackEnabled} → ${snapshot.trackEnabled}`);
+          }
+          if (previousSnapshot.trackMuted !== snapshot.trackMuted) {
+            changedStates.push(`track.muted: ${previousSnapshot.trackMuted} → ${snapshot.trackMuted}`);
+          }
+          if (previousSnapshot.trackReadyState !== snapshot.trackReadyState) {
+            changedStates.push(`track.readyState: ${previousSnapshot.trackReadyState} → ${snapshot.trackReadyState}`);
+          }
+          if (previousSnapshot.streamActive !== snapshot.streamActive) {
+            changedStates.push(`stream.active: ${previousSnapshot.streamActive} → ${snapshot.streamActive}`);
+          }
+          if (JSON.stringify(previousSnapshot.input) !== JSON.stringify(snapshot.input)) {
+            changedStates.push("input device/settings changed");
+          }
+          if (changedStates.length > 0) {
+            const elapsedMs = Math.round(performance.now() - microphoneSignalStartedAtRef.current);
+            microphoneSignalTransitionsRef.current = [
+              ...microphoneSignalTransitionsRef.current,
+              ...changedStates.map((change) => `+${elapsedMs} ms ${change}`),
+            ].slice(-8);
+          }
+        }
+        microphoneSignalSnapshotRef.current = snapshot;
+        setCaptureInputDevice(input);
+        setMicrophoneSignalDiagnostic({
+          rms: Math.sqrt(sum / samples.length),
+          peak,
+          trackEnabled: snapshot.trackEnabled,
+          trackMuted: snapshot.trackMuted,
+          trackReadyState: snapshot.trackReadyState,
+          streamActive: snapshot.streamActive,
+          audioContextState: snapshot.audioContextState,
+          transitions: microphoneSignalTransitionsRef.current,
+          error: null,
+        });
+      };
+
+      sampleLevel();
+      audioLevelTimerRef.current = setInterval(sampleLevel, 100);
+    } catch (error: any) {
+      stopMicrophoneSignalDiagnostic();
+      setMicrophoneSignalDiagnostic({
+        rms: 0,
+        peak: 0,
+        trackEnabled: track?.enabled ?? null,
+        trackMuted: track?.muted ?? null,
+        trackReadyState: track?.readyState ?? null,
+        streamActive: stream.active,
+        audioContextState: "error",
+        transitions: [],
+        error: error?.message || "Could not initialize the microphone signal analyser.",
+      });
+    }
+  }, [describeCaptureInputDevice, stopMicrophoneSignalDiagnostic]);
+
   // Cleanup on unmount (i.e. full app teardown)
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (segmentTimerRef.current) clearInterval(segmentTimerRef.current);
       if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+      stopMicrophoneSignalDiagnostic();
       captureDiagnosticUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
       captureDiagnosticUrlsRef.current.clear();
       releaseWakeLock();
     };
-  }, [releaseWakeLock]);
+  }, [releaseWakeLock, stopMicrophoneSignalDiagnostic]);
 
   // Reset all internal state — call after review/discard/error dismiss
   const resetAll = useCallback(() => {
@@ -296,6 +463,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
       streamRef.current.getTracks().forEach(t => t.stop());
       streamRef.current = null;
     }
+    stopMicrophoneSignalDiagnostic();
     releaseWakeLock();
     mediaRecorderRef.current = null;
     transcribedSegmentsRef.current.clear();
@@ -325,7 +493,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     clearCaptureDiagnostics();
     setErrorMessage(null);
     setState("idle");
-  }, [clearCaptureDiagnostics, releaseWakeLock]);
+  }, [clearCaptureDiagnostics, releaseWakeLock, stopMicrophoneSignalDiagnostic]);
 
   // Single upload+transcribe attempt for one segment blob. Throws on failure.
   const uploadSegmentOnce = useCallback(async (blob: Blob, segIdx: number, capture: CaptureMetadata) => {
@@ -737,6 +905,9 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
         ? describeCaptureInputDevice(stream)
         : null,
     );
+    if (captureDiagnosticRuntimeEnabled && captureDiagnosticRequested()) {
+      startMicrophoneSignalDiagnostic(stream);
+    }
     startSegmentRecorder(stream);
     setState("recording");
 
@@ -749,13 +920,14 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
 
     acquireWakeLock();
     return true;
-  }, [acquireWakeLock, captureDiagnosticRuntimeEnabled, clearCaptureDiagnostics, describeCaptureInputDevice, flushSegment, startSegmentRecorder, toast]);
+  }, [acquireWakeLock, captureDiagnosticRuntimeEnabled, clearCaptureDiagnostics, describeCaptureInputDevice, flushSegment, startMicrophoneSignalDiagnostic, startSegmentRecorder, toast]);
 
   const stop = useCallback(() => {
     if (stateRef.current !== "recording") return;
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     if (segmentTimerRef.current) { clearInterval(segmentTimerRef.current); segmentTimerRef.current = null; }
     releaseWakeLock();
+    stopMicrophoneSignalDiagnostic();
     recordingStoppedRef.current = true;
     setState("transcribing");
 
@@ -777,7 +949,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     // onstop / transcribeSegment.finally. That gate ends the stream only after
     // the final capture and retry lifecycle has settled.
     settleAfterStop(session);
-  }, [finalize, releaseWakeLock, settleAfterStop]);
+  }, [finalize, releaseWakeLock, settleAfterStop, stopMicrophoneSignalDiagnostic]);
 
   const discard = useCallback(() => {
     // Hard-stop everything; do NOT persist any transcript.
@@ -822,6 +994,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     finalUtterances,
     captureDiagnostics,
     captureInputDevice,
+    microphoneSignalDiagnostic,
     errorMessage,
     start,
     stop,

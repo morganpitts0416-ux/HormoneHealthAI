@@ -1,0 +1,63 @@
+I approve the temporary microphone-signal diagnostic.
+
+Implement the smallest client-only, non-persistent diagnostic using the exact same MediaStream that is passed to MediaRecorder:
+
+MediaStream
+├─→ MediaRecorder
+└─→ AudioContext → AnalyserNode → live RMS/peak meter
+
+Display during recording:
+
+live microphone-level meter;
+microphone label;
+device ID;
+sample rate;
+channel count;
+track.enabled;
+track.muted;
+track.readyState;
+stream.active.
+
+The diagnostic must use the same actual audio track that MediaRecorder is receiving. Do not acquire a second microphone stream just for testing.
+
+It must remain:
+
+client-only;
+in-memory only;
+authenticated/test-gated;
+non-persistent;
+no audio or PHI in logs;
+no server upload beyond the existing recording path.
+
+Close/disconnect the AudioContext, analyser, and source when recording stops, is discarded, or the component unmounts.
+
+Do not make another behavioral recorder change yet
+
+Do not alter:
+
+getUserMedia;
+MediaRecorder configuration;
+audioBitsPerSecond;
+MIME selection;
+segmentation;
+the approved restart rollback;
+STT models;
+STT prompt;
+provenance;
+SOAP or downstream AI.
+
+The purpose of this change is only to establish whether audible signal exists before MediaRecorder.
+
+Interpretation
+
+If I speak and the RMS/peak meter is essentially flat:
+
+The defect is before MediaRecorder. We then investigate microphone selection, browser permissions/device state, muted/ended track behavior, or competing capture ownership.
+
+If the meter clearly responds to my voice but the resulting WebM is still approximately 470 bytes/sec and STT returns nonsense:
+
+The microphone track is good and the failure is in MediaRecorder/browser encoding or Blob production. At that point, stop investigating microphone selection.
+
+If track state changes during recording — for example muted=true, readyState=ended, stream.active=false, or device/settings unexpectedly change — capture the transition in the diagnostic UI so we can correlate it with the failure.
+
+Add focused tests for diagnostic initialization/cleanup and use of the same stream, run the production build, and do not deploy automatically.

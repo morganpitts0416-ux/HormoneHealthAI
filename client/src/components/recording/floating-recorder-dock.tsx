@@ -29,6 +29,10 @@ export function FloatingRecorderDock() {
   const isTranscribing = recording.state === "transcribing";
   const isReview = recording.state === "review";
   const isError = recording.state === "error";
+  const microphoneSignal = recording.microphoneSignalDiagnostic;
+  const microphoneLevelPercent = microphoneSignal
+    ? Math.max(0, Math.min(100, ((20 * Math.log10(Math.max(microphoneSignal.rms, 0.000_001)) + 60) / 60) * 100))
+    : 0;
 
   const goToEncounter = () => {
     if (recording.boundEncounterId) {
@@ -105,6 +109,21 @@ export function FloatingRecorderDock() {
           )}
         </div>
 
+        {isRecording && microphoneSignal && (
+          <div
+            className="w-12 flex-shrink-0"
+            title={`Mic RMS ${microphoneSignal.rms.toFixed(4)} · peak ${microphoneSignal.peak.toFixed(4)}`}
+            data-testid="microphone-signal-meter"
+          >
+            <div className="h-1.5 overflow-hidden rounded-full" style={{ backgroundColor: "#e4e8dc" }}>
+              <div
+                className="h-full rounded-full transition-[width] duration-100"
+                style={{ width: `${microphoneLevelPercent}%`, backgroundColor: microphoneSignal.error ? "#9c2a2a" : "#557a38" }}
+              />
+            </div>
+          </div>
+        )}
+
         {!isError && (
           <Button
             size="icon"
@@ -136,6 +155,54 @@ export function FloatingRecorderDock() {
           {expanded && isRecording && !recording.liveTranscript && (
             <div className="text-[11px] italic px-1" style={{ color: "#9aaa84" }}>
               Live transcript appears as each segment is processed (about every minute).
+            </div>
+          )}
+
+          {expanded && isRecording && microphoneSignal && (
+            <div
+              className="rounded-md px-2.5 py-2 border space-y-1"
+              style={{ backgroundColor: "#edf4e4", borderColor: "#b8c9a6", color: "#35492a" }}
+              data-testid="microphone-signal-diagnostic"
+            >
+              <p className="text-[11px] font-semibold">
+                Microphone signal — same stream as recorder
+              </p>
+              <div className="h-2 overflow-hidden rounded-full" style={{ backgroundColor: "#d9e6cc" }}>
+                <div
+                  className="h-full rounded-full transition-[width] duration-100"
+                  style={{ width: `${microphoneLevelPercent}%`, backgroundColor: microphoneSignal.error ? "#9c2a2a" : "#557a38" }}
+                />
+              </div>
+              <p className="text-[10px] tabular-nums">
+                RMS {microphoneSignal.rms.toFixed(4)} · peak {microphoneSignal.peak.toFixed(4)}
+              </p>
+              <p className="text-[10px] leading-snug">
+                Track: enabled {String(microphoneSignal.trackEnabled)} · muted {String(microphoneSignal.trackMuted)} · {microphoneSignal.trackReadyState || "unknown"}
+                {" · "}Stream active {String(microphoneSignal.streamActive)}
+                {" · "}AudioContext {microphoneSignal.audioContextState || "unknown"}
+              </p>
+              {recording.captureInputDevice && (
+                <p className="text-[10px] leading-snug">
+                  Input: {recording.captureInputDevice.label || "browser did not expose a microphone label"}
+                  {recording.captureInputDevice.deviceId ? ` · device ${recording.captureInputDevice.deviceId}` : ""}
+                  {recording.captureInputDevice.sampleRate ? ` · ${recording.captureInputDevice.sampleRate} Hz` : ""}
+                  {recording.captureInputDevice.channelCount ? ` · ${recording.captureInputDevice.channelCount} channel${recording.captureInputDevice.channelCount === 1 ? "" : "s"}` : ""}
+                </p>
+              )}
+              {microphoneSignal.error && (
+                <p className="text-[10px]" style={{ color: "#9c2a2a" }}>{microphoneSignal.error}</p>
+              )}
+              {microphoneSignal.transitions.length > 0 && (
+                <div className="border-t pt-1" style={{ borderColor: "#c9d9b8" }}>
+                  <p className="text-[10px] font-medium">State transitions</p>
+                  {microphoneSignal.transitions.map((transition, index) => (
+                    <p key={`${transition}-${index}`} className="text-[10px] leading-snug">{transition}</p>
+                  ))}
+                </div>
+              )}
+              <p className="text-[10px] leading-snug">
+                This meter is browser-memory only. It does not record, upload, or store additional audio.
+              </p>
             </div>
           )}
 

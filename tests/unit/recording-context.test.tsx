@@ -79,6 +79,63 @@ class MockMediaRecorder {
   }
 }
 
+class MockAnalyserNode {
+  fftSize = 0;
+  disconnected = vi.fn();
+  getFloatTimeDomainData = vi.fn((samples: Float32Array) => {
+    samples.fill(0);
+    samples[0] = 0.25;
+  });
+  disconnect() {
+    this.disconnected();
+  }
+}
+
+class MockMediaStreamSourceNode {
+  connected = vi.fn();
+  disconnected = vi.fn();
+
+  constructor(public stream: any) {}
+
+  connect(destination: any) {
+    this.connected(destination);
+  }
+
+  disconnect() {
+    this.disconnected();
+  }
+}
+
+class MockAudioContext {
+  static instances: MockAudioContext[] = [];
+  state = "running";
+  analyser = new MockAnalyserNode();
+  source: MockMediaStreamSourceNode | null = null;
+  resumed = vi.fn(async () => {});
+  closed = vi.fn(async () => { this.state = "closed"; });
+
+  constructor() {
+    MockAudioContext.instances.push(this);
+  }
+
+  createAnalyser() {
+    return this.analyser;
+  }
+
+  createMediaStreamSource(stream: any) {
+    this.source = new MockMediaStreamSourceNode(stream);
+    return this.source;
+  }
+
+  resume() {
+    return this.resumed();
+  }
+
+  close() {
+    return this.closed();
+  }
+}
+
 // ─── fetch mock (segment transcription endpoint) ─────────────────────────────
 
 type FetchResult = { ok: boolean; body?: any };
@@ -88,6 +145,7 @@ let fetchCalls = 0;
 let transcriptionBodies: FormData[] = [];
 let sourceFetchCalls = 0;
 let successfulTranscriptions: string[] = [];
+let diagnosticGateEnabled = false;
 let authoritativeSourceOverride: {
   text: string;
   kind: "verified_raw" | "legacy_unverified";
@@ -103,6 +161,12 @@ function installFetchMock() {
   successfulTranscriptions = [];
   authoritativeSourceOverride = null;
   vi.stubGlobal("fetch", vi.fn(async (url: any, init?: RequestInit) => {
+    if (String(url).includes("/api/diagnostics/audio-capture/config")) {
+      return {
+        ok: true,
+        json: async () => ({ enabled: diagnosticGateEnabled }),
+      } as any;
+    }
     if (String(url).includes("/api/encounters/transcribe")) {
       transcriptionBodies.push(init?.body as FormData);
       const plan = await fetchPlan(fetchCalls++);
@@ -149,8 +213,25 @@ function Grab() {
 }
 
 const trackStop = vi.fn();
+let lastTrack: any;
 function makeStream() {
-  return { getTracks: () => [{ stop: trackStop }] } as any;
+  lastTrack = {
+    enabled: true,
+    muted: false,
+    readyState: "live",
+    label: "Test Microphone",
+    getSettings: () => ({
+      deviceId: "test-device",
+      sampleRate: 48000,
+      channelCount: 1,
+    }),
+    stop: trackStop,
+  };
+  return {
+    active: true,
+    getTracks: () => [lastTrack],
+    getAudioTracks: () => [lastTrack],
+  } as any;
 }
 
 async function startRecording() {
@@ -173,12 +254,27 @@ async function tick(ms: number) {
 
 const SEGMENT_MS = 60_000;
 
+async function renderWithDiagnosticGate() {
+  diagnosticGateEnabled = true;
+  window.history.replaceState({}, "", "/?audioCaptureDiagnostic=1");
+  cleanup();
+  render(
+    <RecordingProvider>
+      <Grab />
+    </RecordingProvider>,
+  );
+  await act(async () => { await Promise.resolve(); });
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   MockMediaRecorder.instances = [];
   MockMediaRecorder.failConstructions = 0;
   MockMediaRecorder.deferStop = false;
+  MockAudioContext.instances = [];
+  diagnosticGateEnabled = false;
   vi.stubGlobal("MediaRecorder", MockMediaRecorder as any);
+  vi.stubGlobal("AudioContext", MockAudioContext as any);
   installFetchMock();
   apiRequestMock.mockClear().mockResolvedValue({});
   invalidateQueriesMock.mockClear();
@@ -197,6 +293,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  window.history.replaceState({}, "", "/");
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
@@ -455,6 +552,61 @@ describe("MediaRecorder final-data lifecycle", () => {
     expect(toastMock).toHaveBeenCalledWith(
       expect.objectContaining({ title: expect.stringContaining("audio capture failed") }),
     );
+  });
+});
+
+describe("microphone signal diagnostic", () => {
+  test("observes the exact stream passed to MediaRecorder and reflects live track state", async () => {
+    await renderWithDiagnosticGate();
+    await startRecording();
+
+    expect(MockAudioContext.instances).toHaveLength(1);
+    const audioContext = MockAudioContext.instances[0];
+    expect(audioContext.source?.stream).toBe(MockMediaRecorder.latest().stream);
+    expect(audioContext.source?.connected).toHaveBeenCalledWith(audioContext.analyser);
+    expect(ctx.microphoneSignalDiagnostic).toMatchObject({
+      rms: expect.any(Number),
+      peak: expect.any(Number),
+      trackEnabled: true,
+      trackMuted: false,
+      trackReadyState: "live",
+      streamActive: true,
+      audioContextState: "running",
+      error: null,
+    });
+    expect(ctx.captureInputDevice).toMatchObject({
+      label: "Test Microphone",
+      deviceId: "test-device",
+      sampleRate: 48000,
+      channelCount: 1,
+    });
+
+    lastTrack.muted = true;
+    await tick(100);
+    expect(ctx.microphoneSignalDiagnostic?.trackMuted).toBe(true);
+    expect(ctx.microphoneSignalDiagnostic?.transitions).toContainEqual(expect.stringContaining("track.muted: false → true"));
+  });
+
+  test("releases the analyser graph on Stop and Discard without uploading extra audio", async () => {
+    await renderWithDiagnosticGate();
+    await startRecording();
+    const firstAudioContext = MockAudioContext.instances[0];
+
+    await act(async () => ctx.stop());
+    expect(firstAudioContext.closed).toHaveBeenCalledTimes(1);
+    expect(firstAudioContext.analyser.disconnected).toHaveBeenCalledTimes(1);
+    expect(firstAudioContext.source?.disconnected).toHaveBeenCalledTimes(1);
+    expect(ctx.microphoneSignalDiagnostic).toBeNull();
+    expect(fetchCalls).toBe(0);
+
+    await act(async () => ctx.dismissReview());
+    await startRecording();
+    const secondAudioContext = MockAudioContext.instances[1];
+    await act(async () => ctx.discard());
+    expect(secondAudioContext.closed).toHaveBeenCalledTimes(1);
+    expect(secondAudioContext.analyser.disconnected).toHaveBeenCalledTimes(1);
+    expect(secondAudioContext.source?.disconnected).toHaveBeenCalledTimes(1);
+    expect(fetchCalls).toBe(0);
   });
 });
 

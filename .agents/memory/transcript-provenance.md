@@ -27,6 +27,12 @@ The dedicated audio-boundary playback diagnostic is the narrow exception: it may
 
 **How to apply:** Require the explicit query parameter plus a server-side feature flag and a matching tagged Cloud Run hostname (and runtime revision presence in production). Revoke every object URL and clear all diagnostic state when the recording is discarded, dismissed, or the page unmounts.
 
+The microphone-signal diagnostic is a separate, temporary browser-memory analyser branch. It must receive the exact `MediaStream` supplied to `MediaRecorder`, never acquire a second microphone stream, and expose only live RMS/peak, active track/stream/settings state, and a bounded state-transition list under the same authenticated test gate.
+
+**Why:** It distinguishes a missing microphone signal before recorder encoding from a valid signal that becomes near-empty only during browser Blob production, without adding audio storage, uploads, or PHI logs.
+
+**How to apply:** Keep it observational: connect a `MediaStreamAudioSourceNode` to an `AnalyserNode`, never to speakers or persistence. Tear down the source, analyser, timers, and `AudioContext` on stop, discard, reset, and unmount before making any recorder or STT behavior changes.
+
 The OpenAI Node SDK converts a server `fs.ReadStream` into a fresh multipart file that preserves the filename and bytes but has no inferred MIME type; its multipart part is therefore `application/octet-stream` even for a valid `.webm`/Opus capture.
 
 **Why:** The browser upload can correctly identify `audio/webm;codecs=opus` while the final server-to-OpenAI request does not. Do not mistake this MIME difference for corruption without a controlled transcription comparison.
