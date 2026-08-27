@@ -1,0 +1,84 @@
+NEW CRITICAL CLUE — trace the loss of the original LIVE transcription behavior. ANALYSIS ONLY.
+
+During the current test I noticed something important that we have not accounted for.
+
+ClinIQ currently displays:
+
+Live transcript appears as each segment is processed (about every minute).
+
+and:
+
+Recording... transcript will appear here in about 60 seconds.
+
+That is not how the listener worked when transcription was functioning correctly.
+
+Previously, as I spoke during the encounter, I could see the words appearing/transcribing while I was talking. I did not have to wait approximately 60 seconds for a completed recording segment before text appeared.
+
+This means we may have been comparing only MediaRecorder lifecycle changes while missing a larger architectural regression: the original live/continuous transcription mechanism may have been replaced by 60-second batch transcription.
+
+I want a Git history analysis of the listener/transcription architecture
+
+Trace back through Git history to determine exactly how transcription worked when ClinIQ displayed speech while I was actively speaking.
+
+Do not assume the 726e309 pre-Task-68 state is the original known-good listener just because it predates Task #68.
+
+Identify:
+
+The last commit where spoken words appeared in the UI continuously or near-real-time during active recording.
+What transcription mechanism produced that text:
+Web Speech API?
+MediaRecorder with very short chunks?
+repeated Whisper/STT requests?
+realtime/WebSocket transcription?
+another browser/service path?
+The chunk/timeslice/transcription cadence in that working version.
+When the current ~60-second segment upload/transcription architecture was introduced.
+Why it was introduced.
+Whether that change predates Task #68.
+Whether the old working listener used the same gpt-4o-transcribe endpoint at all.
+Whether mr.start(1000) previously caused one-second audio chunks to actually be sent/transcribed incrementally, rather than merely accumulated locally for 60 seconds.
+Whether a live/local transcript path was removed or disconnected from the recorder UI.
+
+Search Git history specifically for:
+
+MediaRecorder
+dataavailable
+timeslice
+liveTranscript
+finalTranscript
+/api/encounters/transcribe
+SpeechRecognition
+webkitSpeechRecognition
+WebSocket/realtime transcription
+segment timers
+text being appended to the transcript during recording
+Compare the actual architectures
+
+Show me:
+
+KNOWN-WORKING LIVE LISTENER
+
+versus
+
+CURRENT 60-SECOND BATCH LISTENER
+
+including:
+
+microphone acquisition;
+chunk duration;
+when audio left the browser;
+when STT was called;
+when text was returned;
+how text was appended to the UI;
+how final transcript persistence worked.
+Important
+
+Do not make another recorder change yet.
+
+I want to know whether we inadvertently replaced the original listener architecture and have been trying to repair the replacement instead of restoring what was actually working.
+
+The current GCP evidence shows a 60-second segment produced only a ~28 KB WebM and nonsense STT. That problem may be specific to the newer long-segment batch architecture.
+
+Find the exact commit where live transcription stopped behaving like live transcription.
+
+Do not implement or deploy anything yet.
