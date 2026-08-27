@@ -146,6 +146,7 @@ let transcriptionBodies: FormData[] = [];
 let sourceFetchCalls = 0;
 let successfulTranscriptions: string[] = [];
 let diagnosticGateEnabled = false;
+let diagnosticGateResponsePromise: Promise<any> | null = null;
 let authoritativeSourceOverride: {
   text: string;
   kind: "verified_raw" | "legacy_unverified";
@@ -162,6 +163,7 @@ function installFetchMock() {
   authoritativeSourceOverride = null;
   vi.stubGlobal("fetch", vi.fn(async (url: any, init?: RequestInit) => {
     if (String(url).includes("/api/diagnostics/audio-capture/config")) {
+      if (diagnosticGateResponsePromise) return diagnosticGateResponsePromise;
       return {
         ok: true,
         json: async () => ({
@@ -259,6 +261,7 @@ const SEGMENT_MS = 60_000;
 
 async function renderWithDiagnosticGate() {
   diagnosticGateEnabled = true;
+  diagnosticGateResponsePromise = null;
   window.history.replaceState({}, "", "/?audioCaptureDiagnostic=1");
   window.sessionStorage.clear();
   cleanup();
@@ -277,6 +280,7 @@ beforeEach(() => {
   MockMediaRecorder.deferStop = false;
   MockAudioContext.instances = [];
   diagnosticGateEnabled = false;
+  diagnosticGateResponsePromise = null;
   window.sessionStorage.clear();
   vi.stubGlobal("MediaRecorder", MockMediaRecorder as any);
   vi.stubGlobal("AudioContext", MockAudioContext as any);
@@ -572,6 +576,58 @@ describe("microphone signal diagnostic", () => {
 
     await startRecording();
     expect(MockAudioContext.instances).toHaveLength(1);
+  });
+
+  test("seeds a remounted provider from server approval retained in the tab", async () => {
+    await renderWithDiagnosticGate();
+    expect(ctx.audioCaptureDiagnosticStatus.enabled).toBe(true);
+
+    cleanup();
+    window.history.replaceState({}, "", "/encounters?encounterId=7");
+    render(
+      <RecordingProvider>
+        <Grab />
+      </RecordingProvider>,
+    );
+    await act(async () => { await Promise.resolve(); });
+
+    expect(ctx.audioCaptureDiagnosticStatus.enabled).toBe(true);
+    expect(ctx.audioCaptureDiagnosticStatus.reason).toBe("server approved tagged test revision");
+  });
+
+  test("initializes the analyser on the existing recorder stream when approval resolves after recording starts", async () => {
+    let resolveGateResponse: ((response: any) => void) | null = null;
+    diagnosticGateResponsePromise = new Promise((resolve) => {
+      resolveGateResponse = resolve;
+    });
+    diagnosticGateEnabled = true;
+    window.history.replaceState({}, "", "/?audioCaptureDiagnostic=1");
+    window.sessionStorage.clear();
+    cleanup();
+    render(
+      <RecordingProvider>
+        <Grab />
+      </RecordingProvider>,
+    );
+
+    await startRecording();
+    expect(MockAudioContext.instances).toHaveLength(0);
+
+    await act(async () => {
+      resolveGateResponse?.({
+        ok: true,
+        json: async () => ({ enabled: true, reason: "server approved tagged test revision" }),
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(ctx.audioCaptureDiagnosticStatus).toEqual({
+      enabled: true,
+      reason: "server approved tagged test revision",
+    });
+    expect(MockAudioContext.instances).toHaveLength(1);
+    expect(MockAudioContext.instances[0].source?.stream).toBe(MockMediaRecorder.latest().stream);
   });
 
   test("observes the exact stream passed to MediaRecorder and reflects live track state", async () => {

@@ -5,8 +5,8 @@ description: How temporary microphone diagnostics survive SPA redirects without 
 
 ## Rule
 
-Capture `?audioCaptureDiagnostic=1` at application entry in browser-tab session storage, then use that latch only to request authenticated server approval after SPA redirects have removed the URL. Display the server's explicit allow/deny reason in the recorder dock.
+Capture `?audioCaptureDiagnostic=1` at application entry in browser-tab session storage, then use that latch only to request authenticated server approval after SPA redirects have removed the URL. Persist a successful server approval for that authenticated tab, display the server's explicit allow/deny reason in the recorder dock, and revalidate in the background after provider remounts.
 
-**Why:** Protected-route and login navigation replace URLs such as `/` with `/dashboard` and discard query strings before the recording provider mounts. Reading `window.location.search` only when the provider starts silently disables an otherwise approved tagged-revision diagnostic.
+**Why:** Protected-route and login navigation replace URLs such as `/` with `/dashboard` and discard query strings before the recording provider mounts. Recording providers can also remount on route changes; holding server approval only in React state makes an approved diagnostic temporarily revert to disabled and can miss analyser setup if the user starts recording before revalidation returns.
 
-**How to apply:** Treat the tab latch as a request-preservation mechanism, never as authorization. The diagnostic endpoint must continue to enforce clinician authentication, operator enablement, and tagged-host checks; clear the latch on explicit logout. Any future diagnostic gate should identify whether denial came from an absent initial request, authentication, server feature flag, or tagged-host validation.
+**How to apply:** Treat the tab latches as request-preservation and previously-approved-state mechanisms, never as authorization. The diagnostic endpoint must continue to enforce clinician authentication, operator enablement, and tagged-host checks; clear both latches on explicit logout. If approval resolves after recording began, attach the analyser to the existing stream rather than waiting for another recording.

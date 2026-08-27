@@ -2,7 +2,12 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { DiarizedUtterance } from "@shared/schema";
-import { rememberAudioCaptureDiagnosticRequest } from "@/lib/audio-capture-diagnostic";
+import {
+  clearAudioCaptureDiagnosticApproval,
+  hasAudioCaptureDiagnosticApproval,
+  rememberAudioCaptureDiagnosticApproval,
+  rememberAudioCaptureDiagnosticRequest,
+} from "@/lib/audio-capture-diagnostic";
 
 export type RecordingState = "idle" | "recording" | "transcribing" | "review" | "error";
 export type TranscriptSourceState =
@@ -154,11 +159,15 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
   const [captureDiagnostics, setCaptureDiagnostics] = useState<CaptureDiagnostic[]>([]);
   const [captureInputDevice, setCaptureInputDevice] = useState<CaptureInputDevice | null>(null);
   const [microphoneSignalDiagnostic, setMicrophoneSignalDiagnostic] = useState<MicrophoneSignalDiagnostic | null>(null);
-  const [captureDiagnosticRuntimeEnabled, setCaptureDiagnosticRuntimeEnabled] = useState(false);
+  const [captureDiagnosticRuntimeEnabled, setCaptureDiagnosticRuntimeEnabled] = useState(() =>
+    hasAudioCaptureDiagnosticApproval(),
+  );
   const [audioCaptureDiagnosticStatus, setAudioCaptureDiagnosticStatus] = useState<AudioCaptureDiagnosticStatus>(() => ({
-    enabled: false,
-    reason: rememberAudioCaptureDiagnosticRequest()
-      ? "waiting for authenticated server approval"
+    enabled: hasAudioCaptureDiagnosticApproval(),
+    reason: hasAudioCaptureDiagnosticApproval()
+      ? "server approval retained for this authenticated tab; rechecking"
+      : rememberAudioCaptureDiagnosticRequest()
+        ? "waiting for authenticated server approval"
       : "initial ?audioCaptureDiagnostic=1 query flag was not present in this tab",
   }));
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -243,10 +252,13 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [acquireWakeLock]);
 
-  const captureDiagnosticRequested = () => rememberAudioCaptureDiagnosticRequest();
+  const captureDiagnosticRequested = () =>
+    rememberAudioCaptureDiagnosticRequest() || hasAudioCaptureDiagnosticApproval();
 
   useEffect(() => {
-    if (!captureDiagnosticRequested()) {
+    const requested = captureDiagnosticRequested();
+    const previouslyApproved = hasAudioCaptureDiagnosticApproval();
+    if (!requested) {
       setCaptureDiagnosticRuntimeEnabled(false);
       setAudioCaptureDiagnosticStatus({
         enabled: false,
@@ -255,7 +267,9 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
       return;
     }
     let active = true;
-    setAudioCaptureDiagnosticStatus({ enabled: false, reason: "waiting for authenticated server approval" });
+    setAudioCaptureDiagnosticStatus(previouslyApproved
+      ? { enabled: true, reason: "server approval retained for this authenticated tab; rechecking" }
+      : { enabled: false, reason: "waiting for authenticated server approval" });
     fetch("/api/diagnostics/audio-capture/config?audioCaptureDiagnostic=1", { credentials: "include" })
       .then(async (response) => {
         if (response.ok) return response.json();
@@ -267,6 +281,8 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
         if (!active) return;
         const enabled = data?.enabled === true;
         setCaptureDiagnosticRuntimeEnabled(enabled);
+        if (enabled) rememberAudioCaptureDiagnosticApproval();
+        else clearAudioCaptureDiagnosticApproval();
         setAudioCaptureDiagnosticStatus({
           enabled,
           reason: typeof data?.reason === "string"
@@ -474,6 +490,17 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
       });
     }
   }, [describeCaptureInputDevice, stopMicrophoneSignalDiagnostic]);
+
+  // If the server approval resolves after a user has already started the
+  // recorder, attach the analyser to that existing recorder stream. This is
+  // diagnostic-only and does not create a second microphone stream.
+  useEffect(() => {
+    if (!captureDiagnosticRuntimeEnabled || stateRef.current !== "recording" || !streamRef.current) return;
+    if (audioContextRef.current) return;
+    const stream = streamRef.current;
+    setCaptureInputDevice(describeCaptureInputDevice(stream));
+    startMicrophoneSignalDiagnostic(stream);
+  }, [captureDiagnosticRuntimeEnabled, describeCaptureInputDevice, startMicrophoneSignalDiagnostic]);
 
   // Cleanup on unmount (i.e. full app teardown)
   useEffect(() => {
