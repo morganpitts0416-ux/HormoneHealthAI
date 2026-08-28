@@ -76,6 +76,137 @@ function contextLengthError(value: unknown): boolean {
   );
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object";
+}
+
+function itemTypes(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(item => {
+    if (!isRecord(item)) return typeof item;
+    return typeof item.type === "string" ? item.type : "object";
+  });
+}
+
+function hasOwn(value: unknown, key: string): boolean {
+  return isRecord(value) && Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function responseStructureDiagnostic(response: unknown): Record<string, unknown> {
+  const topLevel = isRecord(response) ? response : {};
+  const choices = Array.isArray(topLevel.choices) ? topLevel.choices : [];
+  const firstChoice = isRecord(choices[0]) ? choices[0] : {};
+  const message = isRecord(firstChoice.message) ? firstChoice.message : {};
+  const output = Array.isArray(topLevel.output) ? topLevel.output : [];
+  const outputContent = output.flatMap(item =>
+    isRecord(item) && Array.isArray(item.content) ? item.content : [],
+  );
+  const messageContent = Array.isArray(message.content) ? message.content : [];
+  const allTypes = [
+    ...outputContent,
+    ...messageContent,
+  ].flatMap(item => itemTypes([item]));
+
+  const incompleteDetails = isRecord(topLevel.incomplete_details)
+    ? topLevel.incomplete_details
+    : isRecord(topLevel.incompleteDetails)
+      ? topLevel.incompleteDetails
+      : {};
+  const usage = isRecord(topLevel.usage) ? topLevel.usage : {};
+  const completionTokenDetails = isRecord(usage.completion_tokens_details)
+    ? usage.completion_tokens_details
+    : {};
+  const messageRefusal =
+    typeof message.refusal === "string"
+      ? message.refusal.trim().length > 0
+      : message.refusal != null;
+
+  const refusalPresent =
+    messageRefusal ||
+    outputContent.some(item => isRecord(item) && item.type === "refusal") ||
+    output.some(item => isRecord(item) && item.type === "refusal");
+
+  return {
+    topLevelKeys: Object.keys(topLevel).sort(),
+    responseStatus: typeof topLevel.status === "string" ? topLevel.status : null,
+    choiceCount: choices.length,
+    outputItemCount: output.length,
+    outputItemTypes: itemTypes(output),
+    contentItemTypes: [...new Set(allTypes)],
+    messageKeys: Object.keys(message).sort(),
+    messageContentType: Array.isArray(message.content)
+      ? "array"
+      : message.content === null
+        ? "null"
+        : typeof message.content,
+    hasOutputText: hasOwn(response, "output_text"),
+    outputTextNonEmpty:
+      typeof topLevel.output_text === "string" && topLevel.output_text.trim().length > 0,
+    finishReasons: choices.map(choice =>
+      isRecord(choice) && typeof choice.finish_reason === "string"
+        ? choice.finish_reason
+        : null,
+    ),
+    incompleteReason:
+      typeof incompleteDetails.reason === "string" ? incompleteDetails.reason : null,
+    refusalPresent,
+    tokenUsage: {
+      promptTokens: readNumberProperty(usage, "prompt_tokens") ?? null,
+      completionTokens: readNumberProperty(usage, "completion_tokens") ?? null,
+      reasoningTokens: readNumberProperty(completionTokenDetails, "reasoning_tokens") ?? null,
+    },
+  };
+}
+
+function extractText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    return value
+      .map(item => extractText(item))
+      .filter(Boolean)
+      .join("\n");
+  }
+  if (!isRecord(value)) return "";
+
+  // Supports Chat Completions content parts and Responses API output_text
+  // parts without assuming either response shape is always used.
+  if (typeof value.text === "string") return value.text;
+  if (typeof value.output_text === "string") return value.output_text;
+  if (hasOwn(value, "content")) return extractText(value.content);
+  if (isRecord(value.message)) return extractText(value.message);
+  return "";
+}
+
+function extractPatientSummaryText(response: unknown): string {
+  if (!isRecord(response)) return "";
+
+  const candidates: unknown[] = [
+    response.output_text,
+    isRecord(Array.isArray(response.choices) ? response.choices[0] : undefined)
+      ? (Array.isArray(response.choices)
+          ? (response.choices[0] as Record<string, unknown>).message
+          : undefined)
+      : undefined,
+    response.output,
+    response.content,
+  ];
+
+  for (const candidate of candidates) {
+    const text = extractText(candidate).trim();
+    if (text) return text;
+  }
+  return "";
+}
+
+function logPatientSummaryResponseStructure(response: unknown): void {
+  // Temporary non-PHI telemetry: keys, types, and completion metadata only.
+  // Never serialize response values because they may contain generated text.
+  console.log(
+    "[Patient Communication] response_structure",
+    JSON.stringify(responseStructureDiagnostic(response)),
+  );
+}
+
 function logPatientSummaryGenerationFailure(args: {
   failureKind: "exception" | "empty_response";
   error?: unknown;
@@ -348,10 +479,15 @@ CONTENT
             content: communicationPrompt
           }
         ],
-        max_completion_tokens: 2500,
+        // GPT-5 completion tokens include hidden reasoning tokens. Complex
+        // completed Brain context previously exhausted a 2,500-token budget
+        // before any patient-facing text was emitted (finish_reason=length).
+        reasoning_effort: "low",
+        max_completion_tokens: 4000,
       });
 
-      const summary = response.choices[0]?.message?.content;
+      logPatientSummaryResponseStructure(response);
+      const summary = extractPatientSummaryText(response);
       console.log('[AI Service] Patient summary generated, length:', summary?.length || 0);
 
       if (typeof summary !== "string" || summary.trim().length === 0) {

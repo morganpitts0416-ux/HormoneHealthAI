@@ -68,6 +68,22 @@ when they are reviewing fallback copy rather than a real draft.
 error class/code/status, empty-response and context-limit signals, and request ID. Never
 serialize the error object or log prompts, lab values, identifiers, or generated text.
 
+## GPT-5 empty Patient Communication responses
+
+For GPT-5 Chat Completions, `max_completion_tokens` includes hidden reasoning tokens.
+A complex completed Brain context can exhaust the completion budget before emitting
+patient-facing text: the request succeeds, has a request ID, and returns
+`finish_reason=length` with an empty `message.content`.
+
+**Why:** This failure looks like an extraction mismatch or successful empty response,
+but it is output-budget exhaustion. A smaller synthetic context may succeed with the
+same endpoint and parameters, masking the production failure.
+
+**How to apply:** Keep Patient Communication reasoning effort explicit and reserve
+enough completion budget for both reasoning and the requested draft. Temporary
+response diagnostics may log keys, types, finish/incomplete/refusal flags, and token
+counts only—never response values, prompts, lab data, or generated text.
+
 Portal GET (`GET /api/portal/labs`) applies all overrides server-side — never send raw data.
 
 Publish flow computes effective supplements from the lab's overrides before posting.

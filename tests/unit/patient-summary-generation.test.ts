@@ -36,6 +36,48 @@ describe("Patient Communication generation status", () => {
       text: "Your results show a focused treatment plan.",
       generationStatus: "generated",
     });
+    const request = openAIMocks.create.mock.calls[0][0];
+    expect(request).toMatchObject({
+      model: "gpt-5-mini",
+      reasoning_effort: "low",
+      max_completion_tokens: 4000,
+      messages: expect.arrayContaining([
+        expect.objectContaining({ role: "system" }),
+        expect.objectContaining({ role: "user" }),
+      ]),
+    });
+    expect(request).not.toHaveProperty("response_format");
+    expect(request).not.toHaveProperty("tools");
+    expect(request).not.toHaveProperty("max_output_tokens");
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  test("extracts text from Responses-style output_text and message content", async () => {
+    openAIMocks.create
+      .mockResolvedValueOnce({
+        id: "resp_output_text",
+        status: "completed",
+        output_text: "The response text is available here.",
+        output: [{ type: "message", content: [{ type: "output_text" }] }],
+      })
+      .mockResolvedValueOnce({
+        id: "resp_message_content",
+        status: "completed",
+        output: [{ type: "message", content: [{ type: "output_text", text: "A second response." }] }],
+      });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const first = await AIService.generatePatientSummary({}, [], false);
+    const second = await AIService.generatePatientSummary({}, [], false);
+
+    expect(first).toMatchObject({
+      text: "The response text is available here.",
+      generationStatus: "generated",
+    });
+    expect(second).toMatchObject({
+      text: "A second response.",
+      generationStatus: "generated",
+    });
     expect(errorSpy).not.toHaveBeenCalled();
   });
 
@@ -65,6 +107,42 @@ describe("Patient Communication generation status", () => {
       contextLengthError: false,
       requestId: "req_empty_123",
     });
+  });
+
+  test("diagnoses refusal and incomplete response shape without logging its text", async () => {
+    openAIMocks.create.mockResolvedValue({
+      id: "chat_incomplete",
+      status: "incomplete",
+      incomplete_details: { reason: "max_output_tokens" },
+      choices: [{
+        finish_reason: "length",
+        message: {
+          content: null,
+          refusal: "The private refusal text must not be logged.",
+        },
+      }],
+    });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const result = await AIService.generatePatientSummary({}, [], false);
+
+    expect(result.generationStatus).toBe("fallback_due_to_error");
+    const structureCall = logSpy.mock.calls.find(
+      call => call[0] === "[Patient Communication] response_structure",
+    );
+    expect(structureCall).toBeDefined();
+    const structure = JSON.parse(String(structureCall?.[1]));
+    expect(structure).toMatchObject({
+      responseStatus: "incomplete",
+      outputItemCount: 0,
+      messageContentType: "null",
+      finishReasons: ["length"],
+      incompleteReason: "max_output_tokens",
+      refusalPresent: true,
+    });
+    expect(String(structureCall?.[1])).not.toContain("private refusal text");
+    expect(errorSpy).toHaveBeenCalledTimes(1);
   });
 
   test("preserves fallback while logging sanitized OpenAI error metadata", async () => {
