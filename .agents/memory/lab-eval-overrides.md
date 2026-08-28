@@ -81,8 +81,10 @@ same endpoint and parameters, masking the production failure.
 
 **How to apply:** Keep Patient Communication reasoning effort explicit and reserve
 enough completion budget for both reasoning and the requested draft. Temporary
-response diagnostics may log keys, types, finish/incomplete/refusal flags, and token
-counts only—never response values, prompts, lab data, or generated text.
+response diagnostics must run synchronously immediately after the SDK resolves and
+before extraction/fallback. Log only effective request settings, finish/refusal
+metadata, token counts, content type/length, and response/request IDs—never response
+values, prompts, lab data, or generated text.
 
 Portal GET (`GET /api/portal/labs`) applies all overrides server-side — never send raw data.
 

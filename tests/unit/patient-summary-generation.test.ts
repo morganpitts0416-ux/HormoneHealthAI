@@ -25,9 +25,19 @@ describe("Patient Communication generation status", () => {
 
   test("marks a non-empty model response as generated", async () => {
     openAIMocks.create.mockResolvedValue({
-      choices: [{ message: { content: "Your results show a focused treatment plan." } }],
+      id: "chat_success",
+      choices: [{
+        finish_reason: "stop",
+        message: { content: "Your results show a focused treatment plan.", refusal: null },
+      }],
+      usage: {
+        prompt_tokens: 900,
+        completion_tokens: 120,
+        completion_tokens_details: { reasoning_tokens: 35 },
+      },
       _request_id: "req_success",
     });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     const result = await AIService.generatePatientSummary({}, [], false);
@@ -49,6 +59,26 @@ describe("Patient Communication generation status", () => {
     expect(request).not.toHaveProperty("response_format");
     expect(request).not.toHaveProperty("tools");
     expect(request).not.toHaveProperty("max_output_tokens");
+    const receivedCall = logSpy.mock.calls.find(
+      call => call[0] === "[Patient Communication] response_received",
+    );
+    expect(receivedCall).toBeDefined();
+    expect(JSON.parse(String(receivedCall?.[1]))).toEqual({
+      model: "gpt-5-mini",
+      effectiveReasoningEffort: "low",
+      effectiveMaxCompletionTokens: 4000,
+      responseStatus: null,
+      finishReason: "stop",
+      incompleteReason: null,
+      promptTokens: 900,
+      completionTokens: 120,
+      reasoningTokens: 35,
+      messageContentType: "string",
+      messageContentLength: 43,
+      refusalPresent: false,
+      responseId: "chat_success",
+      requestId: "req_success",
+    });
     expect(errorSpy).not.toHaveBeenCalled();
   });
 
@@ -83,15 +113,42 @@ describe("Patient Communication generation status", () => {
 
   test("marks an empty response as fallback and logs only allowlisted metadata", async () => {
     openAIMocks.create.mockResolvedValue({
-      choices: [{ message: { content: "" } }],
+      id: "chat_empty_123",
+      choices: [{ finish_reason: "length", message: { content: "", refusal: null } }],
+      usage: {
+        prompt_tokens: 2100,
+        completion_tokens: 4000,
+        completion_tokens_details: { reasoning_tokens: 4000 },
+      },
       _request_id: "req_empty_123",
     });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     const result = await AIService.generatePatientSummary({}, [], false);
 
     expect(result.generationStatus).toBe("fallback_due_to_error");
     expect(result.text).toContain("We've reviewed your recent lab results.");
+    const receivedCall = logSpy.mock.calls.find(
+      call => call[0] === "[Patient Communication] response_received",
+    );
+    expect(receivedCall).toBeDefined();
+    expect(JSON.parse(String(receivedCall?.[1]))).toEqual({
+      model: "gpt-5-mini",
+      effectiveReasoningEffort: "low",
+      effectiveMaxCompletionTokens: 4000,
+      responseStatus: null,
+      finishReason: "length",
+      incompleteReason: null,
+      promptTokens: 2100,
+      completionTokens: 4000,
+      reasoningTokens: 4000,
+      messageContentType: "string",
+      messageContentLength: 0,
+      refusalPresent: false,
+      responseId: "chat_empty_123",
+      requestId: "req_empty_123",
+    });
     expect(errorSpy).toHaveBeenCalledTimes(1);
     expect(errorSpy.mock.calls[0][0]).toBe("[Patient Communication] generation_failure");
 
@@ -129,16 +186,14 @@ describe("Patient Communication generation status", () => {
 
     expect(result.generationStatus).toBe("fallback_due_to_error");
     const structureCall = logSpy.mock.calls.find(
-      call => call[0] === "[Patient Communication] response_structure",
+      call => call[0] === "[Patient Communication] response_received",
     );
     expect(structureCall).toBeDefined();
     const structure = JSON.parse(String(structureCall?.[1]));
     expect(structure).toMatchObject({
-      responseStatus: "incomplete",
-      outputItemCount: 0,
       messageContentType: "null",
-      finishReasons: ["length"],
-      incompleteReason: "max_output_tokens",
+      messageContentLength: 0,
+      finishReason: "length",
       refusalPresent: true,
     });
     expect(String(structureCall?.[1])).not.toContain("private refusal text");

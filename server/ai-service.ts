@@ -31,6 +31,8 @@ const openai = new OpenAI({
 });
 
 const PATIENT_SUMMARY_MODEL = "gpt-5-mini";
+const PATIENT_SUMMARY_REASONING_EFFORT = "low" as const;
+const PATIENT_SUMMARY_MAX_COMPLETION_TOKENS = 4000;
 
 export interface PatientSummaryGenerationResult {
   text: string;
@@ -80,81 +82,57 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object";
 }
 
-function itemTypes(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.map(item => {
-    if (!isRecord(item)) return typeof item;
-    return typeof item.type === "string" ? item.type : "object";
-  });
-}
-
 function hasOwn(value: unknown, key: string): boolean {
   return isRecord(value) && Object.prototype.hasOwnProperty.call(value, key);
 }
 
-function responseStructureDiagnostic(response: unknown): Record<string, unknown> {
+function responseReceivedDiagnostic(response: unknown): Record<string, unknown> {
   const topLevel = isRecord(response) ? response : {};
   const choices = Array.isArray(topLevel.choices) ? topLevel.choices : [];
   const firstChoice = isRecord(choices[0]) ? choices[0] : {};
   const message = isRecord(firstChoice.message) ? firstChoice.message : {};
-  const output = Array.isArray(topLevel.output) ? topLevel.output : [];
-  const outputContent = output.flatMap(item =>
-    isRecord(item) && Array.isArray(item.content) ? item.content : [],
-  );
-  const messageContent = Array.isArray(message.content) ? message.content : [];
-  const allTypes = [
-    ...outputContent,
-    ...messageContent,
-  ].flatMap(item => itemTypes([item]));
-
+  const usage = isRecord(topLevel.usage) ? topLevel.usage : {};
+  const completionTokenDetails = isRecord(usage.completion_tokens_details)
+    ? usage.completion_tokens_details
+    : {};
   const incompleteDetails = isRecord(topLevel.incomplete_details)
     ? topLevel.incomplete_details
     : isRecord(topLevel.incompleteDetails)
       ? topLevel.incompleteDetails
       : {};
-  const usage = isRecord(topLevel.usage) ? topLevel.usage : {};
-  const completionTokenDetails = isRecord(usage.completion_tokens_details)
-    ? usage.completion_tokens_details
-    : {};
+  const messageContentType = Array.isArray(message.content)
+    ? "array"
+    : message.content === null
+      ? "null"
+      : typeof message.content;
+  const messageContentLength =
+    typeof message.content === "string"
+      ? message.content.length
+      : Array.isArray(message.content)
+        ? message.content.length
+        : 0;
   const messageRefusal =
     typeof message.refusal === "string"
       ? message.refusal.trim().length > 0
       : message.refusal != null;
 
-  const refusalPresent =
-    messageRefusal ||
-    outputContent.some(item => isRecord(item) && item.type === "refusal") ||
-    output.some(item => isRecord(item) && item.type === "refusal");
-
   return {
-    topLevelKeys: Object.keys(topLevel).sort(),
+    model: PATIENT_SUMMARY_MODEL,
+    effectiveReasoningEffort: PATIENT_SUMMARY_REASONING_EFFORT,
+    effectiveMaxCompletionTokens: PATIENT_SUMMARY_MAX_COMPLETION_TOKENS,
     responseStatus: typeof topLevel.status === "string" ? topLevel.status : null,
-    choiceCount: choices.length,
-    outputItemCount: output.length,
-    outputItemTypes: itemTypes(output),
-    contentItemTypes: [...new Set(allTypes)],
-    messageKeys: Object.keys(message).sort(),
-    messageContentType: Array.isArray(message.content)
-      ? "array"
-      : message.content === null
-        ? "null"
-        : typeof message.content,
-    hasOutputText: hasOwn(response, "output_text"),
-    outputTextNonEmpty:
-      typeof topLevel.output_text === "string" && topLevel.output_text.trim().length > 0,
-    finishReasons: choices.map(choice =>
-      isRecord(choice) && typeof choice.finish_reason === "string"
-        ? choice.finish_reason
-        : null,
-    ),
+    finishReason:
+      typeof firstChoice.finish_reason === "string" ? firstChoice.finish_reason : null,
     incompleteReason:
       typeof incompleteDetails.reason === "string" ? incompleteDetails.reason : null,
-    refusalPresent,
-    tokenUsage: {
-      promptTokens: readNumberProperty(usage, "prompt_tokens") ?? null,
-      completionTokens: readNumberProperty(usage, "completion_tokens") ?? null,
-      reasoningTokens: readNumberProperty(completionTokenDetails, "reasoning_tokens") ?? null,
-    },
+    promptTokens: readNumberProperty(usage, "prompt_tokens") ?? null,
+    completionTokens: readNumberProperty(usage, "completion_tokens") ?? null,
+    reasoningTokens: readNumberProperty(completionTokenDetails, "reasoning_tokens") ?? null,
+    messageContentType,
+    messageContentLength,
+    refusalPresent: messageRefusal,
+    responseId: readStringProperty(topLevel, "id") ?? null,
+    requestId: openAIRequestId(response) ?? null,
   };
 }
 
@@ -196,15 +174,6 @@ function extractPatientSummaryText(response: unknown): string {
     if (text) return text;
   }
   return "";
-}
-
-function logPatientSummaryResponseStructure(response: unknown): void {
-  // Temporary non-PHI telemetry: keys, types, and completion metadata only.
-  // Never serialize response values because they may contain generated text.
-  console.log(
-    "[Patient Communication] response_structure",
-    JSON.stringify(responseStructureDiagnostic(response)),
-  );
 }
 
 function logPatientSummaryGenerationFailure(args: {
@@ -482,11 +451,17 @@ CONTENT
         // GPT-5 completion tokens include hidden reasoning tokens. Complex
         // completed Brain context previously exhausted a 2,500-token budget
         // before any patient-facing text was emitted (finish_reason=length).
-        reasoning_effort: "low",
-        max_completion_tokens: 4000,
+        reasoning_effort: PATIENT_SUMMARY_REASONING_EFFORT,
+        max_completion_tokens: PATIENT_SUMMARY_MAX_COMPLETION_TOKENS,
       });
 
-      logPatientSummaryResponseStructure(response);
+      // This must remain immediately after the SDK resolves and before any
+      // extraction/fallback logic. Values are strictly allowlisted and contain
+      // no prompt, patient, lab, Brain, generated, or refusal text.
+      console.log(
+        "[Patient Communication] response_received",
+        JSON.stringify(responseReceivedDiagnostic(response)),
+      );
       const summary = extractPatientSummaryText(response);
       console.log('[AI Service] Patient summary generated, length:', summary?.length || 0);
 
