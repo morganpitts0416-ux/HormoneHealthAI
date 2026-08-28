@@ -354,7 +354,7 @@ ${ascvdRisk.statinRecommendation ? `Statin Recommendation: ${ascvdRisk.statinRec
       }
     }
 
-    const prompt = `Write a direct, patient-friendly summary of these lab results. You are the provider — write TO your patient, FROM yourself. Use specific values and concrete next steps.
+    const prompt = `Write a direct, patient-friendly explanation of these lab results using the finalized ClinIQ Brain/provider context below. Patient Communication is a translation layer, not a second clinical decision engine.
 
 CRITICAL FINDINGS (abnormal or out of range):
 ${abnormalFindings.length > 0 ? buildFindingsList(abnormalFindings) : 'None'}
@@ -366,18 +366,17 @@ NORMAL FINDINGS (within range):
 ${normalFindings.length > 0 ? buildFindingsList(normalFindings) : 'None'}
 ${cvRiskSection}
 
-REQUIREMENTS:
-1. Always use specific numeric values — say "Your LDL is 160 mg/dL" not "your cholesterol is elevated."
-2. When two or more findings point in the same direction, group them as a pattern rather than listing each marker separately.
-3. Give a focused set of concrete next steps tied directly to the findings above. Aim for 3–5 actions when that covers the major actionable clinical domains; include additional material only when needed to avoid dropping an important Brain-selected intervention or major treatment domain:
-   - Cholesterol (elevated LDL, low HDL, or high triglycerides): fiber intake, omega-3 rich foods, reducing saturated fat, daily movement
-   - Blood sugar (A1c or fasting glucose elevated): protein with each meal, reducing refined carbs, post-meal walks
-   - Liver markers (elevated AST/ALT): limit alcohol, review medications/supplements, weight management
-   - Testosterone (suboptimal): sleep quality, resistance training, stress management
-   - Cardiovascular risk: tailor the intensity of lifestyle recommendations to the risk category and explain the percentage in plain terms
-4. If all or most findings are normal, say so clearly and specifically — mention key values that look good and what that means for the patient.
-5. Keep the communication focused and readable, typically 300–500 words. Do not reproduce the full evaluation or a supplement catalog, but use enough space to explain every major actionable clinical domain.
-6. Do not close with a generic sign-off or "thank you for trusting us" — end on the next steps.
+PATIENT COMMUNICATION RULES:
+1. ClinIQ Brain and the finalized provider plan are the source of clinical reasoning, prioritization, recommendations, urgency, treatment decisions, and follow-up. Explain those finalized findings; do not create a second assessment or plan.
+2. Do not invent a diagnosis, urgency level, medication, referral, repeat-testing plan, treatment decision, or lifestyle prescription that is not supported by the finalized Brain/provider plan. Do not turn one value into a definitive diagnosis.
+3. Use specific values when they help explain the finding, then explain what they mean in plain language. Group related findings into a meaningful pattern instead of listing every abnormality.
+4. Use calm, contextual language. Use words such as "urgent," "right away," "significantly raises your risk," "until proven otherwise," or "I am concerned" only when the finalized Brain/provider plan explicitly establishes that urgency or contains that exact clinical recommendation. Preserve genuine Brain/provider urgency without softening it.
+5. Use patient-centered language such as "Your labs show," "This gives us another piece of the picture," "Your care plan includes," and "We'll continue watching." Do not speak as though you personally made the clinical decision: avoid first-person clinician claims such as "I recommend," "I want to," or "I will" unless the source text explicitly requires them.
+6. Use only the resolved patient-visible supplement protocol supplied in the Brain context. Do not add, remove, substitute, or redose supplements. Explain included supplements briefly and simply.
+7. Use a natural structure: a brief big-picture opening, short health-domain sections when useful, and a "What Happens Next" section containing only follow-up actions already established by the Brain/provider plan. Do not force a fixed number of urgent issues or sections.
+8. Keep the communication focused and readable, typically 300–500 words. Do not reproduce the full evaluation, a supplement catalog, or a physician-style assessment/plan. End with sourced next steps rather than a generic sign-off.
+
+Aim for language like: "Your labs give us a helpful picture of several areas we want to work on together. The biggest themes are the findings identified in your care plan." Explain serious findings clearly with context rather than alarm. If the Brain/provider plan does not establish a treatment or follow-up action, explain the finding without inventing one.
 
 Write the summary now:`;
 
@@ -428,20 +427,21 @@ This patient is actively on female Hormone Replacement Therapy. Apply these rule
         messages: [
           {
             role: "system",
-            content: `You are a clinician at a ${clinicType} writing a direct summary of lab results for your patient. This note goes straight to the patient — write as yourself, to them.
+            content: `You are the Patient Communication translator for a ${clinicType}. Translate the finalized ClinIQ Brain/provider plan into calm, clear, personalized patient language. You are not a second clinical decision engine.
 
-VOICE
-- Direct, warm, human. First-person plural ("we reviewed," "we want to focus on") or second-person ("your results show").
-- Never say "ask your provider," "your provider will," "your care team will," "consult a physician," or anything that sounds like you're a third party — you ARE their provider.
-- No AI-bot language. No over-explanation. No filler phrases like "Great news!" or "Thank you for trusting us with your care."
-- Sound like a clinician talking to a patient after reviewing their chart — clear, confident, and caring.
+SOURCE OF TRUTH
+- ClinIQ Brain and the finalized provider plan supplied in the user message contain the clinical reasoning, prioritization, recommendations, urgency, treatment decisions, and follow-up.
+- Explain that finalized content faithfully. Never invent or independently decide a diagnosis, urgency level, medication, referral, repeat-testing plan, treatment decision, or lifestyle prescription.
+- Do not overstate a diagnosis from a single value. State a definitive diagnosis only when the finalized clinical evaluation supports and labels it.
 
-CONTENT
-- Lead with the most important finding, not a generic opener.
-- Name specific values. Connect related findings as patterns when they point in the same direction.
-- Be honest about what needs attention without being alarming.
-- If something looks good, say it plainly: "Your kidney function is solid — creatinine and GFR are both in a healthy range."
-- Give next steps that are specific to these results, not generic wellness advice.${gender === 'female' ? '\n- Consider cycle phase context when interpreting hormone markers. Address female-specific markers (iron, thyroid, bone density) when present.' : ''}`
+STYLE AND SAFETY
+- Warm, calm, intelligent, personalized, educational, and easy to understand. Sound conversational, not like a physician note, discharge summary, or AI report.
+- Use specific values when they clarify the finding, and explain what those numbers mean in plain language.
+- Use words such as "urgent," "right away," "significantly raises your risk," "until proven otherwise," or "I am concerned" only when the finalized Brain/provider plan explicitly establishes that urgency or contains that exact recommendation. Preserve genuine Brain/provider urgency.
+- Do not speak as though you personally made the clinical decision. Avoid first-person clinician claims such as "I recommend," "I want to," or "I will" unless the source text explicitly requires them. Prefer "Your labs show," "Your care plan includes," and "We'll continue watching."
+- Use only the resolved patient-visible supplement protocol. Never add, remove, substitute, or redose a supplement.
+- Include "What Happens Next" only for follow-up actions already established by the Brain/provider plan. Do not force a fixed number of urgent issues.
+- No filler, generic sign-off, or "thank you for trusting us."${gender === 'female' ? '\n- Consider cycle phase context when interpreting hormone markers. Address female-specific markers (iron, thyroid, bone density) when present.' : ''}`
           },
           {
             role: "user",

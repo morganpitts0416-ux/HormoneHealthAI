@@ -1,0 +1,162 @@
+Patient Communication generation is now technically working. Do not change the generation plumbing, model configuration, token settings, Brain logic, supplement logic, SOAP, recording, transcription, or deployment behavior.
+
+The next task is Patient Communication style/tone only.
+
+The current output is too clinician-facing, too alarmist, and too directive. It reads like a mini assessment/plan instead of a patient-friendly explanation of the completed Brain output.
+
+I want Patient Communication to function as a translation layer, not a second clinical decision engine.
+
+Core rule
+
+Brain = clinical reasoning, prioritization, and recommendations.
+Patient Communication = explain those finalized findings and recommendations in clear, calm, personalized patient language.
+Patient Communication must not invent new diagnoses, urgency levels, medications, referrals, repeat-testing plans, or treatment decisions that are not already present in the finalized Brain/provider plan.
+
+Tone
+
+Make it:
+
+warm
+calm
+intelligent
+personalized
+reassuring without minimizing findings
+educational
+easy for a patient to understand
+professional but conversational
+
+Avoid sounding like a physician note, discharge summary, or AI-generated report.
+
+Avoid alarmist language
+
+Do not independently use phrases such as:
+
+“urgent”
+“we need to address this right away”
+“significantly raises your risk”
+“until proven otherwise”
+“I am concerned about…”
+“we should start medication now”
+
+unless the finalized Brain/provider plan explicitly marks that issue as urgent or contains that exact clinical recommendation.
+
+Serious findings can still be explained clearly, but with context. For example:
+
+Instead of:
+“Your hs-CRP is markedly elevated and makes me concerned about an acute inflammatory or infectious process until proven otherwise.”
+
+Prefer:
+“Your hs-CRP is elevated. This marker can increase with infection, illness, injury, or other inflammation, so we may want to repeat it and interpret it in context rather than assuming this represents your usual baseline.”
+
+Do not overstate diagnoses from single values
+
+Example:
+
+Instead of:
+“Your BP of 170 meets Stage 2 hypertension.”
+
+Prefer:
+“Your blood pressure was elevated at this visit. One reading does not tell us the whole story, but it is high enough that we want to follow it closely.”
+
+Only state a definitive diagnosis when the finalized clinical evaluation actually supports and labels it as such.
+
+Use patient-centered framing
+
+Prefer language like:
+
+“Your labs show…”
+“This gives us another piece of the picture…”
+“We’ll interpret this alongside your symptoms and history.”
+“Our goal is to…”
+“We’ll continue watching…”
+“Your care plan includes…”
+
+Avoid repeatedly saying:
+
+“I recommend”
+“I want to”
+“I will”
+
+The AI should not speak as though it personally is the clinician.
+
+Keep personalized numbers
+
+Keep important patient-specific values when they help explain the finding, such as:
+
+A1c
+ApoB
+Lp(a)
+ASCVD risk
+estradiol/FSH
+ferritin/TSAT
+vitamin D
+
+But explain what those numbers mean in plain language rather than just listing abnormalities.
+
+Preferred structure
+
+Use a natural patient-facing structure such as:
+
+Brief opening paragraph explaining the big-picture themes.
+Short sections by health domain, such as:
+Blood Pressure & Inflammation
+Metabolic & Cardiovascular Health
+Hormones
+Iron & Vitamin D
+Supplement Plan, using only the resolved supplement protocol.
+“What Happens Next” that summarizes only the follow-up actions already established by the Brain/provider plan.
+
+Do not force a fixed number of “urgent issues.”
+
+Supplements
+
+The Patient Communication must use the already-resolved final supplement protocol. Do not independently add, remove, substitute, or dose supplements.
+
+Explain each supplement briefly in patient-friendly language.
+
+Clinical safety
+
+If the Brain flags a genuinely urgent or emergent finding, preserve that urgency. The goal is not to soften medically important warnings. The goal is to prevent the Patient Communication writer from creating urgency that the Brain did not establish.
+
+Target style example
+
+Aim for language like:
+
+“Your labs give us a helpful picture of several areas we want to work on together. The biggest themes are blood pressure, inflammation, metabolic health, and your hormone pattern.”
+
+And:
+
+“Your Lp(a) is 50. Lp(a) is largely genetic, so this isn’t something you caused through diet or lifestyle. It does give us another piece of information when thinking about your lifetime cardiovascular risk.”
+
+And:
+
+“Your hormone pattern shows lower estrogen production with an FSH of 48.7 and estradiol of 26, which can be seen during the menopause transition. Hormone numbers are only one piece of the picture, so we’ll interpret these alongside your menstrual history and symptoms.”
+
+Implementation scope
+
+Modify only the Patient Communication prompt/style instructions and any focused tests necessary to enforce this behavior.
+
+Do not change:
+
+OpenAI model
+reasoning effort
+max completion tokens
+response extraction
+fallback logic
+Brain
+supplement resolver
+SOAP
+recording
+transcription
+deployment
+
+Add focused tests demonstrating:
+
+no invented treatment recommendation
+no invented urgency
+patient-friendly explanation of abnormal findings
+preservation of true Brain urgency when explicitly present
+use of final resolved supplement protocol
+no first-person clinician claims like “I recommend” unless source text explicitly requires them
+
+Run focused tests and production build only. Do not deploy automatically.

@@ -249,4 +249,80 @@ describe("Patient Communication generation status", () => {
 
     expect(parsed.patientSummaryGenerationStatus).toBe("fallback_due_to_error");
   });
+
+  test("frames Patient Communication as a calm Brain translation layer", async () => {
+    openAIMocks.create.mockResolvedValue({
+      choices: [{ message: { content: "Your results provide a helpful picture of your health." } }],
+    });
+
+    await AIService.generatePatientSummary(
+      {},
+      [{
+        category: "Synthetic hs-CRP",
+        value: 8.4,
+        unit: "mg/L",
+        status: "abnormal",
+        interpretation: "Synthetic elevated inflammatory marker",
+      }] as any,
+      false,
+      null,
+      "female",
+      null,
+      {
+        aiRecommendations: "Brain-selected plan: interpret this finding in context and continue monitoring.",
+        clinicalPhenotypes: [{
+          name: "Synthetic inflammatory pattern",
+          patientExplanation: "Brain-selected explanation of the pattern.",
+        }],
+      },
+    );
+
+    const request = openAIMocks.create.mock.calls[0][0];
+    const systemPrompt = request.messages.find((message: any) => message.role === "system").content;
+    const userPrompt = request.messages.find((message: any) => message.role === "user").content;
+
+    expect(systemPrompt).toContain("not a second clinical decision engine");
+    expect(systemPrompt).toContain("finalized ClinIQ Brain/provider plan");
+    expect(systemPrompt).toContain("Never invent or independently decide");
+    expect(systemPrompt).toContain("Preserve genuine Brain/provider urgency");
+    expect(systemPrompt).toContain('Avoid first-person clinician claims such as "I recommend');
+    expect(systemPrompt).not.toContain("You are a clinician at");
+    expect(userPrompt).toContain("Do not invent a diagnosis, urgency level, medication, referral");
+    expect(userPrompt).toContain("explain what they mean in plain language");
+    expect(userPrompt).toContain("only when the finalized Brain/provider plan explicitly");
+    expect(userPrompt).toContain("containing only follow-up actions already established");
+  });
+
+  test("uses only the resolved patient-visible supplement protocol", async () => {
+    openAIMocks.create.mockResolvedValue({
+      choices: [{ message: { content: "Your plan includes the finalized support protocol." } }],
+    });
+
+    await AIService.generatePatientSummary(
+      {},
+      [],
+      false,
+      null,
+      "female",
+      null,
+      {
+        supplements: [{
+          name: "Synthetic Support",
+          dose: "1 capsule daily",
+          indication: "Synthetic indication",
+          rationale: "Synthetic rationale",
+          priority: "high",
+          category: "vitamin",
+        }] as any,
+      },
+    );
+
+    const request = openAIMocks.create.mock.calls[0][0];
+    const userPrompt = request.messages.find((message: any) => message.role === "user").content;
+
+    expect(userPrompt).toContain("Synthetic Support");
+    expect(userPrompt).toContain("1 capsule daily");
+    expect(userPrompt).toContain("only the resolved patient-visible supplement protocol");
+    expect(userPrompt).toContain("Do not add, remove, substitute, or redose supplements");
+  });
 });
