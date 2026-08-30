@@ -3654,3 +3654,146 @@ export const insertPatientMedicationSchema = createInsertSchema(patientMedicatio
 
 export type InsertPatientMedication = z.infer<typeof insertPatientMedicationSchema>;
 export type PatientMedication = typeof patientMedications.$inferSelect;
+
+// ── Access-preservation foundation (additive / shadow-only) ─────────────────
+// These tables prepare the cancellation + multi-clinic authorization rollout.
+// They are deliberately not referenced by the current login/authorization path.
+export const clinicLifecycleFoundation = pgTable("clinic_lifecycle_foundation", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }).unique(),
+  lifecycleState: varchar("lifecycle_state", { length: 40 }).notNull().default("operational"),
+  stateReason: varchar("state_reason", { length: 40 }),
+  stateVersion: integer("state_version").notNull().default(1),
+  source: varchar("source", { length: 30 }).notNull().default("legacy_observation"),
+  validatedAt: timestamp("validated_at"),
+  needsReview: boolean("needs_review").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  stateIdx: index("clinic_lifecycle_foundation_state_idx").on(t.lifecycleState),
+  reviewIdx: index("clinic_lifecycle_foundation_review_idx").on(t.needsReview),
+}));
+
+export const clinicBillingFoundation = pgTable("clinic_billing_foundation", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }).unique(),
+  billingStatus: varchar("billing_status", { length: 40 }).notNull().default("unknown"),
+  stripeCustomerId: varchar("stripe_customer_id", { length: 100 }),
+  stripeSubscriptionId: varchar("stripe_subscription_id", { length: 100 }),
+  linkageStatus: varchar("linkage_status", { length: 40 }).notNull().default("unverified"),
+  evidence: jsonb("evidence"),
+  validatedAt: timestamp("validated_at"),
+  needsReview: boolean("needs_review").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  statusIdx: index("clinic_billing_foundation_status_idx").on(t.billingStatus),
+  linkageIdx: index("clinic_billing_foundation_linkage_idx").on(t.linkageStatus),
+}));
+
+export const authorizationFeatureFlags = pgTable("authorization_feature_flags", {
+  id: serial("id").primaryKey(),
+  flagKey: varchar("flag_key", { length: 80 }).notNull(),
+  clinicId: integer("clinic_id").references(() => clinics.id, { onDelete: "cascade" }),
+  enabled: boolean("enabled").notNull().default(false),
+  expiresAt: timestamp("expires_at"),
+  reason: text("reason"),
+  approvedByUserId: integer("approved_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  scopeUnique: uniqueIndex("authorization_feature_flags_scope_uq").on(t.flagKey, t.clinicId),
+  flagIdx: index("authorization_feature_flags_key_idx").on(t.flagKey),
+}));
+
+export const authorizationShadowDecisions = pgTable("authorization_shadow_decisions", {
+  id: serial("id").primaryKey(),
+  requestId: varchar("request_id", { length: 100 }).notNull(),
+  actorType: varchar("actor_type", { length: 30 }).notNull(),
+  actorId: integer("actor_id"),
+  clinicId: integer("clinic_id"),
+  patientId: integer("patient_id"),
+  relationshipId: integer("relationship_id"),
+  method: varchar("method", { length: 10 }).notNull(),
+  routePath: varchar("route_path", { length: 500 }).notNull(),
+  policyKey: varchar("policy_key", { length: 80 }).notNull(),
+  currentDecision: varchar("current_decision", { length: 20 }).notNull(),
+  proposedDecision: varchar("proposed_decision", { length: 20 }).notNull(),
+  differenceType: varchar("difference_type", { length: 30 }).notNull(),
+  currentReason: varchar("current_reason", { length: 100 }),
+  proposedReason: varchar("proposed_reason", { length: 100 }),
+  evidence: jsonb("evidence"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  differenceIdx: index("authorization_shadow_difference_idx").on(t.differenceType),
+  clinicIdx: index("authorization_shadow_clinic_idx").on(t.clinicId),
+  createdIdx: index("authorization_shadow_created_idx").on(t.createdAt),
+}));
+
+export const accessBackfillRuns = pgTable("access_backfill_runs", {
+  id: serial("id").primaryKey(),
+  runType: varchar("run_type", { length: 40 }).notNull().default("assessment"),
+  status: varchar("status", { length: 30 }).notNull().default("completed"),
+  summary: jsonb("summary").notNull(),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at").notNull().defaultNow(),
+  createdBy: varchar("created_by", { length: 100 }).notNull().default("system"),
+});
+
+export const accessReviewQueue = pgTable("access_review_queue", {
+  id: serial("id").primaryKey(),
+  category: varchar("category", { length: 80 }).notNull(),
+  entityType: varchar("entity_type", { length: 40 }).notNull(),
+  entityId: varchar("entity_id", { length: 100 }).notNull(),
+  clinicId: integer("clinic_id"),
+  status: varchar("status", { length: 30 }).notNull().default("needs_review"),
+  reasonCode: varchar("reason_code", { length: 100 }).notNull(),
+  evidence: jsonb("evidence"),
+  preservesLegacyAccess: boolean("preserves_legacy_access").notNull().default(true),
+  firstSeenAt: timestamp("first_seen_at").notNull().defaultNow(),
+  lastSeenAt: timestamp("last_seen_at").notNull().defaultNow(),
+  resolvedAt: timestamp("resolved_at"),
+}, (t) => ({
+  entityUnique: uniqueIndex("access_review_queue_entity_uq").on(t.category, t.entityType, t.entityId),
+  statusIdx: index("access_review_queue_status_idx").on(t.status),
+  clinicIdx: index("access_review_queue_clinic_idx").on(t.clinicId),
+}));
+
+export const patientPortalIdentities = pgTable("patient_portal_identities", {
+  id: serial("id").primaryKey(),
+  normalizedEmail: varchar("normalized_email", { length: 255 }).notNull().unique(),
+  legacyPortalAccountId: integer("legacy_portal_account_id").references(() => patientPortalAccounts.id, { onDelete: "set null" }),
+  accountStatus: varchar("account_status", { length: 30 }).notNull().default("pending"),
+  verificationStatus: varchar("verification_status", { length: 30 }).notNull().default("unverified"),
+  sessionVersion: integer("session_version").notNull().default(1),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  legacyAccountIdx: uniqueIndex("patient_portal_identities_legacy_account_uq").on(t.legacyPortalAccountId),
+  verificationIdx: index("patient_portal_identities_verification_idx").on(t.verificationStatus),
+}));
+
+export const patientClinicRelationships = pgTable("patient_clinic_relationships", {
+  id: serial("id").primaryKey(),
+  portalIdentityId: integer("portal_identity_id").notNull().references(() => patientPortalIdentities.id, { onDelete: "cascade" }),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: "cascade" }),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }),
+  relationshipType: varchar("relationship_type", { length: 30 }).notNull().default("self"),
+  relationshipStatus: varchar("relationship_status", { length: 40 }).notNull().default("pending_acceptance"),
+  verificationMethod: varchar("verification_method", { length: 50 }),
+  scope: varchar("scope", { length: 40 }).notNull().default("historical_read"),
+  verifiedAt: timestamp("verified_at"),
+  expiresAt: timestamp("expires_at"),
+  revokedAt: timestamp("revoked_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  identityClinicIdx: index("patient_clinic_relationships_identity_clinic_idx").on(t.portalIdentityId, t.clinicId),
+  patientClinicIdx: index("patient_clinic_relationships_patient_clinic_idx").on(t.patientId, t.clinicId),
+  statusIdx: index("patient_clinic_relationships_status_idx").on(t.relationshipStatus),
+}));
+
+export type AuthorizationFeatureFlag = typeof authorizationFeatureFlags.$inferSelect;
+export type AuthorizationShadowDecision = typeof authorizationShadowDecisions.$inferSelect;
+export type PatientPortalIdentity = typeof patientPortalIdentities.$inferSelect;
+export type PatientClinicRelationship = typeof patientClinicRelationships.$inferSelect;

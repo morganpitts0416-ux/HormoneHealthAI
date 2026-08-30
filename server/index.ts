@@ -10,6 +10,7 @@ import { registerRoutes } from "./routes";
 import { log } from "./logger";
 import { serveStatic } from "./static-serve";
 import { externalReviewerDenyList } from "./external-reviewer";
+import { authorizationShadowMiddleware } from "./access-foundation";
 
 /**
  * One-time cleanup: remove any "[object Object]" strings that were written
@@ -400,6 +401,12 @@ app.use(
 
 app.use(passport.initialize());
 app.use(passport.session());
+
+// Compatibility-first authorization rollout: compute and persist proposed
+// decisions only when an approved SHADOW_* flag is enabled. This middleware
+// never changes a response, session, login, clinic assignment, or current
+// authorization decision.
+app.use(authorizationShadowMiddleware());
 
 // External-reviewer (chart-review-only) deny-list. Mounted after auth/session
 // init so req.user is populated. Allow-listed paths pass through; everything
