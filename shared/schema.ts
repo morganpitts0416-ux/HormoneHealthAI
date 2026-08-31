@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
-import { pgTable, serial, varchar, text, timestamp, jsonb, integer, boolean, real, numeric, date, time, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { pgTable, serial, varchar, text, timestamp, jsonb, integer, boolean, real, numeric, date, time, uniqueIndex, index, check } from "drizzle-orm/pg-core";
 
 // Patient Demographics & ASCVD Risk Factors Schema
 export const patientDemographicsSchema = z.object({
@@ -3670,8 +3670,11 @@ export const clinicLifecycleFoundation = pgTable("clinic_lifecycle_foundation", 
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (t) => ({
+  clinicIdx: uniqueIndex("clinic_lifecycle_foundation_clinic_uq").on(t.clinicId),
   stateIdx: index("clinic_lifecycle_foundation_state_idx").on(t.lifecycleState),
   reviewIdx: index("clinic_lifecycle_foundation_review_idx").on(t.needsReview),
+  stateCheck: check("clinic_lifecycle_foundation_state_ck", sql`${t.lifecycleState} in ('operational','inactive','security_suspended','permanently_closed')`),
+  versionCheck: check("clinic_lifecycle_foundation_version_ck", sql`${t.stateVersion} > 0`),
 }));
 
 export const clinicBillingFoundation = pgTable("clinic_billing_foundation", {
@@ -3687,8 +3690,11 @@ export const clinicBillingFoundation = pgTable("clinic_billing_foundation", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (t) => ({
+  clinicIdx: uniqueIndex("clinic_billing_foundation_clinic_uq").on(t.clinicId),
   statusIdx: index("clinic_billing_foundation_status_idx").on(t.billingStatus),
   linkageIdx: index("clinic_billing_foundation_linkage_idx").on(t.linkageStatus),
+  statusCheck: check("clinic_billing_foundation_status_ck", sql`${t.billingStatus} in ('active','trialing','delinquent','cancelled','inactive','unknown')`),
+  linkageCheck: check("clinic_billing_foundation_linkage_ck", sql`${t.linkageStatus} in ('verified','candidate','unverified','conflicting')`),
 }));
 
 export const authorizationFeatureFlags = pgTable("authorization_feature_flags", {
@@ -3703,7 +3709,10 @@ export const authorizationFeatureFlags = pgTable("authorization_feature_flags", 
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (t) => ({
   scopeUnique: uniqueIndex("authorization_feature_flags_scope_uq").on(t.flagKey, t.clinicId),
+  globalFlagUnique: uniqueIndex("authorization_feature_flags_global_uq").on(t.flagKey).where(sql`${t.clinicId} is null`),
   flagIdx: index("authorization_feature_flags_key_idx").on(t.flagKey),
+  clinicFlagIdx: index("authorization_feature_flags_clinic_flag_idx").on(t.clinicId, t.flagKey),
+  flagCheck: check("authorization_feature_flags_key_ck", sql`${t.flagKey} in ('SHADOW_CLINIC_SUBSCRIPTION_AUTHZ','ENFORCE_CLINIC_SUBSCRIPTION_AUTHZ','SHADOW_STAFF_MEMBERSHIP_AUTHZ','ENFORCE_STAFF_MEMBERSHIP_AUTHZ','ENABLE_OWNER_RECOVERY_ACCESS','ENABLE_GLOBAL_PATIENT_IDENTITY','SHADOW_PATIENT_CLINIC_RELATIONSHIP','ENFORCE_PATIENT_CLINIC_RELATIONSHIP','ENABLE_CLINIC_SELECTION_DASHBOARD','ENABLE_INACTIVE_CLINIC_READ_ONLY')`),
 }));
 
 export const authorizationShadowDecisions = pgTable("authorization_shadow_decisions", {
@@ -3711,9 +3720,9 @@ export const authorizationShadowDecisions = pgTable("authorization_shadow_decisi
   requestId: varchar("request_id", { length: 100 }).notNull(),
   actorType: varchar("actor_type", { length: 30 }).notNull(),
   actorId: integer("actor_id"),
-  clinicId: integer("clinic_id"),
-  patientId: integer("patient_id"),
-  relationshipId: integer("relationship_id"),
+  clinicId: integer("clinic_id").references(() => clinics.id, { onDelete: "set null" }),
+  patientId: integer("patient_id").references(() => patients.id, { onDelete: "set null" }),
+  relationshipId: integer("relationship_id").references(() => patientClinicRelationships.id, { onDelete: "set null" }),
   method: varchar("method", { length: 10 }).notNull(),
   routePath: varchar("route_path", { length: 500 }).notNull(),
   policyKey: varchar("policy_key", { length: 80 }).notNull(),
@@ -3727,7 +3736,13 @@ export const authorizationShadowDecisions = pgTable("authorization_shadow_decisi
 }, (t) => ({
   differenceIdx: index("authorization_shadow_difference_idx").on(t.differenceType),
   clinicIdx: index("authorization_shadow_clinic_idx").on(t.clinicId),
+  clinicPatientIdx: index("authorization_shadow_clinic_patient_idx").on(t.clinicId, t.patientId),
+  requestPolicyIdx: index("authorization_shadow_request_policy_idx").on(t.requestId, t.policyKey),
   createdIdx: index("authorization_shadow_created_idx").on(t.createdAt),
+  actorCheck: check("authorization_shadow_actor_ck", sql`${t.actorType} in ('clinician','staff','patient_portal','background_job','realtime')`),
+  currentDecisionCheck: check("authorization_shadow_current_decision_ck", sql`${t.currentDecision} in ('allow','deny','indeterminate')`),
+  proposedDecisionCheck: check("authorization_shadow_proposed_decision_ck", sql`${t.proposedDecision} in ('allow','deny','indeterminate')`),
+  differenceCheck: check("authorization_shadow_difference_ck", sql`${t.differenceType} in ('expected_allow','expected_denial','unexpected_grant','unexpected_denial','missing_evidence')`),
 }));
 
 export const accessBackfillRuns = pgTable("access_backfill_runs", {
@@ -3738,14 +3753,18 @@ export const accessBackfillRuns = pgTable("access_backfill_runs", {
   startedAt: timestamp("started_at").notNull().defaultNow(),
   completedAt: timestamp("completed_at").notNull().defaultNow(),
   createdBy: varchar("created_by", { length: 100 }).notNull().default("system"),
-});
+}, (t) => ({
+  typeStatusIdx: index("access_backfill_runs_type_status_idx").on(t.runType, t.status),
+  statusCheck: check("access_backfill_runs_status_ck", sql`${t.status} in ('running','completed','failed','rolled_back')`),
+  runTypeCheck: check("access_backfill_runs_type_ck", sql`${t.runType} in ('assessment','synthetic_validation','backfill_preview','rollback_validation')`),
+}));
 
 export const accessReviewQueue = pgTable("access_review_queue", {
   id: serial("id").primaryKey(),
   category: varchar("category", { length: 80 }).notNull(),
   entityType: varchar("entity_type", { length: 40 }).notNull(),
   entityId: varchar("entity_id", { length: 100 }).notNull(),
-  clinicId: integer("clinic_id"),
+  clinicId: integer("clinic_id").references(() => clinics.id, { onDelete: "set null" }),
   status: varchar("status", { length: 30 }).notNull().default("needs_review"),
   reasonCode: varchar("reason_code", { length: 100 }).notNull(),
   evidence: jsonb("evidence"),
@@ -3756,7 +3775,8 @@ export const accessReviewQueue = pgTable("access_review_queue", {
 }, (t) => ({
   entityUnique: uniqueIndex("access_review_queue_entity_uq").on(t.category, t.entityType, t.entityId),
   statusIdx: index("access_review_queue_status_idx").on(t.status),
-  clinicIdx: index("access_review_queue_clinic_idx").on(t.clinicId),
+  clinicIdx: index("access_review_queue_clinic_status_idx").on(t.clinicId, t.status),
+  statusCheck: check("access_review_queue_status_ck", sql`${t.status} in ('needs_review','in_review','resolved','dismissed')`),
 }));
 
 export const patientPortalIdentities = pgTable("patient_portal_identities", {
@@ -3771,6 +3791,9 @@ export const patientPortalIdentities = pgTable("patient_portal_identities", {
 }, (t) => ({
   legacyAccountIdx: uniqueIndex("patient_portal_identities_legacy_account_uq").on(t.legacyPortalAccountId),
   verificationIdx: index("patient_portal_identities_verification_idx").on(t.verificationStatus),
+  accountCheck: check("patient_portal_identities_account_status_ck", sql`${t.accountStatus} in ('pending','active','suspended','closed')`),
+  verificationCheck: check("patient_portal_identities_verification_ck", sql`${t.verificationStatus} in ('unverified','verified','conflicting','revoked')`),
+  sessionVersionCheck: check("patient_portal_identities_session_version_ck", sql`${t.sessionVersion} > 0`),
 }));
 
 export const patientClinicRelationships = pgTable("patient_clinic_relationships", {
@@ -3791,6 +3814,10 @@ export const patientClinicRelationships = pgTable("patient_clinic_relationships"
   identityClinicIdx: index("patient_clinic_relationships_identity_clinic_idx").on(t.portalIdentityId, t.clinicId),
   patientClinicIdx: index("patient_clinic_relationships_patient_clinic_idx").on(t.patientId, t.clinicId),
   statusIdx: index("patient_clinic_relationships_status_idx").on(t.relationshipStatus),
+  identityPatientClinicUnique: uniqueIndex("patient_clinic_relationships_identity_patient_clinic_uq").on(t.portalIdentityId, t.patientId, t.clinicId, t.relationshipType),
+  typeCheck: check("patient_clinic_relationships_type_ck", sql`${t.relationshipType} in ('self','guardian','proxy')`),
+  statusCheck: check("patient_clinic_relationships_status_ck", sql`${t.relationshipStatus} in ('pending_acceptance','verified','active','read_only_historical','revoked','expired')`),
+  scopeCheck: check("patient_clinic_relationships_scope_ck", sql`${t.scope} in ('historical_read','full_portal','guardian_limited','proxy_limited')`),
 }));
 
 export type AuthorizationFeatureFlag = typeof authorizationFeatureFlags.$inferSelect;
