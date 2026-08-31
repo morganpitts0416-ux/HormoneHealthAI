@@ -1,5 +1,6 @@
 import bcrypt from "bcrypt";
 import pg from "pg";
+import assert from "node:assert/strict";
 
 const { Pool } = pg;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
@@ -16,6 +17,7 @@ type ResponseRecord = {
   path: string;
   status: number;
   expectedCurrent: "allow" | "deny" | "probe";
+  body: string;
 };
 
 const responses: ResponseRecord[] = [];
@@ -52,6 +54,7 @@ async function request(
   path: string,
   expectedCurrent: ResponseRecord["expectedCurrent"],
   body?: any,
+  extraHeaders?: Record<string, string>,
 ) {
   const response = await fetch(`${baseUrl}${path}`, {
     method,
@@ -59,13 +62,15 @@ async function request(
       cookie,
       "content-type": "application/json",
       "x-request-id": `${tag}-${responses.length + 1}`,
+      ...extraHeaders,
     },
     body: body === undefined ? undefined : JSON.stringify(body),
     redirect: "manual",
   });
-  await response.arrayBuffer();
-  responses.push({ scenario, family, method, path: path.replace(/\d+/g, ":id"), status: response.status, expectedCurrent });
-  return response.status;
+  const responseBody = await response.text();
+  const record = { scenario, family, method, path: path.replace(/\d+/g, ":id"), status: response.status, expectedCurrent, body: responseBody };
+  responses.push(record);
+  return record;
 }
 
 async function setup() {
@@ -153,6 +158,21 @@ async function setup() {
   ids.patients.revokedRel = await patient("RevokedRelationship", ids.clinics.active, `${tag.toLowerCase()}-revoked-rel@example.invalid`);
   ids.patients.guardian = await patient("GuardianAccount", ids.clinics.active, `${tag.toLowerCase()}-guardian@example.invalid`);
   ids.patients.ward = await patient("GuardianWard", ids.clinics.active, `${tag.toLowerCase()}-ward@example.invalid`);
+  await q(
+    `INSERT INTO patient_charts (patient_id,clinician_id,medical_history)
+     VALUES ($1,$2,$3::jsonb),($4,$2,$5::jsonb)`,
+    [ids.patients.chartA.id, ids.owner.id, JSON.stringify([`${tag}-CLINIC-A-CHART`]), ids.patients.chartB.id, JSON.stringify([`${tag}-CLINIC-B-SECRET-CHART`])],
+  );
+  ids.workflow = await insertOne(
+    `INSERT INTO form_workflows (clinic_id,name,description,enabled)
+     VALUES ($1,$2,$3,false) RETURNING id`,
+    [ids.clinics.delinquent, `${tag} Clinic B workflow`, tag],
+  );
+  await q(
+    `INSERT INTO form_workflow_runs (workflow_id,clinic_id,patient_id,context_json,status,started_at)
+     VALUES ($1,$2,$3,$4::jsonb,'running',NOW())`,
+    [ids.workflow.id, ids.clinics.delinquent, ids.patients.chartB.id, JSON.stringify({ synthetic: true, secret: `${tag}-CLINIC-B-WORKFLOW` })],
+  );
 
   ids.lab = await insertOne(
     `INSERT INTO lab_results (patient_id,lab_date,lab_values,notes) VALUES ($1,NOW(),'{}'::jsonb,$2) RETURNING id`,
@@ -255,11 +275,38 @@ async function exercise() {
   await request(revokedMemberCookie, "revoked-membership-stale-session", "chart", "GET", `/api/patients/${p}`, "allow");
 
   const cross = ids.patients.chartB.id;
+  const crossRecords: Record<string, ResponseRecord> = {};
   for (const suffix of ["", "/chart", "/labs", "/documents", "/messages", "/active-workflows"]) {
-    await request(ownerCookie, "cross-clinic-patient-id-tampering", suffix || "patient", "GET", `/api/patients/${cross}${suffix}`, "deny");
+    crossRecords[suffix || "patient"] = await request(ownerCookie, "cross-clinic-patient-id-tampering", suffix || "patient", "GET", `/api/patients/${cross}${suffix}`, "deny");
   }
+  const nonexistentId = 2_000_000_000;
+  const missingChart = await request(ownerCookie, "nonexistent-patient", "chart", "GET", `/api/patients/${nonexistentId}/chart`, "deny");
+  const missingWorkflows = await request(ownerCookie, "nonexistent-patient", "active-workflows", "GET", `/api/patients/${nonexistentId}/active-workflows`, "deny");
+  assert.equal(crossRecords["/chart"].status, 404);
+  assert.equal(crossRecords["/chart"].body, missingChart.body, "foreign and nonexistent chart responses must be indistinguishable");
+  assert.equal(crossRecords["/active-workflows"].status, 404);
+  assert.equal(crossRecords["/active-workflows"].body, missingWorkflows.body, "foreign and nonexistent workflow responses must be indistinguishable");
+  assert.ok(!crossRecords["/chart"].body.includes("CLINIC-B-SECRET-CHART"));
+  assert.ok(!crossRecords["/active-workflows"].body.includes("CLINIC-B-WORKFLOW"));
+  const queryOverride = await request(ownerCookie, "browser-clinic-query-override", "chart", "GET", `/api/patients/${cross}/chart?clinicId=${ids.clinics.delinquent}`, "deny");
+  const headerOverride = await request(ownerCookie, "browser-clinic-header-override", "active-workflows", "GET", `/api/patients/${cross}/active-workflows`, "deny", undefined, {
+    "x-clinic-id": String(ids.clinics.delinquent),
+    "x-active-clinic-id": String(ids.clinics.delinquent),
+  });
+  assert.equal(queryOverride.status, 404);
+  assert.equal(headerOverride.status, 404);
   await request(ownerCookie, "cross-clinic-encounter-id-tampering", "encounter", "GET", `/api/encounters/${ids.encounter.id + 999999}`, "deny");
   await request(ownerCookie, "cross-clinic-clinic-id-tampering", "clinic-switch", "POST", "/api/me/active-clinic", "deny", { clinicId: 99999999 });
+
+  const switchToB = await request(ownerCookie, "valid-clinic-b", "clinic-switch", "POST", "/api/me/active-clinic", "allow", { clinicId: ids.clinics.delinquent });
+  const ownBChart = await request(ownerCookie, "valid-clinic-b", "chart", "GET", `/api/patients/${cross}/chart`, "allow");
+  const ownBWorkflows = await request(ownerCookie, "valid-clinic-b", "active-workflows", "GET", `/api/patients/${cross}/active-workflows`, "allow");
+  assert.equal(switchToB.status, 200);
+  assert.equal(ownBChart.status, 200);
+  assert.ok(ownBChart.body.includes("CLINIC-B-SECRET-CHART"));
+  assert.equal(ownBWorkflows.status, 200);
+  assert.ok(ownBWorkflows.body.includes("CLINIC-B-WORKFLOW"));
+  await request(ownerCookie, "restore-clinic-a", "clinic-switch", "POST", "/api/me/active-clinic", "allow", { clinicId: ids.clinics.active });
 
   await request(validPortalCookie, "valid-patient", "portal-profile", "GET", "/api/portal/me", "allow");
   await request(validPortalCookie, "valid-patient", "portal-labs", "GET", "/api/portal/labs", "allow");

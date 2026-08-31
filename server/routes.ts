@@ -4204,8 +4204,12 @@ Rules:
     try {
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(404).json({ error: "Patient not found" });
       const patientId = parseInt(req.params.id);
-      const chart = await storage.getPatientChart(patientId, clinicianId);
+      if (isNaN(patientId)) return res.status(404).json({ error: "Patient not found" });
+      const patient = await storage.getPatientInClinic(patientId, clinicId);
+      if (!patient) return res.status(404).json({ error: "Patient not found" });
+      const chart = await storage.getPatientChartInClinic(patientId, clinicianId, clinicId);
       res.json(chart ?? null);
     } catch (err) {
       console.error("[Chart] GET error:", err);
@@ -23601,9 +23605,11 @@ IMPORTANT:
   app.get("/api/patients/:patientId/active-workflows", requireAuth, async (req, res) => {
     try {
       const clinicId = getEffectiveClinicId(req);
-      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      if (!clinicId) return res.status(404).json({ error: "Patient not found" });
       const patientId = parseInt(req.params.patientId);
-      if (isNaN(patientId)) return res.status(400).json({ error: "Invalid patientId" });
+      if (isNaN(patientId)) return res.status(404).json({ error: "Patient not found" });
+      const patient = await storage.getPatientInClinic(patientId, clinicId);
+      if (!patient) return res.status(404).json({ error: "Patient not found" });
       const runs = await (storage as any).listActiveRunsForPatient(clinicId, patientId);
       // Enrich with workflow name
       const enriched = await Promise.all(

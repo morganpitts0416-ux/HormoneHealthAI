@@ -1,0 +1,56 @@
+Validation is accepted. No authorization enforcement is approved.
+
+You are authorized to implement a narrowly scoped development-only security remediation for the confirmed cross-clinic vulnerabilities:
+
+GET /api/patients/:id/chart
+GET /api/patients/:id/active-workflows
+
+For every request, resolve the patient using both:
+
+The requested patient ID
+The authenticated actor’s authoritative active clinic ID
+
+The clinic context must come from the verified server-side session/membership context—not from a query parameter, request body, route parameter, header, or other browser-controlled value.
+
+The database query itself must be tenant-scoped. Do not fetch by patient ID alone and then perform only an application-level comparison.
+
+Unauthorized and nonexistent cross-clinic resources must return the same non-disclosing response, preferably 404, without confirming that the patient exists in another clinic.
+
+Also inspect all code paths called by these routes—including storage helpers, workflow loaders, joins, protocol loaders, chart aggregation, and raw SQL—to ensure no nested query retrieves data by patient ID without clinic scope.
+
+Add regression tests proving:
+
+Clinic A can access its own patient’s chart and active workflows.
+Clinic A cannot access Clinic B’s patient by substituting the patient ID.
+Clinic B can still access its own patient.
+A nonexistent patient and a foreign-clinic patient produce indistinguishable responses.
+Query parameters, request bodies, headers, and stale browser clinic values cannot override server-derived clinic context.
+Joined chart data, labs, encounters, workflows, protocols, documents, and messages cannot cross tenant boundaries.
+Existing correctly assigned users retain access to their own clinic’s patients.
+
+Perform a targeted search for every use of the same patient-fetch and active-workflow storage helpers. Report whether other endpoints inherit the same weakness. Do not modify additional endpoints without first identifying them in the report unless they share the exact vulnerable helper and the same tenant-scoping correction can be applied safely.
+
+Do not yet repair or enforce:
+
+Staff or clinician membership revocation
+Missing membership behavior
+Owner-clinic fallback behavior
+Patient-clinic relationships
+Patient identity session versions
+Clinic lifecycle or billing restrictions
+Guardian/proxy access
+Global patient identities
+
+Those items could affect legitimate existing access and require separate migration and compatibility decisions.
+
+Improve the shadow evaluator’s resource resolution for encounters, documents, downloads, workflows, and clinic switching so it does not propose an allow unless it has positively resolved the resource’s owning clinic. Missing or unresolved resource ownership must produce a distinct indeterminate/missing_context shadow outcome—not an allow.
+
+Do not enable enforcement, change login/session behavior, deploy to production, or change existing clinic assignments. Stop after the development patch and provide:
+
+Exact files and helpers changed
+Before-and-after cross-clinic test results
+All endpoints using the affected helpers
+Confirmation that valid same-clinic access remains intact
+Updated shadow outcome counts
+Build and TypeScript baseline results
+Proposed production rollout and rollback procedure, without executing it

@@ -85,6 +85,50 @@ async function proposedDecisions(req: Request): Promise<Array<{
   const clinicId = (sess.staffId
     ? sess.staffClinicianClinicId
     : sess.activeClinicId ?? (req.user as any)?.defaultClinicId) ?? null;
+  const resolveRouteResource = async (): Promise<{
+    kind: string;
+    id: number;
+    patientId: number | null;
+    clinicId: number | null;
+    resolved: boolean;
+  } | null> => {
+    const documentMatch = req.path.match(/^\/api\/(?:patients\/\d+\/documents|portal\/lab-documents)\/(\d+)(?:\/download)?$/);
+    if (documentMatch) {
+      const id = Number(documentMatch[1]);
+      const [row] = await db.select({ patientId: schema.patientDocuments.patientId, clinicId: schema.patientDocuments.clinicId })
+        .from(schema.patientDocuments).where(eq(schema.patientDocuments.id, id)).limit(1);
+      return { kind: "document", id, patientId: row?.patientId ?? null, clinicId: row?.clinicId ?? null, resolved: !!row };
+    }
+    const encounterMatch = req.path.match(/^\/api\/encounters\/(\d+)(?:\/|$)/);
+    if (encounterMatch) {
+      const id = Number(encounterMatch[1]);
+      const [row] = await db.select({ patientId: schema.clinicalEncounters.patientId, clinicId: schema.clinicalEncounters.clinicId })
+        .from(schema.clinicalEncounters).where(eq(schema.clinicalEncounters.id, id)).limit(1);
+      return { kind: "encounter", id, patientId: row?.patientId ?? null, clinicId: row?.clinicId ?? null, resolved: !!row && row.clinicId != null };
+    }
+    const workflowRunMatch = req.path.match(/^\/api\/workflow-runs\/(\d+)(?:\/|$)/);
+    if (workflowRunMatch) {
+      const id = Number(workflowRunMatch[1]);
+      const [row] = await db.select({ patientId: schema.formWorkflowRuns.patientId, clinicId: schema.formWorkflowRuns.clinicId })
+        .from(schema.formWorkflowRuns).where(eq(schema.formWorkflowRuns.id, id)).limit(1);
+      return { kind: "workflow_run", id, patientId: row?.patientId ?? null, clinicId: row?.clinicId ?? null, resolved: !!row };
+    }
+    const patientMatch = req.path.match(/^\/api\/patients\/(\d+)(?:\/|$)/);
+    if (patientMatch) {
+      const id = Number(patientMatch[1]);
+      const [row] = await db.select({ clinicId: schema.patients.clinicId })
+        .from(schema.patients).where(eq(schema.patients.id, id)).limit(1);
+      return { kind: req.path.endsWith("/active-workflows") ? "patient_workflows" : "patient", id, patientId: id, clinicId: row?.clinicId ?? null, resolved: !!row && row.clinicId != null };
+    }
+    if (req.path === "/api/me/active-clinic" && req.method === "POST") {
+      const id = Number(req.body?.clinicId);
+      if (!Number.isFinite(id)) return { kind: "clinic_switch", id: -1, patientId: null, clinicId: null, resolved: false };
+      const [row] = await db.select({ id: schema.clinics.id }).from(schema.clinics).where(eq(schema.clinics.id, id)).limit(1);
+      return { kind: "clinic_switch", id, patientId: null, clinicId: row?.id ?? null, resolved: !!row };
+    }
+    return null;
+  };
+  const routeResource = await resolveRouteResource();
 
   const appendClinicStateDecision = async (
     decisions: Awaited<ReturnType<typeof proposedDecisions>>,
@@ -181,6 +225,24 @@ async function proposedDecisions(req: Request): Promise<Array<{
       relationshipId: relationship?.id ?? null,
       evidence: { legacyPortalAccountActive: account?.isActive ?? false, relationshipStatus: relationship?.relationshipStatus ?? null },
     }];
+    if (routeResource) {
+      decisions.push({
+        requiredFlag: "SHADOW_PATIENT_CLINIC_RELATIONSHIP",
+        policyKey: "tenant_resource_scope",
+        decision: !routeResource.resolved ? "indeterminate"
+          : routeResource.patientId !== patientId ? "deny"
+          : routeResource.clinicId === (relationship?.clinicId ?? patient?.clinicId) ? "allow" : "deny",
+        reason: !routeResource.resolved ? "MISSING_CONTEXT_RESOURCE_OWNERSHIP"
+          : routeResource.patientId !== patientId ? "RESOURCE_PATIENT_MISMATCH"
+          : routeResource.clinicId === (relationship?.clinicId ?? patient?.clinicId) ? "RESOURCE_CLINIC_MATCH" : "RESOURCE_CLINIC_MISMATCH",
+        clinicId: relationship?.clinicId ?? patient?.clinicId ?? null,
+        actorType: "patient_portal",
+        actorId: account?.id ?? null,
+        patientId,
+        relationshipId: relationship?.id ?? null,
+        evidence: { resourceKind: routeResource.kind, resourceClinicId: routeResource.clinicId, ownershipResolved: routeResource.resolved },
+      });
+    }
     await appendClinicStateDecision(decisions, "patient_portal", account?.id ?? null, patientId, relationship?.clinicId ?? patient?.clinicId ?? null);
     return decisions;
   }
@@ -246,25 +308,34 @@ async function proposedDecisions(req: Request): Promise<Array<{
     relationshipId: null,
     evidence: { membershipId: membership?.id ?? null, legacyClinicActive: clinic?.isActive ?? null },
   }];
-  const patientMatch = req.path.match(/^\/api\/patients\/(\d+)(?:\/|$)/);
-  if (patientMatch) {
-    const requestedPatientId = Number(patientMatch[1]);
-    const [patient] = await db
-      .select({ clinicId: schema.patients.clinicId })
-      .from(schema.patients)
-      .where(eq(schema.patients.id, requestedPatientId))
-      .limit(1);
+  if (routeResource) {
+    let decision: ShadowDecision;
+    let reason: string;
+    if (!routeResource.resolved) {
+      decision = "indeterminate";
+      reason = "MISSING_CONTEXT_RESOURCE_OWNERSHIP";
+    } else if (routeResource.kind === "clinic_switch") {
+      const [targetMembership] = await db.select({ id: schema.clinicMemberships.id, isActive: schema.clinicMemberships.isActive })
+        .from(schema.clinicMemberships)
+        .where(and(eq(schema.clinicMemberships.userId, userId), eq(schema.clinicMemberships.clinicId, routeResource.id)))
+        .limit(1);
+      decision = targetMembership?.isActive ? "allow" : "indeterminate";
+      reason = targetMembership?.isActive ? "TARGET_CLINIC_MEMBERSHIP_RESOLVED" : "MISSING_CONTEXT_TARGET_CLINIC_MEMBERSHIP";
+    } else {
+      decision = routeResource.clinicId === clinicId ? "allow" : "deny";
+      reason = decision === "allow" ? "RESOURCE_CLINIC_MATCH" : "RESOURCE_CLINIC_MISMATCH";
+    }
     decisions.push({
       requiredFlag: "SHADOW_STAFF_MEMBERSHIP_AUTHZ",
       policyKey: "tenant_resource_scope",
-      decision: !patient ? "deny" : patient.clinicId == null ? "indeterminate" : patient.clinicId === clinicId ? "allow" : "deny",
-      reason: !patient ? "PATIENT_NOT_FOUND" : patient.clinicId == null ? "PATIENT_CLINIC_MISSING" : patient.clinicId === clinicId ? "PATIENT_CLINIC_MATCH" : "PATIENT_CLINIC_MISMATCH",
+      decision,
+      reason,
       clinicId,
       actorType: "clinician",
       actorId: userId,
-      patientId: requestedPatientId,
+      patientId: routeResource.resolved ? routeResource.patientId : null,
       relationshipId: null,
-      evidence: { resourceClinicId: patient?.clinicId ?? null },
+      evidence: { resourceKind: routeResource.kind, resourceClinicId: routeResource.clinicId, ownershipResolved: routeResource.resolved },
     });
   }
   await appendClinicStateDecision(decisions, "clinician", userId, null, clinicId);

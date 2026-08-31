@@ -317,6 +317,8 @@ export interface IStorage {
 
   // Patient Chart
   getPatientChart(patientId: number, clinicianId: number): Promise<schema.PatientChart | null>;
+  getPatientChartInClinic(patientId: number, clinicianId: number, clinicId: number): Promise<schema.PatientChart | null>;
+  getPatientInClinic(patientId: number, clinicId: number): Promise<Patient | undefined>;
   upsertPatientChart(patientId: number, clinicianId: number, data: Partial<Omit<schema.PatientChart, 'id' | 'patientId' | 'clinicianId' | 'updatedAt'>>): Promise<schema.PatientChart>;
 
   // Patient Medications (structured — Phase A)
@@ -831,6 +833,18 @@ export class DbStorage implements IStorage {
       .from(schema.patients)
       .where(and(eq(schema.patients.id, id), scopeCondition));
     return result[0];
+  }
+
+  async getPatientInClinic(patientId: number, clinicId: number): Promise<Patient | undefined> {
+    const [patient] = await db
+      .select()
+      .from(schema.patients)
+      .where(and(
+        eq(schema.patients.id, patientId),
+        eq(schema.patients.clinicId, clinicId),
+      ))
+      .limit(1);
+    return patient;
   }
 
   async getAllPatients(userId: number, clinicId?: number | null): Promise<Patient[]> {
@@ -2688,6 +2702,26 @@ export class DbStorage implements IStorage {
       ))
       .limit(1);
     return row ?? null;
+  }
+
+  async getPatientChartInClinic(
+    patientId: number,
+    clinicianId: number,
+    clinicId: number,
+  ): Promise<schema.PatientChart | null> {
+    const [row] = await db
+      .select({ chart: schema.patientCharts })
+      .from(schema.patientCharts)
+      .innerJoin(schema.patients, and(
+        eq(schema.patients.id, schema.patientCharts.patientId),
+        eq(schema.patients.clinicId, clinicId),
+      ))
+      .where(and(
+        eq(schema.patientCharts.patientId, patientId),
+        eq(schema.patientCharts.clinicianId, clinicianId),
+      ))
+      .limit(1);
+    return row?.chart ?? null;
   }
 
   async upsertPatientChart(
@@ -7384,15 +7418,20 @@ export interface AssignedToMeItem {
   patientId: number,
 ): Promise<schema.FormWorkflowRun[]> {
   return db
-    .select()
+    .select({ run: schema.formWorkflowRuns })
     .from(schema.formWorkflowRuns)
+    .innerJoin(schema.patients, and(
+      eq(schema.patients.id, schema.formWorkflowRuns.patientId),
+      eq(schema.patients.clinicId, clinicId),
+    ))
     .where(
       and(
         eq(schema.formWorkflowRuns.clinicId, clinicId),
         eq(schema.formWorkflowRuns.patientId, patientId),
         eq(schema.formWorkflowRuns.status, "running"),
       ),
-    );
+    )
+    .then(rows => rows.map(row => row.run));
 };
 
 (DbStorage.prototype as any).findSpruceConversationByPatient = async function(
