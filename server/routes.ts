@@ -12,7 +12,7 @@ import multer from "multer";
 import OpenAI from "openai";
 import { z } from "zod";
 import * as schema from "@shared/schema";
-import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable, clinicProviderInvites, patientFormAssignments, clinicalEncounters, patients as patientsTable, insertAppointmentTypeSchema, insertProviderAvailabilitySchema, insertCalendarBlockSchema, insertPatientVitalSchema, insertVitalsMonitoringEpisodeSchema, PATIENT_DOCUMENT_CATEGORIES, type PatientDocumentCategory, chartReviewCollaborators, chartReviewAgreements, type InsertNoteTemplate, updateClinicalBlockDefaultsSchema, insertEncounterTemplateSchema, clinicianStaff } from "@shared/schema";
+import { interpretLabsRequestSchema, labValuesSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable, clinicProviderInvites, patientFormAssignments, clinicalEncounters, patients as patientsTable, insertAppointmentTypeSchema, insertProviderAvailabilitySchema, insertCalendarBlockSchema, insertPatientVitalSchema, insertVitalsMonitoringEpisodeSchema, PATIENT_DOCUMENT_CATEGORIES, type PatientDocumentCategory, chartReviewCollaborators, chartReviewAgreements, type InsertNoteTemplate, updateClinicalBlockDefaultsSchema, insertEncounterTemplateSchema, clinicianStaff } from "@shared/schema";
 import { eq, and, sql, desc, isNull, isNotNull, or, ilike, inArray } from "drizzle-orm";
 import { ClinicalLogicEngine } from "./clinical-logic";
 import { FemaleClinicalLogicEngine } from "./clinical-logic-female";
@@ -413,13 +413,36 @@ async function getVerifiedClinicContext(req: Request): Promise<{ clinicId: numbe
   return membership ? { clinicId, clinicianId: getClinicianId(req) } : null;
 }
 
-function hasStoredRecordIdentifier(value: unknown): boolean {
+// Public lab interpretation is deliberately raw-value only. These schemas do
+// not inherit permissive Zod object behavior: every object layer is strict.
+// Authenticated calls retain the established schema independently.
+const publicLabDemographicsSchema = schema.patientDemographicsSchema.strict();
+const publicDateInputSchema = z.string()
+  .regex(/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/, "Invalid date input");
+const publicInterpretLabsSchema = labValuesSchema
+  .omit({ patientName: true })
+  .extend({
+    demographics: publicLabDemographicsSchema.optional(),
+    labDrawDate: publicDateInputSchema.optional(),
+  })
+  .strict();
+const publicFemaleInterpretLabsSchema = femaleLabValuesSchema
+  .omit({ patientName: true })
+  .extend({
+    demographics: publicLabDemographicsSchema.optional(),
+    labDrawDate: publicDateInputSchema.optional(),
+    lastMenstrualPeriod: publicDateInputSchema.optional(),
+  })
+  .strict();
+const authenticatedInterpretLabsSchema = interpretLabsRequestSchema;
+const authenticatedFemaleInterpretLabsSchema = femaleLabValuesSchema;
+
+function hasUnsafePrototypeKey(value: unknown): boolean {
   if (!value || typeof value !== "object") return false;
-  if (Array.isArray(value)) return value.some(hasStoredRecordIdentifier);
+  if (Array.isArray(value)) return value.some(hasUnsafePrototypeKey);
   return Object.entries(value as Record<string, unknown>).some(([key, child]) =>
-    /(?:^|_)(?:patient|lab|clinic|clinician|encounter|user|form|submission|document)(?:_?id)?$/i.test(key) ||
-    /(?:patient|lab|clinic|clinician|encounter|user|form|submission|document)Id$/i.test(key) ||
-    hasStoredRecordIdentifier(child),
+    key === "__proto__" || key === "constructor" || key === "prototype" ||
+    hasUnsafePrototypeKey(child),
   );
 }
 
@@ -1491,11 +1514,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/interpret-labs", async (req, res) => {
     try {
       const authenticated = isClinicianOrStaffRequest(req);
-      if (!authenticated && hasStoredRecordIdentifier(req.body)) {
-        return res.status(400).json({ error: "Public lab interpretation accepts submitted values only" });
+      // A stale login is not authority for these routes. It gets exactly the
+      // public raw-value path and never loads clinician or patient state.
+      const verifiedContext = authenticated ? await getVerifiedClinicContext(req) : null;
+      const publicMode = !verifiedContext;
+      if (publicMode && hasUnsafePrototypeKey(req.body)) {
+        return res.status(400).json({ error: "Invalid lab values" });
       }
       // Validate request body
-      const parseResult = interpretLabsRequestSchema.safeParse(req.body);
+      const parseResult = (publicMode ? publicInterpretLabsSchema : authenticatedInterpretLabsSchema).safeParse(req.body);
       
       if (!parseResult.success) {
         return res.status(400).json({ 
@@ -1514,7 +1541,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let therapyContext: TherapyContext | null = null;
       let patientMedNamesMale: string[] = [];
       if (patientId !== undefined && patientId !== null) {
-        const context = await getVerifiedClinicContext(req);
+        const context = verifiedContext;
         if (!context) return res.status(404).json({ message: "Patient not found" });
         const patient = await storage.getPatientInClinic(patientId, context.clinicId);
         if (!patient) return res.status(404).json({ message: "Patient not found" });
@@ -1546,7 +1573,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         supplementMode: string;
       } | null = null;
       try {
-        if (authenticated) {
+        if (verifiedContext) {
           const cid = getClinicianId(req);
           const [labPrefs, customSupps, customRules, settings] = await Promise.all([
             storage.getClinicianLabPreferences(cid),
@@ -1945,11 +1972,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/interpret-labs-female", async (req, res) => {
     try {
       const authenticated = isClinicianOrStaffRequest(req);
-      if (!authenticated && hasStoredRecordIdentifier(req.body)) {
-        return res.status(400).json({ error: "Public lab interpretation accepts submitted values only" });
+      const verifiedContext = authenticated ? await getVerifiedClinicContext(req) : null;
+      const publicMode = !verifiedContext;
+      if (publicMode && hasUnsafePrototypeKey(req.body)) {
+        return res.status(400).json({ error: "Invalid lab values" });
       }
       // Validate request body
-      const parseResult = femaleLabValuesSchema.safeParse(req.body);
+      const parseResult = (publicMode ? publicFemaleInterpretLabsSchema : authenticatedFemaleInterpretLabsSchema).safeParse(req.body);
       
       if (!parseResult.success) {
         return res.status(400).json({ 
@@ -1968,7 +1997,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let therapyContext: TherapyContext | null = null;
       let patientMedNamesFemale: string[] = [];
       if (patientId) {
-        const context = await getVerifiedClinicContext(req);
+        const context = verifiedContext;
         if (!context) return res.status(404).json({ message: "Patient not found" });
         const patient = await storage.getPatientInClinic(patientId, context.clinicId);
         if (!patient) return res.status(404).json({ message: "Patient not found" });
@@ -1994,7 +2023,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         supplementMode: string;
       } | null = null;
       try {
-        if (authenticated) {
+        if (verifiedContext) {
           const cid = getClinicianId(req);
           const [labPrefs, customSupps, customRules, settings] = await Promise.all([
             storage.getClinicianLabPreferences(cid),

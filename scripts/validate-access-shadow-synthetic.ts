@@ -133,6 +133,17 @@ async function setup() {
      VALUES ($1,$2,'provider','provider','standard','full','active',true,true)`,
     [ids.clinics.active, ids.revokedMember.id],
   );
+  ids.multiMember = await insertOne(
+    `INSERT INTO users (email,username,password_hash,first_name,last_name,title,clinic_name,default_clinic_id,subscription_status,free_account,notes)
+     VALUES ($1,$2,$3,'Synthetic','MultiMembership','NP',$4,$5,'active',true,$6) RETURNING id,email,username`,
+    [`${tag.toLowerCase()}-multi-member@example.invalid`, `${tag.toLowerCase()}-multi-member`, hash, tag, ids.clinics.active, tag],
+  );
+  await q(
+    `INSERT INTO clinic_memberships (clinic_id,user_id,role,clinical_role,admin_role,access_scope,acceptance_status,is_active,is_primary_clinic)
+     VALUES ($1,$3,'provider','provider','standard','full','active',true,true),
+            ($2,$3,'provider','provider','standard','full','active',true,false)`,
+    [ids.clinics.active, ids.clinics.delinquent, ids.multiMember.id],
+  );
 
   ids.staff = {};
   for (const [key, clinicId] of [["valid", ids.clinics.active], ["missing", null], ["revoked", ids.clinics.active]] as const) {
@@ -257,6 +268,7 @@ async function exercise() {
   const revokedStaffCookie = await login("/api/auth/login", { username: ids.staff.revoked.email, password });
   const missingMemberCookie = await login("/api/auth/login", { username: ids.missingMember.username, password });
   const revokedMemberCookie = await login("/api/auth/login", { username: ids.revokedMember.username, password });
+  const multiMemberCookie = await login("/api/auth/login", { username: ids.multiMember.username, password });
   const validPortalCookie = await login("/api/portal/login", { email: ids.portal.valid.email, password });
   const missingPortalCookie = await login("/api/portal/login", { email: ids.portal.missing.email, password });
   const revokedPortalCookie = await login("/api/portal/login", { email: ids.portal.revoked.email, password });
@@ -266,7 +278,7 @@ async function exercise() {
   const p = ids.patients.chartA.id;
   const publicInterpretation = await request(undefined, "group1-public", "interpret-labs", "POST", "/api/interpret-labs", "allow", {});
   assert.equal(publicInterpretation.status, 200);
-  for (const storedField of ["patientId", "labId", "clinicId"]) {
+  for (const storedField of ["patientId", "patient_id", "labId", "clinicId", "clinicianId", "encounterId", "documentId", "formId", "submissionId"]) {
     const denied = await request(undefined, "group1-public-stored-id", storedField, "POST", "/api/interpret-labs", "deny", { [storedField]: 1 });
     assert.equal(denied.status, 400);
   }
@@ -274,6 +286,24 @@ async function exercise() {
   assert.equal(publicFemale.status, 200);
   const publicFemaleStoredId = await request(undefined, "group1-public-stored-id", "female-patientId", "POST", "/api/interpret-labs-female", "deny", { patientId: 1 });
   assert.equal(publicFemaleStoredId.status, 400);
+  for (const payload of [
+    { demographics: { patientId: 1 } },
+    { unexpected: true },
+    { values: [{ labId: 1 }] },
+    { values: [{ unexpected: true }] },
+    JSON.parse('{"__proto__":{"polluted":true}}'),
+    JSON.parse('{"constructor":{"prototype":{"polluted":true}}}'),
+    JSON.parse('{"prototype":{"polluted":true}}'),
+  ]) {
+    const capturePath = process.env.SYNTHETIC_MODEL_CAPTURE_FILE;
+    const before = capturePath && fs.existsSync(capturePath) ? fs.readFileSync(capturePath, "utf8") : null;
+    const denied = await request(undefined, "group1-public-strict-schema", "interpret-labs", "POST", "/api/interpret-labs", "deny", payload);
+    assert.equal(denied.status, 400);
+    if (capturePath) {
+      const after = fs.existsSync(capturePath) ? fs.readFileSync(capturePath, "utf8") : "";
+      assert.equal(after, before ?? "", "public schema rejection must occur before any model call");
+    }
+  }
 
   const ownerInterpretation = await request(ownerCookie, "group1-same-clinic", "interpret-labs", "POST", "/api/interpret-labs", "allow", { patientId: p });
   assert.equal(ownerInterpretation.status, 200);
@@ -305,8 +335,27 @@ async function exercise() {
   assert.equal(bodyOverride.status, 404);
   const cookieOverride = await request(`${ownerCookie}; activeClinicId=${ids.clinics.delinquent}`, "group1-cookie-override", "ai-chat", "POST", "/api/ai-chat", "deny", { messages: [{ role: "user", content: "Summarize context" }], patientId: ids.patients.chartB.id });
   assert.equal(cookieOverride.status, 404);
-  await request(missingMemberCookie, "group1-missing-membership-observation", "ai-chat", "POST", "/api/ai-chat", "probe", { messages: [{ role: "user", content: "Summarize context" }], patientId: p });
-  await request(revokedMemberCookie, "group1-revoked-membership-observation", "ai-chat", "POST", "/api/ai-chat", "probe", { messages: [{ role: "user", content: "Summarize context" }], patientId: p });
+  const missingMemberAi = await request(missingMemberCookie, "group1-missing-membership", "ai-chat", "POST", "/api/ai-chat", "deny", { messages: [{ role: "user", content: "Summarize context" }], patientId: p });
+  assert.equal(missingMemberAi.status, 404);
+  // This request deliberately uses the cookie minted while membership was
+  // active. Deactivate before issuing it to prove stale session state is not
+  // authority for Group 1 patient context.
+  await q(`UPDATE clinic_memberships SET is_active=false WHERE user_id=$1`, [ids.revokedMember.id]);
+  const revokedMemberAi = await request(revokedMemberCookie, "group1-revoked-membership-stale-session", "ai-chat", "POST", "/api/ai-chat", "deny", { messages: [{ role: "user", content: "Summarize context" }], patientId: p });
+  assert.equal(revokedMemberAi.status, 404);
+  const revokedRaw = await request(revokedMemberCookie, "group1-revoked-membership-public-raw", "interpret-labs", "POST", "/api/interpret-labs", "allow", {});
+  assert.equal(revokedRaw.status, 200);
+  const revokedPatientLinked = await request(revokedMemberCookie, "group1-revoked-membership-patient-linked", "interpret-labs", "POST", "/api/interpret-labs", "deny", { patientId: p });
+  assert.equal(revokedPatientLinked.status, 400);
+  const multiSwitchB = await request(multiMemberCookie, "group1-multi-membership-select-b", "clinic-switch", "POST", "/api/me/active-clinic", "allow", { clinicId: ids.clinics.delinquent });
+  assert.equal(multiSwitchB.status, 200);
+  await q(`UPDATE clinic_memberships SET is_active=false WHERE user_id=$1 AND clinic_id=$2`, [ids.multiMember.id, ids.clinics.delinquent]);
+  const multiRevokedB = await request(multiMemberCookie, "group1-multi-membership-revoked-selected-clinic", "ai-chat", "POST", "/api/ai-chat", "deny", { messages: [{ role: "user", content: "Summarize context" }], patientId: ids.patients.chartB.id });
+  assert.equal(multiRevokedB.status, 404);
+  const multiSwitchA = await request(multiMemberCookie, "group1-multi-membership-select-active-a", "clinic-switch", "POST", "/api/me/active-clinic", "allow", { clinicId: ids.clinics.active });
+  assert.equal(multiSwitchA.status, 200);
+  const multiActiveA = await request(multiMemberCookie, "group1-multi-membership-active-selected-clinic", "ai-chat", "POST", "/api/ai-chat", "allow", { messages: [{ role: "user", content: "Summarize context" }], patientId: p });
+  assert.equal(multiActiveA.status, 200);
 
   const aiOk = await request(ownerCookie, "group1-same-clinic", "ai-chat", "POST", "/api/ai-chat", "allow", { messages: [{ role: "user", content: "Summarize context" }], patientId: p });
   assert.equal(aiOk.status, 200);
@@ -332,7 +381,6 @@ async function exercise() {
   await q(`UPDATE clinician_staff SET is_active=false WHERE id=$1`, [ids.staff.revoked.id]);
   await request(revokedStaffCookie, "revoked-staff-stale-session", "chart", "GET", `/api/patients/${p}`, "allow");
   await request(missingMemberCookie, "missing-clinic-membership", "chart", "GET", `/api/patients/${p}`, "allow");
-  await q(`UPDATE clinic_memberships SET is_active=false WHERE user_id=$1`, [ids.revokedMember.id]);
   await request(revokedMemberCookie, "revoked-membership-stale-session", "chart", "GET", `/api/patients/${p}`, "allow");
 
   const cross = ids.patients.chartB.id;
@@ -498,7 +546,7 @@ async function cleanup() {
   await q(`DELETE FROM patients WHERE mrn LIKE $1`, [`${tag}-%`]);
   await q(`DELETE FROM patient_portal_identities WHERE normalized_email LIKE $1`, [`${tag.toLowerCase()}%`]);
   if (ids.owner?.id) {
-    await q(`DELETE FROM users WHERE id = ANY($1::int[])`, [[ids.owner.id, ids.missingMember?.id, ids.revokedMember?.id].filter(Boolean)]);
+    await q(`DELETE FROM users WHERE id = ANY($1::int[])`, [[ids.owner.id, ids.missingMember?.id, ids.revokedMember?.id, ids.multiMember?.id].filter(Boolean)]);
   }
   if (ids.clinics) {
     await q(`DELETE FROM clinics WHERE id = ANY($1::int[])`, [Object.values(ids.clinics)]);

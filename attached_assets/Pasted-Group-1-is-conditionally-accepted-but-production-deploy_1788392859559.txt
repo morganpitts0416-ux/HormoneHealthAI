@@ -1,0 +1,69 @@
+Group 1 is conditionally accepted, but production deployment is not yet approved.
+
+Resolve and report the following without broadening authorization enforcement elsewhere.
+
+1. Explain the revoked-account 200
+
+The report states that authenticated patient-linked requests verify active clinician membership or staff assignment, but a legacy revoked synthetic account received 200.
+
+Determine:
+
+Which record or field was revoked
+Whether the account had another active membership or staff assignment
+Which exact authorization branch permitted access
+Whether the request was patient-linked or raw-value-only
+Whether any patient PHI was loaded
+Whether the AI provider or interpretation engine received patient context
+
+Required behavior:
+
+A revoked account may continue using a genuinely public raw-value endpoint only under the same restrictions as an unauthenticated caller.
+It must not receive authenticated configuration or patient-linked PHI.
+It must not access a patient merely because an old session contains a clinic ID.
+Do not activate general platform-wide membership enforcement; apply this requirement only to these four remediated routes.
+
+Add tests distinguishing:
+
+Active clinician membership
+Active staff assignment
+Revoked membership with no other assignment
+Missing membership
+Stale session created before revocation
+Multiple clinic memberships where only one is revoked
+Raw public request from a revoked account
+Patient-linked request from a revoked account
+2. Make the public request schema allowlist-based
+
+Define an explicit public input schema containing only the lab values and non-identifying calculation inputs required for interpretation.
+
+Reject unknown fields rather than relying only on a forbidden-key list.
+Apply the schema recursively to nested objects and arrays.
+Do not permit free-form metadata capable of carrying record identifiers or PHI.
+Do not permit prototype-pollution keys such as __proto__, constructor, or prototype.
+Keep the authenticated patient-linked schema separate from the public schema.
+
+Test top-level and nested attempts involving:
+
+patientId
+patient_id
+labId
+clinicId
+clinicianId
+Encounter, document, form, and submission IDs
+Unknown keys
+Arrays containing objects with forbidden or unknown keys
+Prototype-pollution keys
+3. Provide exact verification
+
+Report:
+
+Root cause and correction for the revoked-account result
+Whether any PHI was exposed during that test
+Public schema’s exact permitted field categories
+All authorization test results
+Confirmation that denied requests cause no database reads beyond authentication/authorization resolution, no writes, and no AI request
+Exact project-wide TypeScript count compared with the documented baseline of 249
+Focused TypeScript results for every changed file
+Updated isolated production diff proposal
+
+Do not deploy or modify the other authorization groups.
