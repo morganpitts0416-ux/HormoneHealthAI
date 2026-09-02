@@ -1,0 +1,73 @@
+The reconciliation and audit are accepted. No broader enforcement is authorized.
+
+You are approved to remediate Group 1 in development only:
+
+POST /api/interpret-labs
+POST /api/interpret-labs-female
+POST /api/ai-chat
+POST /api/patients/:id/labs/:labId/regenerate-patient-summary
+Lab-interpretation routes
+
+First determine whether unauthenticated use is an intentional public feature.
+
+If public interpretation is intentional:
+
+An unauthenticated request may interpret only the lab values and information submitted in that request.
+It must never accept or use a stored patient ID, lab ID, clinic ID, clinician ID, or other database-record identifier.
+It must not retrieve charts, laboratory history, medications, diagnoses, demographics, or other stored PHI.
+It must not write anything to a patient record.
+
+If a request references an existing ClinIQ patient or stored lab:
+
+Require an authenticated clinician/staff session.
+Derive the clinic exclusively from the server-side session.
+Resolve the patient and lab within that clinic.
+Use getPatientChartInClinic.
+Scope all lab-history queries in SQL by patient and clinic.
+Reject foreign and nonexistent resources with identical non-disclosing responses.
+
+Do not silently ignore an unauthorized patientId and continue as though the request were public. Either reject the request or use a separately defined public request schema that does not permit stored-record identifiers.
+
+AI chat
+Preserve the current valid clinician/staff experience.
+Require a server-validated clinic membership.
+Resolve the submitted patient ID within that clinic.
+Use tenant-scoped chart access.
+Audit every adjacent PHI source added to the AI prompt.
+Prove that no foreign-clinic marker reaches the model request.
+Patient-summary regeneration
+Resolve the patient, lab, and chart under one authoritative clinic.
+Require that the lab belongs to both the specified patient and clinic.
+Make the lab update tenant-scoped at the SQL level.
+Do not rely solely on earlier route checks before performing the write.
+Required testing
+
+Test:
+
+Valid same-clinic clinician and staff requests
+Unauthenticated public interpretation without stored identifiers
+Unauthenticated requests containing patientId, labId, or clinicId
+Cross-clinic patient-ID and lab-ID substitution
+Foreign patient with same-clinic lab ID
+Same-clinic patient with foreign lab ID
+Nonexistent resources
+Query, header, body, and cookie-based clinic override attempts
+Missing or revoked membership in observation only; do not activate general membership enforcement
+AI prompt capture using synthetic markers to prove foreign PHI is absent
+Failed authorization produces no patient-summary write or other side effect
+
+Preserve valid same-clinic access. Use synthetic development records only.
+
+Do not modify global login behavior, patient identities, clinic relationships, cancellation enforcement, billing enforcement, or the remaining audit groups.
+
+Stop and report:
+
+Whether public lab interpretation was intentional
+Exact files, routes, queries, and helpers changed
+Before-and-after authorization behavior
+Same-clinic compatibility results
+Cross-clinic and unauthenticated test results
+AI prompt-isolation results
+Confirmation that denied requests caused no writes
+Build and TypeScript baseline results
+A narrowly isolated production rollout proposal

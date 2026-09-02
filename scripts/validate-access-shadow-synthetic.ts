@@ -1,14 +1,15 @@
 import bcrypt from "bcrypt";
 import pg from "pg";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 
 const { Pool } = pg;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
 const tag = `SYNTH-AUTHZ-${Date.now()}`;
 const password = `Synthetic-${Date.now()}-Aa1!`;
-const baseUrl = process.env.REPLIT_DEV_DOMAIN
+const baseUrl = process.env.SYNTHETIC_BASE_URL || (process.env.REPLIT_DEV_DOMAIN
   ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-  : "http://127.0.0.1:5000";
+  : "http://127.0.0.1:5000");
 
 type ResponseRecord = {
   scenario: string;
@@ -47,7 +48,7 @@ async function login(path: string, body: any): Promise<string> {
 }
 
 async function request(
-  cookie: string,
+  cookie: string | undefined,
   scenario: string,
   family: string,
   method: string,
@@ -59,7 +60,7 @@ async function request(
   const response = await fetch(`${baseUrl}${path}`, {
     method,
     headers: {
-      cookie,
+      ...(cookie ? { cookie } : {}),
       "content-type": "application/json",
       "x-request-id": `${tag}-${responses.length + 1}`,
       ...extraHeaders,
@@ -175,8 +176,14 @@ async function setup() {
   );
 
   ids.lab = await insertOne(
-    `INSERT INTO lab_results (patient_id,lab_date,lab_values,notes) VALUES ($1,NOW(),'{}'::jsonb,$2) RETURNING id`,
-    [ids.patients.chartA.id, tag],
+    `INSERT INTO lab_results (patient_id,lab_date,lab_values,interpretation_result,patient_communication_summary,notes)
+     VALUES ($1,NOW(),'{}'::jsonb,$2::jsonb,$3,$4) RETURNING id`,
+    [ids.patients.chartA.id, JSON.stringify({ interpretations: [], redFlags: [], supplements: [], aiRecommendations: "", recheckWindow: "" }), `${tag}-SUMMARY-UNCHANGED`, tag],
+  );
+  ids.foreignLab = await insertOne(
+    `INSERT INTO lab_results (patient_id,lab_date,lab_values,interpretation_result,patient_communication_summary,notes)
+     VALUES ($1,NOW(),$2::jsonb,$3::jsonb,$4,$5) RETURNING id`,
+    [ids.patients.chartB.id, JSON.stringify({ foreignMarker: `${tag}-CLINIC-B-LAB` }), JSON.stringify({ interpretations: [], redFlags: [] }), `${tag}-FOREIGN-SUMMARY`, tag],
   );
   ids.encounter = await insertOne(
     `INSERT INTO clinical_encounters (clinician_id,patient_id,visit_date,visit_type,clinic_id,chief_complaint,patient_summary,summary_published)
@@ -257,6 +264,60 @@ async function exercise() {
   ids.cookies = { ownerCookie, validPortalCookie };
 
   const p = ids.patients.chartA.id;
+  const publicInterpretation = await request(undefined, "group1-public", "interpret-labs", "POST", "/api/interpret-labs", "allow", {});
+  assert.equal(publicInterpretation.status, 200);
+  for (const storedField of ["patientId", "labId", "clinicId"]) {
+    const denied = await request(undefined, "group1-public-stored-id", storedField, "POST", "/api/interpret-labs", "deny", { [storedField]: 1 });
+    assert.equal(denied.status, 400);
+  }
+  const publicFemale = await request(undefined, "group1-public", "interpret-labs-female", "POST", "/api/interpret-labs-female", "allow", {});
+  assert.equal(publicFemale.status, 200);
+  const publicFemaleStoredId = await request(undefined, "group1-public-stored-id", "female-patientId", "POST", "/api/interpret-labs-female", "deny", { patientId: 1 });
+  assert.equal(publicFemaleStoredId.status, 400);
+
+  const ownerInterpretation = await request(ownerCookie, "group1-same-clinic", "interpret-labs", "POST", "/api/interpret-labs", "allow", { patientId: p });
+  assert.equal(ownerInterpretation.status, 200);
+  const staffInterpretation = await request(validStaffCookie, "group1-same-clinic-staff", "interpret-labs-female", "POST", "/api/interpret-labs-female", "allow", { patientId: p });
+  assert.equal(staffInterpretation.status, 200);
+  const foreignInterpretation = await request(ownerCookie, "group1-cross-clinic", "interpret-labs", "POST", "/api/interpret-labs", "deny", { patientId: ids.patients.chartB.id });
+  assert.equal(foreignInterpretation.status, 404);
+
+  const summaryOk = await request(ownerCookie, "group1-same-clinic", "regenerate-summary", "POST", `/api/patients/${p}/labs/${ids.lab.id}/regenerate-patient-summary`, "allow");
+  assert.equal(summaryOk.status, 200);
+  const summaryBeforeDenied = (await q(`SELECT patient_communication_summary FROM lab_results WHERE id=$1`, [ids.lab.id])).rows[0]?.patient_communication_summary;
+  for (const [patientId, labId, scenario] of [
+    [p, ids.foreignLab.id, "same-patient-foreign-lab"],
+    [ids.patients.chartB.id, ids.lab.id, "foreign-patient-same-lab"],
+    [2_000_000_000, ids.lab.id, "nonexistent-patient"],
+    [p, 2_000_000_000, "nonexistent-lab"],
+  ] as const) {
+    const denied = await request(ownerCookie, `group1-${scenario}`, "regenerate-summary", "POST", `/api/patients/${patientId}/labs/${labId}/regenerate-patient-summary`, "deny");
+    assert.equal(denied.status, 404);
+  }
+  const summaryAfterDenied = (await q(`SELECT patient_communication_summary FROM lab_results WHERE id=$1`, [ids.lab.id])).rows[0]?.patient_communication_summary;
+  assert.equal(summaryAfterDenied, summaryBeforeDenied, "denied summary requests must not write");
+
+  const group1QueryOverride = await request(ownerCookie, "group1-query-override", "ai-chat", "POST", `/api/ai-chat?clinicId=${ids.clinics.delinquent}`, "deny", { messages: [{ role: "user", content: "Summarize context" }], patientId: ids.patients.chartB.id });
+  assert.equal(group1QueryOverride.status, 404);
+  const group1HeaderOverride = await request(ownerCookie, "group1-header-override", "ai-chat", "POST", "/api/ai-chat", "deny", { messages: [{ role: "user", content: "Summarize context" }], patientId: ids.patients.chartB.id }, { "x-clinic-id": String(ids.clinics.delinquent) });
+  assert.equal(group1HeaderOverride.status, 404);
+  const bodyOverride = await request(ownerCookie, "group1-body-override", "ai-chat", "POST", "/api/ai-chat", "deny", { messages: [{ role: "user", content: "Summarize context" }], patientId: ids.patients.chartB.id, clinicId: ids.clinics.delinquent });
+  assert.equal(bodyOverride.status, 404);
+  const cookieOverride = await request(`${ownerCookie}; activeClinicId=${ids.clinics.delinquent}`, "group1-cookie-override", "ai-chat", "POST", "/api/ai-chat", "deny", { messages: [{ role: "user", content: "Summarize context" }], patientId: ids.patients.chartB.id });
+  assert.equal(cookieOverride.status, 404);
+  await request(missingMemberCookie, "group1-missing-membership-observation", "ai-chat", "POST", "/api/ai-chat", "probe", { messages: [{ role: "user", content: "Summarize context" }], patientId: p });
+  await request(revokedMemberCookie, "group1-revoked-membership-observation", "ai-chat", "POST", "/api/ai-chat", "probe", { messages: [{ role: "user", content: "Summarize context" }], patientId: p });
+
+  const aiOk = await request(ownerCookie, "group1-same-clinic", "ai-chat", "POST", "/api/ai-chat", "allow", { messages: [{ role: "user", content: "Summarize context" }], patientId: p });
+  assert.equal(aiOk.status, 200);
+  const capturePath = process.env.SYNTHETIC_MODEL_CAPTURE_FILE;
+  if (capturePath) {
+    const captures = fs.existsSync(capturePath) ? fs.readFileSync(capturePath, "utf8") : "";
+    assert.ok(captures.includes(`${tag}-CLINIC-A-CHART`), "same-clinic marker must reach the captured model prompt");
+    assert.ok(!captures.includes(`${tag}-CLINIC-B-SECRET-CHART`), "foreign chart marker must not reach the model prompt");
+    assert.ok(!captures.includes(`${tag}-CLINIC-B-LAB`), "foreign lab marker must not reach the model prompt");
+  }
+
   await request(ownerCookie, "valid-owner", "chart", "GET", `/api/patients/${p}/chart`, "allow");
   await request(ownerCookie, "valid-owner", "encounter", "GET", `/api/encounters/${ids.encounter.id}`, "allow");
   await request(ownerCookie, "valid-owner", "labs", "GET", `/api/patients/${p}/labs`, "allow");

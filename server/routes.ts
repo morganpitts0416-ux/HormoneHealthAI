@@ -373,6 +373,56 @@ function getEffectiveClinicId(req: Request): number | null {
   return (req.user as any)?.defaultClinicId ?? null;
 }
 
+function isClinicianOrStaffRequest(req: Request): boolean {
+  const sess = req.session as any;
+  return !!sess?.staffId || !!(req.isAuthenticated && req.isAuthenticated());
+}
+
+// Patient-linked requests must not trust a clinic identifier supplied by a
+// browser, nor a stale session. Staff assignment and clinician membership are
+// checked in SQL at the point PHI is about to be loaded.
+async function getVerifiedClinicContext(req: Request): Promise<{ clinicId: number; clinicianId: number } | null> {
+  const sess = req.session as any;
+  const clinicId = getEffectiveClinicId(req);
+  if (!clinicId) return null;
+  if (sess?.staffId) {
+    const [staff] = await storageDb
+      .select({ id: clinicianStaff.id })
+      .from(clinicianStaff)
+      .where(and(
+        eq(clinicianStaff.id, sess.staffId),
+        eq(clinicianStaff.clinicianId, sess.staffClinicianId),
+        eq(clinicianStaff.clinicId, clinicId),
+        eq(clinicianStaff.isActive, true),
+      ))
+      .limit(1);
+    return staff ? { clinicId, clinicianId: sess.staffClinicianId } : null;
+  }
+  const userId = (req.user as any)?.id;
+  if (!userId) return null;
+  const [membership] = await storageDb
+    .select({ userId: clinicMemberships.userId })
+    .from(clinicMemberships)
+    .where(and(
+      eq(clinicMemberships.userId, userId),
+      eq(clinicMemberships.clinicId, clinicId),
+      eq(clinicMemberships.isActive, true),
+      eq(clinicMemberships.acceptanceStatus, "active"),
+    ))
+    .limit(1);
+  return membership ? { clinicId, clinicianId: getClinicianId(req) } : null;
+}
+
+function hasStoredRecordIdentifier(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.some(hasStoredRecordIdentifier);
+  return Object.entries(value as Record<string, unknown>).some(([key, child]) =>
+    /(?:^|_)(?:patient|lab|clinic|clinician|encounter|user|form|submission|document)(?:_?id)?$/i.test(key) ||
+    /(?:patient|lab|clinic|clinician|encounter|user|form|submission|document)Id$/i.test(key) ||
+    hasStoredRecordIdentifier(child),
+  );
+}
+
 // ── Lab-eval → vital-trends bridge ──────────────────────────────────────
 // When a clinician runs a lab interpretation for a known patient AND has
 // supplied systolic blood pressure or BMI in the demographics block, persist
@@ -1439,9 +1489,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Lab interpretation endpoint
   app.post("/api/interpret-labs", async (req, res) => {
-    console.log('[API] POST /api/interpret-labs - Received request');
-    console.log('[API] Request body:', JSON.stringify(req.body, null, 2));
     try {
+      const authenticated = isClinicianOrStaffRequest(req);
+      if (!authenticated && hasStoredRecordIdentifier(req.body)) {
+        return res.status(400).json({ error: "Public lab interpretation accepts submitted values only" });
+      }
       // Validate request body
       const parseResult = interpretLabsRequestSchema.safeParse(req.body);
       
@@ -1453,13 +1505,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const labs = parseResult.data;
-      const patientId = req.body.patientId ? parseInt(req.body.patientId) : undefined;
+      const patientId = req.body.patientId === undefined ? undefined : Number(req.body.patientId);
+      if (patientId !== undefined && (!Number.isSafeInteger(patientId) || patientId <= 0)) {
+        return res.status(404).json({ message: "Patient not found" });
+      }
 
       let trendContext = '';
       let therapyContext: TherapyContext | null = null;
       let patientMedNamesMale: string[] = [];
-      if (patientId) {
-        const priorLabs = await storage.getLabResultsByPatient(patientId);
+      if (patientId !== undefined && patientId !== null) {
+        const context = await getVerifiedClinicContext(req);
+        if (!context) return res.status(404).json({ message: "Patient not found" });
+        const patient = await storage.getPatientInClinic(patientId, context.clinicId);
+        if (!patient) return res.status(404).json({ message: "Patient not found" });
+        const priorLabs = await storage.getLabResultsByPatientInClinic(patientId, context.clinicId);
         if (priorLabs.length > 0) {
           trendContext = AIService.buildTrendContext(labs, priorLabs.map(l => ({ labDate: l.labDate, labValues: l.labValues as LabValues })));
           console.log('[API] Trend context built from', priorLabs.length, 'prior labs');
@@ -1468,18 +1527,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // rewrite recommendations as adherence/dose-optimization rather than
         // duplicate initiation. Wrapped in try/catch so an unauthenticated
         // call still works exactly as before.
-        try {
-          if ((req as any).user || (req.session as any).staffClinicianId) {
-            const cid = getClinicianId(req);
-            const chart = await storage.getPatientChart(patientId, cid);
-            if (chart && Array.isArray(chart.currentMedications) && chart.currentMedications.length > 0) {
-              therapyContext = inferPatientTherapies(chart.currentMedications);
-              console.log('[API] Male therapy context: classes=', Array.from(therapyContext.classes.keys()).join(','));
-              patientMedNamesMale = (chart.currentMedications as unknown[]).filter((m): m is string => typeof m === 'string');
-            }
-          }
-        } catch (e) {
-          console.warn('[API] Male therapy context lookup failed (continuing without):', e);
+        const chart = await storage.getPatientChartInClinic(patientId, context.clinicianId, context.clinicId);
+        if (chart && Array.isArray(chart.currentMedications) && chart.currentMedications.length > 0) {
+          therapyContext = inferPatientTherapies(chart.currentMedications);
+          patientMedNamesMale = (chart.currentMedications as unknown[]).filter((m): m is string => typeof m === 'string');
         }
       }
 
@@ -1495,7 +1546,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         supplementMode: string;
       } | null = null;
       try {
-        if ((req as any).user || (req.session as any).staffClinicianId) {
+        if (authenticated) {
           const cid = getClinicianId(req);
           const [labPrefs, customSupps, customRules, settings] = await Promise.all([
             storage.getClinicianLabPreferences(cid),
@@ -1892,9 +1943,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Female lab interpretation endpoint
   app.post("/api/interpret-labs-female", async (req, res) => {
-    console.log('[API] POST /api/interpret-labs-female - Received request');
-    console.log('[API] Request body:', JSON.stringify(req.body, null, 2));
     try {
+      const authenticated = isClinicianOrStaffRequest(req);
+      if (!authenticated && hasStoredRecordIdentifier(req.body)) {
+        return res.status(400).json({ error: "Public lab interpretation accepts submitted values only" });
+      }
       // Validate request body
       const parseResult = femaleLabValuesSchema.safeParse(req.body);
       
@@ -1906,29 +1959,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const labs = parseResult.data;
-      const patientId = req.body.patientId ? parseInt(req.body.patientId) : undefined;
+      const patientId = req.body.patientId === undefined ? undefined : Number(req.body.patientId);
+      if (patientId !== undefined && (!Number.isSafeInteger(patientId) || patientId <= 0)) {
+        return res.status(404).json({ message: "Patient not found" });
+      }
 
       let trendContext = '';
       let therapyContext: TherapyContext | null = null;
       let patientMedNamesFemale: string[] = [];
       if (patientId) {
-        const priorLabs = await storage.getLabResultsByPatient(patientId);
+        const context = await getVerifiedClinicContext(req);
+        if (!context) return res.status(404).json({ message: "Patient not found" });
+        const patient = await storage.getPatientInClinic(patientId, context.clinicId);
+        if (!patient) return res.status(404).json({ message: "Patient not found" });
+        const priorLabs = await storage.getLabResultsByPatientInClinic(patientId, context.clinicId);
         if (priorLabs.length > 0) {
           trendContext = AIService.buildTrendContext(labs, priorLabs.map(l => ({ labDate: l.labDate, labValues: l.labValues as FemaleLabValues })));
           console.log('[API] Female trend context built from', priorLabs.length, 'prior labs');
         }
-        try {
-          if ((req as any).user || (req.session as any).staffClinicianId) {
-            const cid = getClinicianId(req);
-            const chart = await storage.getPatientChart(patientId, cid);
-            if (chart && Array.isArray(chart.currentMedications) && chart.currentMedications.length > 0) {
-              therapyContext = inferPatientTherapies(chart.currentMedications);
-              console.log('[API] Female therapy context: classes=', Array.from(therapyContext.classes.keys()).join(','));
-              patientMedNamesFemale = (chart.currentMedications as unknown[]).filter((m): m is string => typeof m === 'string');
-            }
-          }
-        } catch (e) {
-          console.warn('[API] Female therapy context lookup failed (continuing without):', e);
+        const chart = await storage.getPatientChartInClinic(patientId, context.clinicianId, context.clinicId);
+        if (chart && Array.isArray(chart.currentMedications) && chart.currentMedications.length > 0) {
+          therapyContext = inferPatientTherapies(chart.currentMedications);
+          patientMedNamesFemale = (chart.currentMedications as unknown[]).filter((m): m is string => typeof m === 'string');
         }
       }
 
@@ -1942,7 +1994,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         supplementMode: string;
       } | null = null;
       try {
-        if ((req as any).user || (req.session as any).staffClinicianId) {
+        if (authenticated) {
           const cid = getClinicianId(req);
           const [labPrefs, customSupps, customRules, settings] = await Promise.all([
             storage.getClinicianLabPreferences(cid),
@@ -5789,8 +5841,11 @@ Return ONLY this JSON structure:
     try {
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
-      const patientId = parseInt(req.params.id);
-      const labId = parseInt(req.params.labId);
+      const patientId = Number(req.params.id);
+      const labId = Number(req.params.labId);
+      if (!Number.isSafeInteger(patientId) || patientId <= 0 || !Number.isSafeInteger(labId) || labId <= 0) {
+        return res.status(404).json({ message: "Patient not found" });
+      }
       const overrides = req.body;
       if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)) {
         return res.status(400).json({ message: "overrides must be an object" });
@@ -5820,15 +5875,16 @@ Return ONLY this JSON structure:
   // override saves never overwrite authored communication.
   app.post("/api/patients/:id/labs/:labId/regenerate-patient-summary", requireAuth, async (req, res) => {
     try {
-      const clinicianId = getClinicianId(req);
-      const clinicId = getEffectiveClinicId(req);
       const patientId = parseInt(req.params.id);
       const labId = parseInt(req.params.labId);
-      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      const context = await getVerifiedClinicContext(req);
+      if (!context) return res.status(404).json({ message: "Patient not found" });
+      const { clinicianId, clinicId } = context;
+      const patient = await storage.getPatientInClinic(patientId, clinicId);
       if (!patient) return res.status(404).json({ message: "Patient not found" });
 
-      const labResult = await storage.getLabResult(labId);
-      if (!labResult || labResult.patientId !== patientId) {
+      const labResult = await storage.getLabResultForPatientInClinic(labId, patientId, clinicId);
+      if (!labResult) {
         return res.status(404).json({ message: "Lab result not found" });
       }
 
@@ -5842,7 +5898,7 @@ Return ONLY this JSON structure:
         labResult.providerOverrides,
       );
 
-      const chart = await storage.getPatientChart(patientId, clinicianId);
+      const chart = await storage.getPatientChartInClinic(patientId, clinicianId, clinicId);
       const currentMedications = Array.isArray(chart?.currentMedications)
         ? chart.currentMedications as unknown[]
         : [];
@@ -5879,11 +5935,12 @@ Return ONLY this JSON structure:
         patientSummary,
         patientSummaryGenerationStatus: patientSummaryResult.generationStatus,
       };
-      await storage.updateLabResult(labId, {
+      const updated = await storage.updateLabResultForPatientInClinic(labId, patientId, clinicId, {
         patientCommunicationSummary: patientSummary,
         patientCommunicationSummaryClinicianEdited: false,
         interpretationResult: updatedInterpretation,
       });
+      if (!updated) return res.status(404).json({ message: "Lab result not found" });
 
       res.json({
         message: "Patient Communication regenerated",
@@ -18668,18 +18725,27 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       let patientLabKeys = new Set<string>();
       let patientGender = "";
 
-      if (patientId) {
+      if (patientId !== undefined && patientId !== null) {
+        const numericPatientId = Number(patientId);
+        if (!Number.isSafeInteger(numericPatientId) || numericPatientId <= 0) {
+          return res.status(404).json({ message: "Patient not found" });
+        }
+        // Authorize and resolve the patient before querying any adjacent PHI.
+        // This deliberately keeps foreign and nonexistent patient IDs identical.
+        const context = await getVerifiedClinicContext(req);
+        if (!context) return res.status(404).json({ message: "Patient not found" });
+        const patient = await storage.getPatientInClinic(numericPatientId, context.clinicId);
+        if (!patient) return res.status(404).json({ message: "Patient not found" });
         try {
-          const [patient, chart, labResults, encounters, vitals, suppOrders] = await Promise.all([
-            storage.getPatient(patientId, clinicianId, clinicId),
-            storage.getPatientChart(patientId, clinicianId),
-            storage.getLabResultsByPatient(patientId),
-            storage.getEncountersByClinicianId(clinicianId, patientId, clinicId),
-            storage.getPatientVitals(patientId, clinicianId),
-            storage.getSupplementOrdersByClinicianPatient(clinicianId, patientId),
+          const [chart, labResults, encounters, vitals, suppOrders] = await Promise.all([
+            storage.getPatientChartInClinic(numericPatientId, context.clinicianId, context.clinicId),
+            storage.getLabResultsByPatientInClinic(numericPatientId, context.clinicId),
+            storage.getEncountersByClinicianId(context.clinicianId, numericPatientId, context.clinicId),
+            storage.getPatientVitalsInClinic(numericPatientId, context.clinicId),
+            storage.getSupplementOrdersByClinicianPatientInClinic(context.clinicianId, numericPatientId, context.clinicId),
           ]);
 
-          if (patient) {
+          {
             patientName = `${patient.firstName ?? ""} ${patient.lastName ?? ""}`.trim();
             patientGender = patient.gender || "";
             const gender = patient.gender || "unknown";
@@ -18898,8 +18964,10 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
 
             patientContext += `\n--- END PATIENT CONTEXT ---`;
           }
-        } catch (e) {
-          console.error("[AI-Chat] Error loading patient context:", e);
+        } catch {
+          // A partially assembled patient prompt is unsafe: a failed source
+          // must not turn a patient-linked request into context-free chat.
+          return res.status(503).json({ message: "Patient context is unavailable" });
         }
       }
 

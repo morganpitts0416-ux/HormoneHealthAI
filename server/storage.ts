@@ -110,8 +110,11 @@ export interface IStorage {
   // Lab result operations
   getLabResult(id: number): Promise<LabResult | undefined>;
   getLabResultsByPatient(patientId: number): Promise<LabResult[]>;
+  getLabResultsByPatientInClinic(patientId: number, clinicId: number): Promise<LabResult[]>;
+  getLabResultForPatientInClinic(labId: number, patientId: number, clinicId: number): Promise<LabResult | undefined>;
   createLabResult(labResult: InsertLabResult): Promise<LabResult>;
   updateLabResult(id: number, labResult: Partial<InsertLabResult>): Promise<LabResult | undefined>;
+  updateLabResultForPatientInClinic(labId: number, patientId: number, clinicId: number, labResult: Partial<InsertLabResult>): Promise<LabResult | undefined>;
   deleteLabResult(id: number): Promise<boolean>;
   updateLabResultProviderOverrides(id: number, overrides: any): Promise<LabResult | undefined>;
 
@@ -194,6 +197,7 @@ export interface IStorage {
   createSupplementOrder(order: InsertSupplementOrder): Promise<SupplementOrder>;
   getSupplementOrdersByPatient(patientId: number): Promise<SupplementOrder[]>;
   getSupplementOrdersByClinicianPatient(clinicianId: number, patientId: number): Promise<SupplementOrder[]>;
+  getSupplementOrdersByClinicianPatientInClinic(clinicianId: number, patientId: number, clinicId: number): Promise<SupplementOrder[]>;
   getPendingOrdersForClinician(clinicianId: number): Promise<Array<SupplementOrder & { patientFirstName: string; patientLastName: string }>>;
   updateSupplementOrderStatus(orderId: number, clinicianId: number, status: string, fulfillmentNote?: string | null): Promise<SupplementOrder | undefined>;
 
@@ -330,6 +334,7 @@ export interface IStorage {
 
   // Patient Vitals
   getPatientVitals(patientId: number, clinicianId?: number | null): Promise<schema.PatientVital[]>;
+  getPatientVitalsInClinic(patientId: number, clinicId: number): Promise<schema.PatientVital[]>;
   createPatientVital(data: { patientId: number; clinicianId: number } & schema.InsertPatientVital & { bmi?: number | null }): Promise<schema.PatientVital>;
   updatePatientVital(id: number, patientId: number, data: Partial<schema.InsertPatientVital> & { bmi?: number | null }): Promise<schema.PatientVital | null>;
   deletePatientVital(id: number, patientId: number): Promise<boolean>;
@@ -1031,6 +1036,32 @@ export class DbStorage implements IStorage {
       .orderBy(desc(schema.labResults.labDate));
   }
 
+  async getLabResultsByPatientInClinic(patientId: number, clinicId: number): Promise<LabResult[]> {
+    return db
+      .select({ lab: schema.labResults })
+      .from(schema.labResults)
+      .innerJoin(schema.patients, and(
+        eq(schema.patients.id, schema.labResults.patientId),
+        eq(schema.patients.clinicId, clinicId),
+      ))
+      .where(eq(schema.labResults.patientId, patientId))
+      .orderBy(desc(schema.labResults.labDate))
+      .then(rows => rows.map(row => row.lab));
+  }
+
+  async getLabResultForPatientInClinic(labId: number, patientId: number, clinicId: number): Promise<LabResult | undefined> {
+    const [row] = await db
+      .select({ lab: schema.labResults })
+      .from(schema.labResults)
+      .innerJoin(schema.patients, and(
+        eq(schema.patients.id, schema.labResults.patientId),
+        eq(schema.patients.clinicId, clinicId),
+      ))
+      .where(and(eq(schema.labResults.id, labId), eq(schema.labResults.patientId, patientId)))
+      .limit(1);
+    return row?.lab;
+  }
+
   async createLabResult(labResult: InsertLabResult): Promise<LabResult> {
     const result = await db.insert(schema.labResults).values(labResult as any).returning();
     return result[0];
@@ -1041,6 +1072,19 @@ export class DbStorage implements IStorage {
       .update(schema.labResults)
       .set({ ...labResult, updatedAt: new Date() } as any)
       .where(eq(schema.labResults.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async updateLabResultForPatientInClinic(labId: number, patientId: number, clinicId: number, labResult: Partial<InsertLabResult>): Promise<LabResult | undefined> {
+    const result = await db
+      .update(schema.labResults)
+      .set({ ...labResult, updatedAt: new Date() } as any)
+      .where(and(
+        eq(schema.labResults.id, labId),
+        eq(schema.labResults.patientId, patientId),
+        sql`EXISTS (SELECT 1 FROM patients WHERE patients.id = ${schema.labResults.patientId} AND patients.clinic_id = ${clinicId})`,
+      ))
       .returning();
     return result[0];
   }
@@ -1715,6 +1759,21 @@ export class DbStorage implements IStorage {
         eq(schema.supplementOrders.patientId, patientId),
       ))
       .orderBy(desc(schema.supplementOrders.createdAt));
+  }
+
+  async getSupplementOrdersByClinicianPatientInClinic(clinicianId: number, patientId: number, clinicId: number): Promise<SupplementOrder[]> {
+    return db.select({ order: schema.supplementOrders })
+      .from(schema.supplementOrders)
+      .innerJoin(schema.patients, and(
+        eq(schema.patients.id, schema.supplementOrders.patientId),
+        eq(schema.patients.clinicId, clinicId),
+      ))
+      .where(and(
+        eq(schema.supplementOrders.clinicianId, clinicianId),
+        eq(schema.supplementOrders.patientId, patientId),
+      ))
+      .orderBy(desc(schema.supplementOrders.createdAt))
+      .then(rows => rows.map(row => row.order));
   }
 
   async getPendingOrdersForClinician(clinicianId: number): Promise<Array<SupplementOrder & { patientFirstName: string; patientLastName: string }>> {
@@ -2827,6 +2886,18 @@ export class DbStorage implements IStorage {
       .from(schema.patientVitals)
       .where(eq(schema.patientVitals.patientId, patientId))
       .orderBy(desc(schema.patientVitals.recordedAt));
+  }
+
+  async getPatientVitalsInClinic(patientId: number, clinicId: number): Promise<schema.PatientVital[]> {
+    return db.select({ vital: schema.patientVitals })
+      .from(schema.patientVitals)
+      .innerJoin(schema.patients, and(
+        eq(schema.patients.id, schema.patientVitals.patientId),
+        eq(schema.patients.clinicId, clinicId),
+      ))
+      .where(eq(schema.patientVitals.patientId, patientId))
+      .orderBy(desc(schema.patientVitals.recordedAt))
+      .then(rows => rows.map(row => row.vital));
   }
 
   async createPatientVital(
