@@ -1,0 +1,39 @@
+The security remediation is accepted. Production deployment is approved only after isolating the two-route security hotfix from the broader access-foundation work.
+
+Prepare a production deployment containing only:
+
+getPatientInClinic(patientId, clinicId)
+getPatientChartInClinic(patientId, clinicianId, clinicId)
+Tenant-scoping of listActiveRunsForPatient(clinicId, patientId)
+The corresponding changes to:
+GET /api/patients/:id/chart
+GET /api/patients/:patientId/active-workflows
+The focused regression tests necessary for those changes
+
+Do not include in this production hotfix:
+
+The eight foundation tables or their migrations
+Shadow authorization middleware
+Global identity or relationship infrastructure
+Resource-resolution changes used only by shadow mode
+Feature-flag schema changes
+Ownership, billing, lifecycle, membership, portal, or session changes
+
+Preserve the broader development work separately so it is not lost.
+
+Before deployment, provide:
+
+The exact isolated production diff
+Confirmation that no schema migration is required
+Confirmation that no new table is referenced during startup or requests
+Confirmation that existing environment variables remain unchanged
+Regression results for valid same-clinic and denied cross-clinic access
+Production build results
+
+After confirming isolation, deploy as a no-traffic Cloud Run revision using the complete existing production environment configuration. Verify startup, health, database connectivity, and session deserialization before promoting traffic.
+
+Do not create synthetic records in the live database unless designated production test tenants already exist. After promotion, perform only non-destructive verification with approved test records.
+
+Monitor the two affected routes for unexpected 404 and 500 responses. If valid same-clinic access fails, prefer a forward correction or temporarily disable the affected functionality rather than reopening cross-clinic access.
+
+Stop after deployment and report the revision, verification results, error observations, and confirmation that no broader authorization behavior was activated.
