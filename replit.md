@@ -48,3 +48,16 @@ The ClinIQ platform offers comprehensive lab input, results display with color-c
 -   **Resend API**: Email sending.
 -   **Stripe**: Billing and subscription management.
 -   **Metagenics**: Supplement catalog integration.
+
+## GCP Release-Blocking Security Checklist
+
+Before any eventual GCP release of the public lab-interpretation routes:
+
+- Add a route-specific body-size limit appropriate for structured lab data instead of relying on the 50 MB global limit.
+- Add rate limiting to `POST /api/interpret-labs` and `POST /api/interpret-labs-female`.
+- Rate-limit through a privacy-conscious combination of IP/network signals and server-side abuse controls without retaining submitted lab values.
+- Return HTTP 413 for oversized payloads and HTTP 429 for rate-limited requests.
+- Never log request bodies or submitted lab values.
+- Validate the rate limiter behind GCP's proxy/load-balancer configuration; do not blindly trust spoofable forwarding headers.
+
+These safeguards are release blockers. They must remain separate from the verified Group 1 Replit test/staging checkpoint unless separately approved for implementation. A Replit staging candidate is not authorization to push Git changes or deploy to GCP.
