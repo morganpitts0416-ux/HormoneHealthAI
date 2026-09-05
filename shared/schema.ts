@@ -3712,7 +3712,7 @@ export const authorizationFeatureFlags = pgTable("authorization_feature_flags", 
   globalFlagUnique: uniqueIndex("authorization_feature_flags_global_uq").on(t.flagKey).where(sql`${t.clinicId} is null`),
   flagIdx: index("authorization_feature_flags_key_idx").on(t.flagKey),
   clinicFlagIdx: index("authorization_feature_flags_clinic_flag_idx").on(t.clinicId, t.flagKey),
-  flagCheck: check("authorization_feature_flags_key_ck", sql`${t.flagKey} in ('SHADOW_CLINIC_SUBSCRIPTION_AUTHZ','ENFORCE_CLINIC_SUBSCRIPTION_AUTHZ','SHADOW_STAFF_MEMBERSHIP_AUTHZ','ENFORCE_STAFF_MEMBERSHIP_AUTHZ','ENABLE_OWNER_RECOVERY_ACCESS','ENABLE_GLOBAL_PATIENT_IDENTITY','SHADOW_PATIENT_CLINIC_RELATIONSHIP','ENFORCE_PATIENT_CLINIC_RELATIONSHIP','ENABLE_CLINIC_SELECTION_DASHBOARD','ENABLE_INACTIVE_CLINIC_READ_ONLY')`),
+  flagCheck: check("authorization_feature_flags_key_ck", sql`${t.flagKey} in ('SHADOW_CLINIC_SUBSCRIPTION_AUTHZ','ENFORCE_CLINIC_SUBSCRIPTION_AUTHZ','SHADOW_STAFF_MEMBERSHIP_AUTHZ','ENFORCE_STAFF_MEMBERSHIP_AUTHZ','ENABLE_OWNER_RECOVERY_ACCESS','ENABLE_GLOBAL_PATIENT_IDENTITY','SHADOW_PATIENT_CLINIC_RELATIONSHIP','ENFORCE_PATIENT_CLINIC_RELATIONSHIP','ENABLE_CLINIC_SELECTION_DASHBOARD','ENABLE_INACTIVE_CLINIC_READ_ONLY','patient_portal_invite_linking_v1','patient_portal_intake_only_scope_v1','patient_portal_identity_synthetic_auth_v1','patient_portal_relationship_shadow_v1')`),
 }));
 
 export const authorizationShadowDecisions = pgTable("authorization_shadow_decisions", {
@@ -3783,8 +3783,11 @@ export const patientPortalIdentities = pgTable("patient_portal_identities", {
   id: serial("id").primaryKey(),
   normalizedEmail: varchar("normalized_email", { length: 255 }).notNull().unique(),
   legacyPortalAccountId: integer("legacy_portal_account_id").references(() => patientPortalAccounts.id, { onDelete: "set null" }),
+  // Identity lifecycle is independent of legacy portal accounts.  No legacy
+  // account is inferred or required for a relationship to exist.
   accountStatus: varchar("account_status", { length: 30 }).notNull().default("pending"),
   verificationStatus: varchar("verification_status", { length: 30 }).notNull().default("unverified"),
+  syntheticPasswordHash: varchar("synthetic_password_hash", { length: 255 }),
   sessionVersion: integer("session_version").notNull().default(1),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -3804,6 +3807,11 @@ export const patientClinicRelationships = pgTable("patient_clinic_relationships"
   relationshipType: varchar("relationship_type", { length: 30 }).notNull().default("self"),
   relationshipStatus: varchar("relationship_status", { length: 40 }).notNull().default("pending_acceptance"),
   verificationMethod: varchar("verification_method", { length: 50 }),
+  verifiedByUserId: integer("verified_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  verifiedByStaffId: integer("verified_by_staff_id").references(() => clinicianStaff.id, { onDelete: "set null" }),
+  // A relationship becomes usable only through an explicit transition:
+  // pending_acceptance -> verified -> active. intake_only is deliberately
+  // narrower than legacy/full portal access and never grants it implicitly.
   scope: varchar("scope", { length: 40 }).notNull().default("historical_read"),
   verifiedAt: timestamp("verified_at"),
   expiresAt: timestamp("expires_at"),
@@ -3816,11 +3824,96 @@ export const patientClinicRelationships = pgTable("patient_clinic_relationships"
   statusIdx: index("patient_clinic_relationships_status_idx").on(t.relationshipStatus),
   identityPatientClinicUnique: uniqueIndex("patient_clinic_relationships_identity_patient_clinic_uq").on(t.portalIdentityId, t.patientId, t.clinicId, t.relationshipType),
   typeCheck: check("patient_clinic_relationships_type_ck", sql`${t.relationshipType} in ('self','guardian','proxy')`),
-  statusCheck: check("patient_clinic_relationships_status_ck", sql`${t.relationshipStatus} in ('pending_acceptance','verified','active','read_only_historical','revoked','expired')`),
-  scopeCheck: check("patient_clinic_relationships_scope_ck", sql`${t.scope} in ('historical_read','full_portal','guardian_limited','proxy_limited')`),
+  statusCheck: check("patient_clinic_relationships_status_ck", sql`${t.relationshipStatus} in ('pending_acceptance','intake_only','active','read_only_historical','revoked','expired')`),
+  scopeCheck: check("patient_clinic_relationships_scope_ck", sql`${t.scope} in ('intake_only','historical_read','full_portal','guardian_limited','proxy_limited')`),
+  statusScopeCheck: check("patient_clinic_relationships_status_scope_ck", sql`
+    (${t.relationshipStatus} = 'pending_acceptance' and ${t.scope} = 'historical_read' and ${t.verifiedAt} is null and ${t.revokedAt} is null)
+    or (${t.relationshipStatus} = 'intake_only' and ${t.scope} = 'intake_only' and ${t.verifiedAt} is null and ${t.verificationMethod} is null and ${t.revokedAt} is null)
+    or (${t.relationshipStatus} = 'active' and ${t.scope} = 'full_portal' and ${t.verifiedAt} is not null and ${t.revokedAt} is null)
+    or (${t.relationshipStatus} = 'read_only_historical' and ${t.scope} = 'historical_read' and ${t.verifiedAt} is not null and ${t.revokedAt} is null)
+    or (${t.relationshipStatus} = 'revoked' and ${t.revokedAt} is not null and ${t.scope} <> 'intake_only')
+    or (${t.relationshipStatus} = 'expired' and ${t.expiresAt} is not null and ${t.scope} <> 'intake_only')
+  `),
+}));
+
+// New intake-link tokens are never persisted in raw form. tokenDigest is a
+// 256-bit HMAC-SHA-256 value encoded as 64 lowercase hex characters.
+export const patientPortalInvites = pgTable("patient_portal_invites", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: "cascade" }),
+  normalizedEmail: varchar("normalized_email", { length: 255 }).notNull(),
+  tokenDigest: varchar("token_digest", { length: 64 }).notNull(),
+  status: varchar("status", { length: 30 }).notNull().default("issued"),
+  createdByUserId: integer("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  expiresAt: timestamp("expires_at").notNull(),
+  redeemedAt: timestamp("redeemed_at"),
+  cancelledAt: timestamp("cancelled_at"),
+  cancelledByUserId: integer("cancelled_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  replacedByInviteId: integer("replaced_by_invite_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  tokenUnique: uniqueIndex("patient_portal_invites_token_digest_uq").on(t.tokenDigest),
+  clinicPatientIdx: index("patient_portal_invites_clinic_patient_idx").on(t.clinicId, t.patientId, t.status),
+  expiryIdx: index("patient_portal_invites_expiry_idx").on(t.expiresAt),
+  statusCheck: check("patient_portal_invites_status_ck", sql`${t.status} in ('issued','redeemed','expired','cancelled','superseded')`),
+  digestCheck: check("patient_portal_invites_digest_ck", sql`${t.tokenDigest} ~ '^[0-9a-f]{64}$'`),
+  terminalStateCheck: check("patient_portal_invites_terminal_state_ck", sql`
+    (${t.status} = 'issued' and ${t.redeemedAt} is null and ${t.cancelledAt} is null)
+    or (${t.status} = 'redeemed' and ${t.redeemedAt} is not null)
+    or (${t.status} in ('cancelled','superseded') and ${t.cancelledAt} is not null)
+    or (${t.status} = 'expired')
+  `),
+}));
+
+export const patientPortalInviteFlows = pgTable("patient_portal_invite_flows", {
+  id: serial("id").primaryKey(),
+  inviteId: integer("invite_id").notNull().references(() => patientPortalInvites.id, { onDelete: "cascade" }),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: "cascade" }),
+  portalIdentityId: integer("portal_identity_id").references(() => patientPortalIdentities.id, { onDelete: "set null" }),
+  tokenDigest: varchar("token_digest", { length: 64 }).notNull(),
+  status: varchar("status", { length: 30 }).notNull().default("exchanged"),
+  expiresAt: timestamp("expires_at").notNull(),
+  authenticatedAt: timestamp("authenticated_at"),
+  acceptedAt: timestamp("accepted_at"),
+  consumedAt: timestamp("consumed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  tokenUnique: uniqueIndex("patient_portal_invite_flows_token_digest_uq").on(t.tokenDigest),
+  inviteIdx: index("patient_portal_invite_flows_invite_idx").on(t.inviteId, t.status),
+  expiryIdx: index("patient_portal_invite_flows_expiry_idx").on(t.expiresAt),
+  digestCheck: check("patient_portal_invite_flows_digest_ck", sql`${t.tokenDigest} ~ '^[0-9a-f]{64}$'`),
+  statusCheck: check("patient_portal_invite_flows_status_ck", sql`${t.status} in ('exchanged','authenticated','accepted','expired','cancelled')`),
+}));
+
+export const patientPortalRelationshipEvents = pgTable("patient_portal_relationship_events", {
+  id: serial("id").primaryKey(),
+  relationshipId: integer("relationship_id").references(() => patientClinicRelationships.id, { onDelete: "cascade" }),
+  inviteId: integer("invite_id").references(() => patientPortalInvites.id, { onDelete: "set null" }),
+  flowId: integer("flow_id").references(() => patientPortalInviteFlows.id, { onDelete: "set null" }),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: "cascade" }),
+  actorType: varchar("actor_type", { length: 30 }).notNull(),
+  actorId: integer("actor_id"),
+  eventType: varchar("event_type", { length: 50 }).notNull(),
+  fromStatus: varchar("from_status", { length: 40 }),
+  toStatus: varchar("to_status", { length: 40 }),
+  fromScope: varchar("from_scope", { length: 40 }),
+  toScope: varchar("to_scope", { length: 40 }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  relationshipIdx: index("patient_portal_relationship_events_relationship_idx").on(t.relationshipId, t.createdAt),
+  clinicPatientIdx: index("patient_portal_relationship_events_clinic_patient_idx").on(t.clinicId, t.patientId, t.createdAt),
+  eventCheck: check("patient_portal_relationship_events_type_ck", sql`${t.eventType} in ('invite_created','invite_resent','invite_cancelled','token_exchanged','flow_authenticated','relationship_accepted','relationship_verified','relationship_revoked','flow_expired')`),
+  actorCheck: check("patient_portal_relationship_events_actor_ck", sql`${t.actorType} in ('clinician','staff','patient','system')`),
 }));
 
 export type AuthorizationFeatureFlag = typeof authorizationFeatureFlags.$inferSelect;
 export type AuthorizationShadowDecision = typeof authorizationShadowDecisions.$inferSelect;
 export type PatientPortalIdentity = typeof patientPortalIdentities.$inferSelect;
 export type PatientClinicRelationship = typeof patientClinicRelationships.$inferSelect;
+export type PatientPortalInvite = typeof patientPortalInvites.$inferSelect;
+export type PatientPortalInviteFlow = typeof patientPortalInviteFlows.$inferSelect;
+export type PatientPortalRelationshipEvent = typeof patientPortalRelationshipEvents.$inferSelect;

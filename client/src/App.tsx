@@ -37,6 +37,7 @@ import PortalLabsPage from "@/pages/portal/labs";
 import PortalVisitsPage from "@/pages/portal/visits";
 import PortalRecipesPage from "@/pages/portal/recipes";
 import PortalRefillRequest from "@/pages/portal/refill-request";
+import PatientIntakeAccept from "@/pages/patient-intake-accept";
 import StaffSetPassword from "@/pages/staff-set-password";
 import EncountersPage from "@/pages/encounters";
 import AppointmentsPage from "@/pages/appointments";
@@ -406,6 +407,7 @@ function Router() {
       <Route path="/portal/visits" component={PortalVisitsPage} />
       <Route path="/portal/recipes" component={PortalRecipesPage} />
       <Route path="/portal/refill-request" component={PortalRefillRequest} />
+      <Route path="/patient-intake/accept" component={PatientIntakeAccept} />
       <Route path="/staff-set-password" component={StaffSetPassword} />
       <Route path="/join-clinic" component={JoinClinicPage} />
       {/* ── Ops Portal — standalone, no clinician auth wrapper ── */}

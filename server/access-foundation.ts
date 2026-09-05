@@ -15,6 +15,10 @@ export const AUTHORIZATION_FLAG_KEYS = [
   "ENFORCE_PATIENT_CLINIC_RELATIONSHIP",
   "ENABLE_CLINIC_SELECTION_DASHBOARD",
   "ENABLE_INACTIVE_CLINIC_READ_ONLY",
+  "patient_portal_invite_linking_v1",
+  "patient_portal_intake_only_scope_v1",
+  "patient_portal_identity_synthetic_auth_v1",
+  "patient_portal_relationship_shadow_v1",
 ] as const;
 
 export type AuthorizationFlagKey = typeof AUTHORIZATION_FLAG_KEYS[number];

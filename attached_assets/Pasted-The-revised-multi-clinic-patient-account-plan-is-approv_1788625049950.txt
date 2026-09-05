@@ -1,0 +1,201 @@
+The revised multi-clinic patient-account plan is approved for the first implementation boundary only, in Replit development.
+
+
+
+You may implement only the items listed as included in Section 7 of the revised plan:
+
+
+
+ Additive schema and database constraints 
+
+ Read-only migration inventory and preview reporting 
+
+ Clinic-specific invitation lifecycle 
+
+ Short-lived server-side invitation flow state 
+
+ Intake-only relationship authorization 
+
+ Clinic-scoped intake and form routes 
+
+ Invitation, verification, and relationship audit events 
+
+ Development-only synthetic validation of an existing Clinic A identity joining Clinic B using the same email 
+
+ Feature flags defaulted off 
+
+ Shadow comparison with legacy behavior remaining authoritative 
+
+Additional implementation conditions
+
+ All new routes and behavior must be inaccessible unless their specific development feature flag is enabled. 
+
+ Missing or failed flag resolution must leave current legacy behavior unchanged during this milestone. 
+
+ Existing patient login, password reset, portal sessions, and portal navigation must remain authoritative and unchanged. 
+
+ Do not backfill or modify existing portal accounts. 
+
+ Do not copy, replace, rehash, or migrate real credential hashes during this milestone. Credential migration infrastructure may be represented and tested only with synthetic credentials. 
+
+ Do not automatically create relationships from matching emails. 
+
+ Do not merge, reassign, or delete patient records. 
+
+ Do not activate full portal access for any existing patient. 
+
+ Do not implement the clinic-selection dashboard yet. 
+
+Synthetic communication safety
+
+ Invitation and verification emails/codes used by the test harness must be captured locally. 
+
+ Do not send synthetic invitations through a real email or SMS provider. 
+
+ Use reserved synthetic addresses that cannot belong to real patients. 
+
+ Do not print raw invite tokens, verification codes, password hashes, session identifiers, or form answers in test output or logs. 
+
+Invitation-flow cleanup
+
+ Expired and consumed server-side invitation flows must become unusable immediately. 
+
+ Include a safe cleanup mechanism for expired flow records. 
+
+ Cleanup must not delete invitation audit history, relationship events, or submitted intake records. 
+
+Required stopping report
+
+After implementation and testing, stop and report:
+
+
+
+ Exact schema objects and constraints created or changed 
+
+ Exact files and routes changed 
+
+ Feature-flag names and final enabled/disabled state 
+
+ Migration inventory counts and every ambiguous category 
+
+ Full results of the 17-step synthetic acceptance scenario 
+
+ Proof that the same global identity reached Clinic B intake using the same normalized email 
+
+ Proof that Clinic A and Clinic B remained isolated 
+
+ Proof that no relationship was created from email matching alone 
+
+ Invitation expiry, replay, resend, cancellation, concurrency, and token-leak test results 
+
+ Clinic-scoped form read, draft, submission, and completion-status results 
+
+ Database state before and after synthetic cleanup 
+
+ Build, schema-drift, and TypeScript baseline results 
+
+ Confirmation that current legacy patient login and portal behavior remain unchanged 
+
+
+
+Do not push to Git, perform Replit Publish, deploy to GCP, use real patient data, enable global identity authentication for existing patients, activate the clinic selector, or enable general relationship enforcement.
+
+
+
+Existing-user access preservation — release-blocking requirement
+
+Existing clinic users and patient portal users must not be locked out, migrated, reassigned, disabled, or required to reset their passwords during this milestone.
+
+
+
+Before making changes, capture a sanitized compatibility baseline for every existing authentication flow:
+
+
+
+ Clinician login 
+
+ Staff login 
+
+ Existing single-clinic patient portal login 
+
+ Patient logout and login again 
+
+ Forgot-password request 
+
+ Password-reset completion using a synthetic account 
+
+ Existing active session continuation 
+
+ Current /api/portal/me response behavior 
+
+ Current portal navigation and form access 
+
+
+
+After implementation, rerun the same tests with every new multi-clinic feature flag disabled.
+
+
+
+Required results:
+
+
+
+ Existing clinician and staff authentication behaves identically. 
+
+ Existing patient email/password login behaves identically. 
+
+ Existing valid sessions remain valid. 
+
+ Existing portal patients still reach their current clinic and records without a clinic-selection screen. 
+
+ Existing password hashes are unchanged. 
+
+ Existing portal-account IDs and patient IDs are unchanged. 
+
+ No existing account is required to reset or set a password. 
+
+ No existing account is converted to a global identity for live authentication. 
+
+ No existing patient-clinic relationship is required for legacy portal access. 
+
+ No existing user, portal account, session, patient record, or clinic assignment is disabled, revoked, merged, reassigned, or deleted. 
+
+ Forgot-password and reset behavior remains unchanged for existing accounts. 
+
+ New tables being empty, incomplete, or unavailable cannot prevent legacy login. 
+
+
+
+Produce a before-and-after compatibility report showing:
+
+
+
+ Number of existing clinician users 
+
+ Number of existing staff users 
+
+ Number of existing portal accounts 
+
+ Number of accounts whose authentication fields changed 
+
+ Number of accounts whose patient or clinic association changed 
+
+ Number of existing accounts that would be denied under current legacy behavior 
+
+ Number of active sessions intentionally invalidated 
+
+
+
+Every change count must be zero except the unchanged inventory counts.
+
+
+
+Use synthetic credentials for active login and password-reset testing. Do not attempt to authenticate as real users, inspect passwords, reset real credentials, or disclose account identifiers.
+
+
+
+If implementation would require changing any existing authentication record, password hash, session format, login route, reset route, or authoritative portal behavior, stop and request separate approval before making that change.
+
+
+
+The milestone is not complete merely because the build passes. Existing-user compatibility tests must pass with all new feature flags disabled.

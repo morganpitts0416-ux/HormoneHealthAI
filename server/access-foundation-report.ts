@@ -75,7 +75,7 @@ export async function prepareFoundationBackfill() {
       ON pcr.portal_identity_id = ppi.id
      AND pcr.patient_id = ppa.patient_id
      AND pcr.clinic_id = p.clinic_id
-     AND pcr.relationship_status IN ('verified', 'active', 'read_only_historical')
+      AND pcr.relationship_status IN ('active', 'read_only_historical')
     WHERE pcr.id IS NULL
     ON CONFLICT (category, entity_type, entity_id)
     DO UPDATE SET last_seen_at = NOW(), evidence = EXCLUDED.evidence, preserves_legacy_access = true
@@ -93,6 +93,7 @@ export async function generateAccessFoundationReport() {
     shadow,
     reviewCategories,
     flags,
+    intakeInventory,
   ] = await Promise.all([
     db.execute(sql`
       SELECT
@@ -166,6 +167,18 @@ export async function generateAccessFoundationReport() {
       ORDER BY category, reason_code
     `),
     listAuthorizationFlagStatus(null),
+    db.execute(sql`
+      SELECT 'identities' AS category, count(*)::int AS count FROM patient_portal_identities
+      UNION ALL SELECT 'relationships', count(*)::int FROM patient_clinic_relationships
+      UNION ALL SELECT 'invites', count(*)::int FROM patient_portal_invites
+      UNION ALL SELECT 'invite_flows', count(*)::int FROM patient_portal_invite_flows
+      UNION ALL SELECT 'relationship_events', count(*)::int FROM patient_portal_relationship_events
+      UNION ALL SELECT 'unverified_identities', count(*)::int FROM patient_portal_identities WHERE account_status <> 'active' OR verification_status <> 'verified'
+      UNION ALL SELECT 'pending_relationships', count(*)::int FROM patient_clinic_relationships WHERE relationship_status = 'pending_acceptance'
+      UNION ALL SELECT 'intake_only_relationships', count(*)::int FROM patient_clinic_relationships WHERE relationship_status = 'intake_only'
+      UNION ALL SELECT 'expired_or_cancelled_invites', count(*)::int FROM patient_portal_invites WHERE status IN ('expired','cancelled','superseded')
+      UNION ALL SELECT 'unaccepted_flows', count(*)::int FROM patient_portal_invite_flows WHERE status IN ('exchanged','authenticated')
+    `),
   ]);
 
   const report = {
@@ -181,6 +194,7 @@ export async function generateAccessFoundationReport() {
     shadowDecisionCounts: rows(shadow),
     unresolvedReviewCategories: rows(reviewCategories),
     flags,
+    intakeMigrationInventory: rows(intakeInventory),
   };
   await db.insert(schema.accessBackfillRuns).values({ summary: report, createdBy: "limited-foundation-assessment" });
   return report;

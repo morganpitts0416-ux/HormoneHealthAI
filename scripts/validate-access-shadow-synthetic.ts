@@ -40,6 +40,7 @@ async function login(path: string, body: any): Promise<string> {
     headers: { "content-type": "application/json", "x-request-id": `${tag}-login` },
     body: JSON.stringify(body),
     redirect: "manual",
+    signal: AbortSignal.timeout(120_000),
   });
   if (!response.ok) throw new Error(`Synthetic login failed ${path}: ${response.status} ${await response.text()}`);
   const cookie = response.headers.get("set-cookie")?.split(";")[0];
@@ -67,6 +68,7 @@ async function request(
     },
     body: body === undefined ? undefined : JSON.stringify(body),
     redirect: "manual",
+    signal: AbortSignal.timeout(120_000),
   });
   const responseBody = await response.text();
   const record = { scenario, family, method, path: path.replace(/\d+/g, ":id"), status: response.status, expectedCurrent, body: responseBody };
@@ -238,13 +240,13 @@ async function setup() {
   ids.relationships.valid = await insertOne(
     `INSERT INTO patient_clinic_relationships
       (portal_identity_id,patient_id,clinic_id,relationship_type,relationship_status,verification_method,scope,verified_at)
-     VALUES ($1,$2,$3,'self','verified','synthetic_validation','full_portal',NOW()) RETURNING id`,
+      VALUES ($1,$2,$3,'self','active','synthetic_validation','full_portal',NOW()) RETURNING id`,
     [ids.portal.valid.identity.id, ids.patients.chartA.id, ids.clinics.active],
   );
   ids.relationships.secondChart = await insertOne(
     `INSERT INTO patient_clinic_relationships
       (portal_identity_id,patient_id,clinic_id,relationship_type,relationship_status,verification_method,scope,verified_at)
-     VALUES ($1,$2,$3,'self','verified','synthetic_validation','full_portal',NOW()) RETURNING id`,
+      VALUES ($1,$2,$3,'self','active','synthetic_validation','full_portal',NOW()) RETURNING id`,
     [ids.portal.valid.identity.id, ids.patients.chartB.id, ids.clinics.delinquent],
   );
   ids.relationships.revoked = await insertOne(
@@ -256,7 +258,7 @@ async function setup() {
   ids.relationships.guardian = await insertOne(
     `INSERT INTO patient_clinic_relationships
       (portal_identity_id,patient_id,clinic_id,relationship_type,relationship_status,verification_method,scope,verified_at)
-     VALUES ($1,$2,$3,'guardian','verified','synthetic_validation','guardian_limited',NOW()) RETURNING id`,
+     VALUES ($1,$2,$3,'guardian','active','synthetic_validation','full_portal',NOW()) RETURNING id`,
     [ids.portal.guardian.identity.id, ids.patients.ward.id, ids.clinics.active],
   );
 }

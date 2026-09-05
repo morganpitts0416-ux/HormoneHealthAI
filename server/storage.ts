@@ -1,4 +1,4 @@
-import { eq, ne, desc, asc, ilike, like, or, and, isNull, isNotNull, count, sql, inArray, lte } from "drizzle-orm";
+import { eq, ne, desc, asc, ilike, like, or, and, isNull, isNotNull, count, sql, inArray, lte, gt } from "drizzle-orm";
 import { getSeedAsEntries } from "./medication-seed.js";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
@@ -8006,4 +8006,175 @@ const TEAM_MEMBER_ID_RE = /^(user|staff):\d+$/;
     relatedEntityId: data.relatedEntityId ?? null,
     severity: data.severity ?? 'normal',
   } as any);
+};
+
+// ── Development-only patient intake boundary ────────────────────────────────
+// Kept as prototype extensions to avoid widening the legacy IStorage contract.
+// None of these methods reads or mutates patient_portal_accounts.
+(DbStorage.prototype as any).createPatientPortalInvite = async function(data: any) {
+  const [row] = await db.insert(schema.patientPortalInvites).values(data).returning();
+  return row;
+};
+(DbStorage.prototype as any).findPatientPortalInviteByDigest = async function(tokenDigest: string) {
+  const [row] = await db.select().from(schema.patientPortalInvites)
+    .where(eq(schema.patientPortalInvites.tokenDigest, tokenDigest)).limit(1);
+  return row ?? null;
+};
+(DbStorage.prototype as any).cancelPatientPortalInvite = async function(id: number, clinicId: number, actorId: number) {
+  const [row] = await db.update(schema.patientPortalInvites)
+    .set({ status: "cancelled", cancelledAt: new Date(), cancelledByUserId: actorId, updatedAt: new Date() })
+    .where(and(eq(schema.patientPortalInvites.id, id), eq(schema.patientPortalInvites.clinicId, clinicId), eq(schema.patientPortalInvites.status, "issued")))
+    .returning();
+  return row ?? null;
+};
+(DbStorage.prototype as any).createPatientPortalInviteFlow = async function(data: any) {
+  const [row] = await db.insert(schema.patientPortalInviteFlows).values(data).returning();
+  return row;
+};
+(DbStorage.prototype as any).exchangePatientPortalInvite = async function(inviteDigest: string, flowDigest: string, expiresAt: Date) {
+  return db.transaction(async (tx) => {
+    // Row lock + active-flow check prevents parallel exchanges from minting
+    // multiple bearer flows for the same invite.
+    const locked = await tx.execute(sql`select id, clinic_id, patient_id from patient_portal_invites where token_digest = ${inviteDigest} and status = 'issued' and expires_at > now() for update`);
+    const invite = rawRows(locked)[0];
+    if (!invite) return null;
+    const active = await tx.execute(sql`select id from patient_portal_invite_flows where invite_id = ${invite.id} and status in ('exchanged','authenticated') and expires_at > now() limit 1`);
+    if (rawRows(active).length) return null;
+    const [flow] = await tx.insert(schema.patientPortalInviteFlows).values({ inviteId: invite.id, clinicId: invite.clinicId, patientId: invite.patientId, tokenDigest: flowDigest, expiresAt }).returning();
+    return { invite, flow };
+  });
+};
+(DbStorage.prototype as any).findPatientPortalFlowByDigest = async function(tokenDigest: string) {
+  const [row] = await db.select().from(schema.patientPortalInviteFlows)
+    .where(eq(schema.patientPortalInviteFlows.tokenDigest, tokenDigest)).limit(1);
+  return row ?? null;
+};
+(DbStorage.prototype as any).authenticatePatientPortalInviteFlow = async function(flowId: number, identityId: number) {
+  return db.transaction(async (tx) => {
+    const [flow] = await tx.select().from(schema.patientPortalInviteFlows)
+      .where(and(eq(schema.patientPortalInviteFlows.id, flowId), eq(schema.patientPortalInviteFlows.status, "exchanged"))).limit(1);
+    if (!flow || flow.expiresAt <= new Date()) return null;
+    const [invite] = await tx.select().from(schema.patientPortalInvites).where(eq(schema.patientPortalInvites.id, flow.inviteId)).limit(1);
+    const [identity] = await tx.select().from(schema.patientPortalIdentities).where(and(
+      eq(schema.patientPortalIdentities.id, identityId),
+      eq(schema.patientPortalIdentities.normalizedEmail, invite?.normalizedEmail ?? ""),
+      eq(schema.patientPortalIdentities.accountStatus, "active"),
+      eq(schema.patientPortalIdentities.verificationStatus, "verified"),
+    )).limit(1);
+    if (!identity) return null;
+    const [updated] = await tx.update(schema.patientPortalInviteFlows)
+      .set({ portalIdentityId: identity.id, status: "authenticated", authenticatedAt: new Date() })
+      .where(and(eq(schema.patientPortalInviteFlows.id, flowId), eq(schema.patientPortalInviteFlows.status, "exchanged"))).returning();
+    return updated ? { flow: updated, identity } : null;
+  });
+};
+(DbStorage.prototype as any).acceptPatientPortalInviteFlow = async function(flowId: number) {
+  return db.transaction(async (tx) => {
+    const [candidate] = await tx.select().from(schema.patientPortalInviteFlows)
+      .where(and(
+        eq(schema.patientPortalInviteFlows.id, flowId),
+        eq(schema.patientPortalInviteFlows.status, "authenticated"),
+        gt(schema.patientPortalInviteFlows.expiresAt, new Date()),
+      ))
+      .limit(1);
+    if (!candidate?.portalIdentityId) return null;
+
+    const [existingRelationship] = await tx.select().from(schema.patientClinicRelationships)
+      .where(and(
+        eq(schema.patientClinicRelationships.portalIdentityId, candidate.portalIdentityId),
+        eq(schema.patientClinicRelationships.patientId, candidate.patientId),
+        eq(schema.patientClinicRelationships.clinicId, candidate.clinicId),
+        eq(schema.patientClinicRelationships.relationshipType, "self"),
+      ))
+      .limit(1);
+    if (existingRelationship && !["pending_acceptance", "intake_only"].includes(existingRelationship.relationshipStatus)) {
+      return null;
+    }
+
+    // Conditional update makes acceptance single-use even under concurrent requests.
+    const [flow] = await tx.update(schema.patientPortalInviteFlows)
+      .set({ status: "accepted", acceptedAt: new Date(), consumedAt: new Date() })
+      .where(and(eq(schema.patientPortalInviteFlows.id, flowId), eq(schema.patientPortalInviteFlows.status, "authenticated"), gt(schema.patientPortalInviteFlows.expiresAt, new Date())))
+      .returning();
+    if (!flow?.portalIdentityId) return null;
+    const [relationship] = existingRelationship
+      ? await tx.update(schema.patientClinicRelationships)
+          .set({
+            relationshipStatus: "intake_only",
+            scope: "intake_only",
+            verificationMethod: null,
+            verifiedAt: null,
+            verifiedByUserId: null,
+            verifiedByStaffId: null,
+            updatedAt: new Date(),
+          })
+          .where(and(
+            eq(schema.patientClinicRelationships.id, existingRelationship.id),
+            inArray(schema.patientClinicRelationships.relationshipStatus, ["pending_acceptance", "intake_only"]),
+          ))
+          .returning()
+      : await tx.insert(schema.patientClinicRelationships).values({
+          portalIdentityId: flow.portalIdentityId,
+          patientId: flow.patientId,
+          clinicId: flow.clinicId,
+          relationshipType: "self",
+          relationshipStatus: "intake_only",
+          scope: "intake_only",
+          verificationMethod: null,
+          verifiedAt: null,
+        }).returning();
+    if (!relationship) return null;
+    await tx.update(schema.patientPortalInvites).set({ status: "redeemed", redeemedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(schema.patientPortalInvites.id, flow.inviteId), eq(schema.patientPortalInvites.status, "issued")));
+    return { flow, relationship };
+  });
+};
+(DbStorage.prototype as any).createPatientPortalRelationshipEvent = async function(data: any) {
+  const [row] = await db.insert(schema.patientPortalRelationshipEvents).values(data).returning();
+  return row;
+};
+(DbStorage.prototype as any).expirePatientPortalIntakeFlows = async function() {
+  return db.update(schema.patientPortalInviteFlows).set({ status: "expired" })
+    .where(and(inArray(schema.patientPortalInviteFlows.status, ["exchanged", "authenticated"]), lte(schema.patientPortalInviteFlows.expiresAt, new Date()))).returning({ id: schema.patientPortalInviteFlows.id });
+};
+(DbStorage.prototype as any).getIntakeAssignmentsForRelationship = async function(clinicId: number, patientId: number) {
+  return db.select({ assignment: schema.patientFormAssignments, form: schema.intakeForms })
+    .from(schema.patientFormAssignments).innerJoin(schema.intakeForms, eq(schema.patientFormAssignments.formId, schema.intakeForms.id))
+    .where(and(eq(schema.patientFormAssignments.patientId, patientId), eq(schema.intakeForms.clinicId, clinicId), eq(schema.patientFormAssignments.deliveryMode, "portal")));
+};
+(DbStorage.prototype as any).getIntakeFormForRelationship = async function(clinicId: number, patientId: number, formId: number) {
+  const [row] = await db.select({ assignment: schema.patientFormAssignments, form: schema.intakeForms })
+    .from(schema.patientFormAssignments).innerJoin(schema.intakeForms, eq(schema.patientFormAssignments.formId, schema.intakeForms.id))
+    .where(and(eq(schema.patientFormAssignments.patientId, patientId), eq(schema.patientFormAssignments.formId, formId), eq(schema.intakeForms.clinicId, clinicId), eq(schema.patientFormAssignments.deliveryMode, "portal"))).limit(1);
+  if (!row) return null;
+  const [sections, fields] = await Promise.all([
+    db.select().from(schema.formSections).where(eq(schema.formSections.formId, formId)).orderBy(asc(schema.formSections.orderIndex)),
+    db.select().from(schema.formFields).where(eq(schema.formFields.formId, formId)).orderBy(asc(schema.formFields.orderIndex)),
+  ]);
+  return { ...row, sections, fields };
+};
+(DbStorage.prototype as any).saveIntakeDraftForRelationship = async function(clinicId: number, patientId: number, formId: number, assignmentId: number, answers: unknown) {
+  return db.transaction(async (tx) => {
+    const [assignment] = await tx.select({ id: schema.patientFormAssignments.id }).from(schema.patientFormAssignments)
+      .innerJoin(schema.intakeForms, eq(schema.patientFormAssignments.formId, schema.intakeForms.id))
+      .where(and(eq(schema.patientFormAssignments.id, assignmentId), eq(schema.patientFormAssignments.patientId, patientId), eq(schema.patientFormAssignments.formId, formId), eq(schema.intakeForms.clinicId, clinicId))).limit(1);
+    if (!assignment) return null;
+    const [row] = await tx.insert(schema.formSubmissions).values({ clinicId, patientId, formId, assignmentId, submittedByPatient: true, submissionSource: "portal", status: "draft", rawSubmissionJson: answers as any, submittedAt: new Date() }).returning();
+    return row;
+  });
+};
+(DbStorage.prototype as any).submitIntakeForRelationship = async function(clinicId: number, patientId: number, formId: number, assignmentId: number, answers: unknown) {
+  return db.transaction(async (tx) => {
+    const [assignment] = await tx.select({ id: schema.patientFormAssignments.id }).from(schema.patientFormAssignments)
+      .innerJoin(schema.intakeForms, eq(schema.patientFormAssignments.formId, schema.intakeForms.id))
+      .where(and(eq(schema.patientFormAssignments.id, assignmentId), eq(schema.patientFormAssignments.patientId, patientId), eq(schema.patientFormAssignments.formId, formId), eq(schema.intakeForms.clinicId, clinicId))).limit(1);
+    if (!assignment) return null;
+    const [submission] = await tx.insert(schema.formSubmissions).values({
+      clinicId, patientId, formId, assignmentId, submittedByPatient: true, submissionSource: "portal",
+      status: "submitted", rawSubmissionJson: answers as any, submittedAt: new Date(),
+    }).returning();
+    await tx.update(schema.patientFormAssignments).set({ status: "completed", updatedAt: new Date() })
+      .where(and(eq(schema.patientFormAssignments.id, assignmentId), eq(schema.patientFormAssignments.patientId, patientId), eq(schema.patientFormAssignments.formId, formId), sql`exists (select 1 from intake_forms where intake_forms.id = ${schema.patientFormAssignments.formId} and intake_forms.clinic_id = ${clinicId})`));
+    return submission;
+  });
 };

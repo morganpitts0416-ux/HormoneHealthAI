@@ -2322,3 +2322,205 @@ ALTER TABLE supplement_orders
 ALTER TABLE supplement_orders
   ADD COLUMN IF NOT EXISTS fulfillment_note TEXT;
 
+-- ── Development-only multi-clinic patient intake boundary ──────────────────
+-- These tables are additive and are intentionally not connected to legacy
+-- patient_portal_accounts or legacy sessions.  Bearer tokens are represented
+-- only by 256-bit HMAC digests (64 lowercase hexadecimal characters).
+CREATE TABLE IF NOT EXISTS patient_portal_identities (
+  id SERIAL PRIMARY KEY,
+  normalized_email VARCHAR(255) NOT NULL UNIQUE,
+  legacy_portal_account_id INTEGER REFERENCES patient_portal_accounts(id) ON DELETE SET NULL,
+  account_status VARCHAR(30) NOT NULL DEFAULT 'pending',
+  verification_status VARCHAR(30) NOT NULL DEFAULT 'unverified',
+  session_version INTEGER NOT NULL DEFAULT 1,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS patient_portal_identities_legacy_account_uq
+  ON patient_portal_identities (legacy_portal_account_id);
+CREATE INDEX IF NOT EXISTS patient_portal_identities_verification_idx
+  ON patient_portal_identities (verification_status);
+
+CREATE TABLE IF NOT EXISTS patient_clinic_relationships (
+  id SERIAL PRIMARY KEY,
+  portal_identity_id INTEGER NOT NULL REFERENCES patient_portal_identities(id) ON DELETE CASCADE,
+  patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  clinic_id INTEGER NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
+  relationship_type VARCHAR(30) NOT NULL DEFAULT 'self',
+  relationship_status VARCHAR(40) NOT NULL DEFAULT 'pending_acceptance',
+  verification_method VARCHAR(50),
+  scope VARCHAR(40) NOT NULL DEFAULT 'historical_read',
+  verified_at TIMESTAMP,
+  expires_at TIMESTAMP,
+  revoked_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS patient_clinic_relationships_identity_clinic_idx
+  ON patient_clinic_relationships (portal_identity_id, clinic_id);
+CREATE INDEX IF NOT EXISTS patient_clinic_relationships_patient_clinic_idx
+  ON patient_clinic_relationships (patient_id, clinic_id);
+CREATE INDEX IF NOT EXISTS patient_clinic_relationships_status_idx
+  ON patient_clinic_relationships (relationship_status);
+CREATE UNIQUE INDEX IF NOT EXISTS patient_clinic_relationships_identity_patient_clinic_uq
+  ON patient_clinic_relationships (portal_identity_id, patient_id, clinic_id, relationship_type);
+ALTER TABLE patient_portal_identities ADD COLUMN IF NOT EXISTS synthetic_password_hash VARCHAR(255);
+ALTER TABLE patient_clinic_relationships ADD COLUMN IF NOT EXISTS verified_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE patient_clinic_relationships ADD COLUMN IF NOT EXISTS verified_by_staff_id INTEGER REFERENCES clinician_staff(id) ON DELETE SET NULL;
+
+CREATE TABLE IF NOT EXISTS patient_portal_invites (
+  id SERIAL PRIMARY KEY,
+  clinic_id INTEGER NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
+  patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  normalized_email VARCHAR(255) NOT NULL,
+  token_digest VARCHAR(64) NOT NULL,
+  status VARCHAR(30) NOT NULL DEFAULT 'issued',
+  created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  expires_at TIMESTAMP NOT NULL,
+  redeemed_at TIMESTAMP,
+  cancelled_at TIMESTAMP,
+  cancelled_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  replaced_by_invite_id INTEGER,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS patient_portal_invites_token_digest_uq
+  ON patient_portal_invites (token_digest);
+CREATE INDEX IF NOT EXISTS patient_portal_invites_clinic_patient_idx
+  ON patient_portal_invites (clinic_id, patient_id, status);
+CREATE INDEX IF NOT EXISTS patient_portal_invites_expiry_idx ON patient_portal_invites (expires_at);
+
+CREATE TABLE IF NOT EXISTS patient_portal_invite_flows (
+  id SERIAL PRIMARY KEY,
+  invite_id INTEGER NOT NULL REFERENCES patient_portal_invites(id) ON DELETE CASCADE,
+  clinic_id INTEGER NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
+  patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  portal_identity_id INTEGER REFERENCES patient_portal_identities(id) ON DELETE SET NULL,
+  token_digest VARCHAR(64) NOT NULL,
+  status VARCHAR(30) NOT NULL DEFAULT 'exchanged',
+  expires_at TIMESTAMP NOT NULL,
+  authenticated_at TIMESTAMP,
+  accepted_at TIMESTAMP,
+  consumed_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS patient_portal_invite_flows_token_digest_uq
+  ON patient_portal_invite_flows (token_digest);
+CREATE INDEX IF NOT EXISTS patient_portal_invite_flows_invite_idx
+  ON patient_portal_invite_flows (invite_id, status);
+CREATE INDEX IF NOT EXISTS patient_portal_invite_flows_expiry_idx ON patient_portal_invite_flows (expires_at);
+
+CREATE TABLE IF NOT EXISTS patient_portal_relationship_events (
+  id SERIAL PRIMARY KEY,
+  relationship_id INTEGER REFERENCES patient_clinic_relationships(id) ON DELETE CASCADE,
+  invite_id INTEGER REFERENCES patient_portal_invites(id) ON DELETE SET NULL,
+  flow_id INTEGER REFERENCES patient_portal_invite_flows(id) ON DELETE SET NULL,
+  clinic_id INTEGER NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
+  patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  actor_type VARCHAR(30) NOT NULL,
+  actor_id INTEGER,
+  event_type VARCHAR(50) NOT NULL,
+  from_status VARCHAR(40),
+  to_status VARCHAR(40),
+  from_scope VARCHAR(40),
+  to_scope VARCHAR(40),
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS patient_portal_relationship_events_relationship_idx
+  ON patient_portal_relationship_events (relationship_id, created_at);
+CREATE INDEX IF NOT EXISTS patient_portal_relationship_events_clinic_patient_idx
+  ON patient_portal_relationship_events (clinic_id, patient_id, created_at);
+
+-- Constraints are installed only when absent, so re-running this migration is
+-- safe and never changes existing data. The pending/historical combination is
+-- retained for legacy observation records; it grants no intake access.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'patient_portal_identities_account_status_ck') THEN
+    ALTER TABLE patient_portal_identities ADD CONSTRAINT patient_portal_identities_account_status_ck
+      CHECK (account_status IN ('pending','active','suspended','closed')) NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'patient_portal_identities_verification_ck') THEN
+    ALTER TABLE patient_portal_identities ADD CONSTRAINT patient_portal_identities_verification_ck
+      CHECK (verification_status IN ('unverified','verified','conflicting','revoked')) NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'patient_clinic_relationships_type_ck') THEN
+    ALTER TABLE patient_clinic_relationships ADD CONSTRAINT patient_clinic_relationships_type_ck
+      CHECK (relationship_type IN ('self','guardian','proxy')) NOT VALID;
+  END IF;
+  -- Replace the earlier shadow-foundation checks in place. Existing rows are
+  -- deliberately not validated or rewritten here; inventory reporting owns
+  -- ambiguity detection and legacy access remains authoritative.
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'patient_clinic_relationships_status_scope_ck') THEN
+    ALTER TABLE patient_clinic_relationships DROP CONSTRAINT patient_clinic_relationships_status_scope_ck;
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'patient_clinic_relationships_status_ck') THEN
+    ALTER TABLE patient_clinic_relationships DROP CONSTRAINT patient_clinic_relationships_status_ck;
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'patient_clinic_relationships_scope_ck') THEN
+    ALTER TABLE patient_clinic_relationships DROP CONSTRAINT patient_clinic_relationships_scope_ck;
+  END IF;
+  ALTER TABLE patient_clinic_relationships ADD CONSTRAINT patient_clinic_relationships_status_ck
+    CHECK (relationship_status IN ('pending_acceptance','intake_only','active','read_only_historical','revoked','expired')) NOT VALID;
+  ALTER TABLE patient_clinic_relationships ADD CONSTRAINT patient_clinic_relationships_scope_ck
+    CHECK (scope IN ('intake_only','historical_read','full_portal','guardian_limited','proxy_limited')) NOT VALID;
+  ALTER TABLE patient_clinic_relationships ADD CONSTRAINT patient_clinic_relationships_status_scope_ck CHECK (
+    (relationship_status = 'pending_acceptance' AND scope = 'historical_read' AND verified_at IS NULL AND revoked_at IS NULL)
+    OR (relationship_status = 'intake_only' AND scope = 'intake_only' AND verified_at IS NULL AND verification_method IS NULL AND revoked_at IS NULL)
+    OR (relationship_status = 'active' AND scope = 'full_portal' AND verified_at IS NOT NULL AND revoked_at IS NULL)
+    OR (relationship_status = 'read_only_historical' AND scope = 'historical_read' AND verified_at IS NOT NULL AND revoked_at IS NULL)
+    OR (relationship_status = 'revoked' AND revoked_at IS NOT NULL AND scope <> 'intake_only')
+    OR (relationship_status = 'expired' AND expires_at IS NOT NULL AND scope <> 'intake_only')
+  ) NOT VALID;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'patient_portal_identities_session_version_ck') THEN
+    ALTER TABLE patient_portal_identities ADD CONSTRAINT patient_portal_identities_session_version_ck
+      CHECK (session_version > 0) NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'patient_portal_invites_status_ck') THEN
+    ALTER TABLE patient_portal_invites ADD CONSTRAINT patient_portal_invites_status_ck
+      CHECK (status IN ('issued','redeemed','expired','cancelled','superseded'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'patient_portal_invites_digest_ck') THEN
+    ALTER TABLE patient_portal_invites ADD CONSTRAINT patient_portal_invites_digest_ck
+      CHECK (token_digest ~ '^[0-9a-f]{64}$');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'patient_portal_invites_terminal_state_ck') THEN
+    ALTER TABLE patient_portal_invites ADD CONSTRAINT patient_portal_invites_terminal_state_ck CHECK (
+      (status = 'issued' AND redeemed_at IS NULL AND cancelled_at IS NULL)
+      OR (status = 'redeemed' AND redeemed_at IS NOT NULL)
+      OR (status IN ('cancelled','superseded') AND cancelled_at IS NOT NULL)
+      OR (status = 'expired')
+    ) NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'patient_portal_invite_flows_status_ck') THEN
+    ALTER TABLE patient_portal_invite_flows ADD CONSTRAINT patient_portal_invite_flows_status_ck
+      CHECK (status IN ('exchanged','authenticated','accepted','expired','cancelled'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'patient_portal_invite_flows_digest_ck') THEN
+    ALTER TABLE patient_portal_invite_flows ADD CONSTRAINT patient_portal_invite_flows_digest_ck
+      CHECK (token_digest ~ '^[0-9a-f]{64}$');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'patient_portal_relationship_events_type_ck') THEN
+    ALTER TABLE patient_portal_relationship_events ADD CONSTRAINT patient_portal_relationship_events_type_ck
+      CHECK (event_type IN ('invite_created','invite_resent','invite_cancelled','token_exchanged','flow_authenticated','relationship_accepted','relationship_verified','relationship_revoked','flow_expired'));
+  END IF;
+END $$;
+
+-- Expand the pre-existing allowlist without changing any flag values. This is
+-- required for the new flags to be represented in the existing flag table.
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'authorization_feature_flags_key_ck'
+      AND conrelid = 'authorization_feature_flags'::regclass
+      AND pg_get_constraintdef(oid) NOT LIKE '%patient_portal_invite_linking_v1%'
+  ) THEN
+    ALTER TABLE authorization_feature_flags DROP CONSTRAINT authorization_feature_flags_key_ck;
+    ALTER TABLE authorization_feature_flags ADD CONSTRAINT authorization_feature_flags_key_ck CHECK (flag_key IN (
+      'SHADOW_CLINIC_SUBSCRIPTION_AUTHZ','ENFORCE_CLINIC_SUBSCRIPTION_AUTHZ','SHADOW_STAFF_MEMBERSHIP_AUTHZ','ENFORCE_STAFF_MEMBERSHIP_AUTHZ',
+      'ENABLE_OWNER_RECOVERY_ACCESS','ENABLE_GLOBAL_PATIENT_IDENTITY','SHADOW_PATIENT_CLINIC_RELATIONSHIP','ENFORCE_PATIENT_CLINIC_RELATIONSHIP',
+      'ENABLE_CLINIC_SELECTION_DASHBOARD','ENABLE_INACTIVE_CLINIC_READ_ONLY',
+      'patient_portal_invite_linking_v1','patient_portal_intake_only_scope_v1','patient_portal_identity_synthetic_auth_v1','patient_portal_relationship_shadow_v1'
+    ));
+  END IF;
+END $$;
+

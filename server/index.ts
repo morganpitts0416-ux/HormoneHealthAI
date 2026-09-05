@@ -428,7 +428,11 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
+      // Intake responses may contain one-time bearer material. Never serialize
+      // any response body from this boundary into workflow logs.
+      if (path.startsWith("/api/patient-intake")) {
+        logLine += " :: [redacted]";
+      } else if (capturedJsonResponse) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
 
