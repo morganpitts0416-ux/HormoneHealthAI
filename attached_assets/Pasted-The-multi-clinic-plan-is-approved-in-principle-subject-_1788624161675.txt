@@ -1,0 +1,97 @@
+The multi-clinic plan is approved in principle, subject to the following final revisions. Do not begin implementation until the revised plan addresses them.
+
+1. Define the shared-email policy
+
+The proposed unique normalized_email constraint means one email can authenticate only one global identity. State this explicitly.
+
+For the initial release:
+
+One verified email may own one global portal identity.
+The same individual may connect that identity to separate patient records at multiple clinics.
+A second independent adult cannot create a separate self-service identity using the same email.
+A parent or guardian using the same email for a minor must use an explicit guardian/dependent relationship rather than creating another self identity.
+If two unrelated adults share an email, the second person must provide a distinct login email or complete a reviewed recovery/identity process.
+ClinIQ must never attach the second patient’s chart to the first identity merely because the email matches.
+
+The intake form may still accept the shared email as contact information, but portal ownership must remain pending until safely resolved.
+
+2. Define one valid relationship state machine
+
+Avoid overlapping or ambiguous combinations such as verified, active, intake_only, and full_portal appearing inconsistently across status and scope.
+
+Define exact allowed transitions, such as:
+
+pending_acceptance → intake_only → active → read_only_historical or revoked
+
+Verification should be represented by verified_at, verification_method, and verification evidence rather than a competing verified operational status.
+
+Add database constraints preventing invalid combinations, including:
+
+active requires verified_at and an approved portal scope.
+intake_only cannot use full_portal.
+revoked requires revoked_at and cannot authorize access.
+read_only_historical cannot authorize messages, forms, refills, scheduling, uploads, or other clinic-dependent actions.
+Expired relationships cannot remain active.
+
+Provide a state-transition table showing the initiating actor, required evidence, resulting permissions, audit event, and session effect.
+
+3. Set the initial verification rule
+
+For the first release:
+
+Possessing the clinic-specific invitation and authenticating into the matching verified global identity may activate intake_only access.
+Full portal access requires a separate clinic-approved verification event.
+Staff verification at registration/check-in should be the primary method.
+An alternative remote method may use a clinic-issued one-time code sent through a previously established channel.
+DOB or matching demographics alone must not grant full portal access.
+Clinics may configure stricter verification but may not configure email-only full activation.
+
+Successful verification must identify the verifying staff user, clinic, patient, identity, method, timestamp, and associated audit event.
+
+4. Harden invitation delivery
+
+Define:
+
+Cryptographically random token entropy
+Exact invitation expiration period
+HMAC/peppered digest or equivalently secure token storage
+Atomic single-use consumption
+Resend, cancellation, and replay behavior
+Rate limits for invite creation, resend, acceptance, and token guessing
+Generic errors that prevent account, patient, and clinic enumeration
+
+When an invitation URL is opened:
+
+Exchange the bearer token for a short-lived server-side flow state.
+Remove the raw token from the browser URL immediately.
+Do not place tokens in analytics, monitoring, application logs, referrer headers, or browser-persisted storage.
+Use an appropriate Referrer-Policy, and do not load third-party assets on the token-consumption page before the token is removed.
+5. Clarify intake timing
+
+The patient must be able to complete MOKI’s intake without waiting for staff to manually grant full portal access.
+
+Intake-only access should permit only the specifically assigned MOKI forms and consents. After identity verification at check-in or through the approved remote method, the relationship may become full portal access.
+
+If the intake was submitted before the patient completed account linking, preserve it securely under MOKI’s patient record and allow the verified identity to resume or view its completion status after linking.
+
+6. Confirm first implementation boundary
+
+After revising the plan, implementation approval should initially cover only:
+
+Final additive schema and constraints
+Read-only migration inventory and preview reports
+Invitation lifecycle infrastructure
+Intake-only relationship authorization
+Clinic-scoped intake/form routes
+Synthetic tests for an existing Clinic A patient joining Clinic B with the same email
+
+It should not yet activate:
+
+Global identity login for existing users
+Production backfill
+Full portal relationship enforcement
+The clinic-selection dashboard
+Cancellation or billing enforcement
+Git push, Replit Publish, or GCP deployment
+
+Return the revised sections and identify the exact files and schema objects expected in this first implementation boundary. Do not change code or schema yet.
