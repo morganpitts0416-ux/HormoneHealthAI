@@ -1,0 +1,75 @@
+The first implementation boundary is accepted for functionality and legacy compatibility. Existing-user preservation requirements passed.
+
+Before checkpointing this milestone or beginning the next one, complete the following limited hardening in development.
+
+1. Remove the test-only credential column
+
+patient_portal_identities.synthetic_password_hash must not become part of the permanent application or production schema.
+
+Synthetic authentication data belongs in test fixtures, an isolated test-only table, an in-memory test provider, or the real planned credential structure populated only with synthetic records.
+
+Remove synthetic_password_hash from:
+
+Shared production schema definitions
+prod-migrate.sql
+Runtime application queries
+Any eventual GCP migration path
+
+Update the synthetic harness without weakening credential-verification testing.
+
+2. Confirm raw invitation tokens never enter request URLs or request logs
+
+Redacting response bodies is necessary but does not protect tokens placed in URL query strings, request paths, proxy access logs, browser history, or error telemetry.
+
+Audit both:
+
+GET /api/patient-intake/exchange
+POST /api/patient-intake/exchange
+
+Required behavior:
+
+The initial page-loading GET must not send the raw bearer token to the server in the path or query string.
+Prefer placing the email token in the URL fragment so it is not transmitted with the initial HTTP GET.
+Client code should extract the fragment, immediately remove it with history.replaceState, and POST it to the exchange endpoint.
+The POST body must be redacted before all request logging, tracing, error reporting, and analytics.
+Do not retain the raw token in React state longer than required, local storage, session storage, browser-persisted state, or client query caches.
+Confirm Replit and eventual GCP proxy/access logs cannot capture the token.
+
+Add tests proving no raw invite or flow token appears in:
+
+Request URLs
+Application request logs
+Response logs
+Error logs
+Client storage
+Audit records
+Database records
+3. Secure the cleanup endpoint
+
+Audit POST /api/patient-intake/flows/cleanup.
+
+It must not be callable by an unauthenticated patient, intake session, ordinary clinic user, or arbitrary public caller.
+
+Prefer an internal scheduled cleanup function or a worker-only endpoint protected by a mandatory server secret/service identity. It must:
+
+Operate only on expired or terminal flow records
+Never delete active flows
+Never delete submitted intake data
+Never delete invitation or relationship audit history
+Be idempotent
+Record aggregate cleanup results without identifiers or tokens
+
+If its authentication secret is absent, it must fail closed.
+
+Checkpoint
+
+After those corrections:
+
+Rerun the complete 17-step synthetic scenario.
+Rerun the 90-check compatibility suite.
+Confirm all existing-user before/after counts remain identical.
+Confirm the TypeScript baseline remains 249 with no new-feature diagnostics.
+Create a local Git checkpoint commit on main so this completed milestone is recoverable.
+Do not push the commit, perform Replit Publish, or deploy to GCP.
+
+Stop and report the corrections, tests, final database counts, and local checkpoint commit.
