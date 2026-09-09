@@ -8133,10 +8133,6 @@ const TEAM_MEMBER_ID_RE = /^(user|staff):\d+$/;
   const [row] = await db.insert(schema.patientPortalRelationshipEvents).values(data).returning();
   return row;
 };
-(DbStorage.prototype as any).expirePatientPortalIntakeFlows = async function() {
-  return db.update(schema.patientPortalInviteFlows).set({ status: "expired" })
-    .where(and(inArray(schema.patientPortalInviteFlows.status, ["exchanged", "authenticated"]), lte(schema.patientPortalInviteFlows.expiresAt, new Date()))).returning({ id: schema.patientPortalInviteFlows.id });
-};
 (DbStorage.prototype as any).getIntakeAssignmentsForRelationship = async function(clinicId: number, patientId: number) {
   return db.select({ assignment: schema.patientFormAssignments, form: schema.intakeForms })
     .from(schema.patientFormAssignments).innerJoin(schema.intakeForms, eq(schema.patientFormAssignments.formId, schema.intakeForms.id))

@@ -301,6 +301,7 @@ import { buildMedicalTermsList, buildNormalizationRules, buildWhisperPrompt, NOR
 import { SCREENING_DEFINITIONS, getScreeningDefinition, computeAge, computeEligibleScreenings, computeNextDueDate, computeStatus, shouldReflag, type EligibilityContext } from "./screening-rules";
 import Stripe from "stripe";
 import bcrypt from "bcrypt";
+import { verifySyntheticCredential } from "./dev-synthetic-credentials";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -5330,7 +5331,7 @@ Return ONLY this JSON structure:
     await (storage as any).createPatientPortalRelationshipEvent({ clinicId: context.clinicId, patientId, inviteId: invite.id, actorType: "clinician", actorId: context.clinicianId, eventType: "invite_created" });
     // Delivery is deliberately caller-controlled in this development boundary;
     // no email/SMS transport is invoked.
-    res.status(201).json({ inviteId: invite.id, inviteUrl: `${req.protocol}://${req.get("host")}/patient-intake/accept?token=${rawToken}`, expiresAt: invite.expiresAt });
+    res.status(201).json({ inviteId: invite.id, inviteUrl: `${req.protocol}://${req.get("host")}/patient-intake/accept#token=${encodeURIComponent(rawToken)}`, expiresAt: invite.expiresAt });
   });
   app.post("/api/patient-intake/invites/:inviteId/resend", patientIntakeMutationLimiter, requireAuth, async (req, res) => {
     const context = await getVerifiedClinicContext(req);
@@ -5354,7 +5355,7 @@ Return ONLY this JSON structure:
     await storageDb.update(schema.patientPortalInvites).set({ replacedByInviteId: invite.id, updatedAt: new Date() })
       .where(and(eq(schema.patientPortalInvites.id, prior[0].id), eq(schema.patientPortalInvites.status, "superseded")));
     await (storage as any).createPatientPortalRelationshipEvent({ clinicId: context.clinicId, patientId: invite.patientId, inviteId: invite.id, actorType: "clinician", actorId: context.clinicianId, eventType: "invite_resent" });
-    res.json({ inviteId: invite.id, inviteUrl: `${req.protocol}://${req.get("host")}/patient-intake/accept?token=${rawToken}`, expiresAt: invite.expiresAt });
+    res.json({ inviteId: invite.id, inviteUrl: `${req.protocol}://${req.get("host")}/patient-intake/accept#token=${encodeURIComponent(rawToken)}`, expiresAt: invite.expiresAt });
   });
   app.post("/api/patient-intake/invites/:inviteId/cancel", patientIntakeMutationLimiter, requireAuth, async (req, res) => {
     const context = await getVerifiedClinicContext(req);
@@ -5366,8 +5367,8 @@ Return ONLY this JSON structure:
     await (storage as any).createPatientPortalRelationshipEvent({ clinicId: context.clinicId, patientId: invite.patientId, inviteId: invite.id, actorType: "clinician", actorId: context.clinicianId, eventType: "invite_cancelled" });
     res.status(204).end();
   });
-  async function exchangeIntakeToken(req: Request, res: Response, redirect: boolean) {
-    const raw = typeof (req.method === "GET" ? req.query.token : req.body?.token) === "string" ? String(req.method === "GET" ? req.query.token : req.body.token) : "";
+  async function exchangeIntakeToken(req: Request, res: Response) {
+    const raw = typeof req.body?.token === "string" ? String(req.body.token) : "";
     const digest = intakeDigest(raw);
     if (!digest || !(await intakeFlagEnabled("patient_portal_invite_linking_v1"))) return intakeNotFound(res);
     const invite = await (storage as any).findPatientPortalInviteByDigest(digest);
@@ -5378,11 +5379,11 @@ Return ONLY this JSON structure:
     if (!exchanged) return intakeNotFound(res);
     const { flow } = exchanged;
     await (storage as any).createPatientPortalRelationshipEvent({ clinicId: invite.clinicId, patientId: invite.patientId, inviteId: invite.id, flowId: flow.id, actorType: "system", eventType: "token_exchanged" });
-    if (redirect) return res.redirect(303, `/patient-intake/accept#flow=${encodeURIComponent(flowToken)}`);
     res.json({ flowToken, expiresAt: flow.expiresAt });
   }
-  app.get("/api/patient-intake/exchange", requireGlobalIntakeFlags("patient_portal_invite_linking_v1"), patientIntakeExchangeLimiter, (req, res) => { res.setHeader("Referrer-Policy", "no-referrer"); res.setHeader("Cache-Control", "no-store"); exchangeIntakeToken(req, res, true).catch(() => intakeNotFound(res)); });
-  app.post("/api/patient-intake/exchange", requireGlobalIntakeFlags("patient_portal_invite_linking_v1"), patientIntakeExchangeLimiter, (req, res) => { exchangeIntakeToken(req, res, false).catch(() => intakeNotFound(res)); });
+  app.get("/api/patient-intake/exchange", (_req, res) => intakeNotFound(res));
+  app.all("/api/patient-intake/flows/cleanup", (_req, res) => intakeNotFound(res));
+  app.post("/api/patient-intake/exchange", requireGlobalIntakeFlags("patient_portal_invite_linking_v1"), patientIntakeExchangeLimiter, (req, res) => { res.setHeader("Referrer-Policy", "no-referrer"); res.setHeader("Cache-Control", "no-store"); exchangeIntakeToken(req, res).catch(() => intakeNotFound(res)); });
   app.post("/api/patient-intake/flow/authenticate", requireGlobalIntakeFlags("patient_portal_identity_synthetic_auth_v1"), patientIntakeMutationLimiter, async (req, res) => {
     const digest = intakeDigest(req.body?.flowToken);
     if (!digest) return intakeNotFound(res);
@@ -5396,8 +5397,8 @@ Return ONLY this JSON structure:
       normalizedEmail: schema.patientPortalInvites.normalizedEmail,
     }).from(schema.patientPortalInvites).where(eq(schema.patientPortalInvites.id, flow.inviteId)).limit(1);
     if (!invite || invite.normalizedEmail !== email) return intakeNotFound(res);
-    const [identity] = await storageDb.select().from(schema.patientPortalIdentities).where(and(eq(schema.patientPortalIdentities.normalizedEmail, email), eq(schema.patientPortalIdentities.accountStatus, "active"), eq(schema.patientPortalIdentities.verificationStatus, "verified"))).limit(1);
-    if (!identity?.syntheticPasswordHash || !email.endsWith(".invalid") || !(await bcrypt.compare(req.body.password, identity.syntheticPasswordHash))) return intakeNotFound(res);
+    const [identity] = await storageDb.select({ id: schema.patientPortalIdentities.id }).from(schema.patientPortalIdentities).where(and(eq(schema.patientPortalIdentities.normalizedEmail, email), eq(schema.patientPortalIdentities.accountStatus, "active"), eq(schema.patientPortalIdentities.verificationStatus, "verified"))).limit(1);
+    if (!identity || !(await verifySyntheticCredential(storageDb, email, req.body.password))) return intakeNotFound(res);
     const bound = await (storage as any).authenticatePatientPortalInviteFlow(flow.id, identity.id);
     if (!bound) return intakeNotFound(res);
     (req.session as any).patientIntakeFlowId = bound.flow.id; (req.session as any).patientIntakeIdentityId = bound.identity.id; (req.session as any).patientIntakeFlowDigest = digest;
@@ -5414,13 +5415,6 @@ Return ONLY this JSON structure:
     if (!accepted) return intakeNotFound(res);
     await (storage as any).createPatientPortalRelationshipEvent({ clinicId: accepted.relationship.clinicId, patientId: accepted.relationship.patientId, relationshipId: accepted.relationship.id, inviteId: accepted.flow.inviteId, flowId: accepted.flow.id, actorType: "patient", eventType: "relationship_accepted", toStatus: "intake_only", toScope: "intake_only" });
     res.status(204).end();
-  });
-  app.post("/api/patient-intake/flows/cleanup", requireAuth, async (req, res) => {
-    const context = await getVerifiedClinicContext(req);
-    if (!context || !(await intakeFlagEnabled("patient_portal_invite_linking_v1", context.clinicId))) return intakeNotFound(res);
-    // Expiration is a safe terminal transition only; no accepted flow is touched.
-    const expired = await (storage as any).expirePatientPortalIntakeFlows();
-    res.json({ expired: expired.length });
   });
   app.post("/api/patient-intake/relationships/:relationshipId/verify", requireAuth, async (req, res) => {
     const context = await getVerifiedClinicContext(req);

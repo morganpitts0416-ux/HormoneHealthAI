@@ -7,10 +7,12 @@ import assert from "node:assert/strict";
 import bcrypt from "bcrypt";
 import fs from "node:fs";
 import pg from "pg";
+import { cleanupExpiredPatientIntakeFlows } from "../server/patient-intake-cleanup";
 
 const baseUrl = process.env.SYNTHETIC_BASE_URL;
-const { Pool } = pg;
+const { Pool, Client } = pg;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
+const lockClient = new Client({ connectionString: process.env.DATABASE_URL });
 const tag = `SYNTH-INTAKE-${Date.now()}`;
 const email = `${tag.toLowerCase()}@example.invalid`;
 const password = `Synthetic-${Date.now()}-Aa1!`;
@@ -20,6 +22,8 @@ const status: Record<string, number> = {};
 const priorFlags: Array<any> = [];
 const sessionIds: string[] = [];
 let before: Record<string, number> = {};
+let credentialTableCreated = false;
+let lockAcquired = false;
 
 async function q(text: string, values: unknown[] = []) { return pool.query(text, values); }
 async function one(text: string, values: unknown[] = []) {
@@ -47,7 +51,9 @@ async function invite(clinicianCookie: string, patientId: number) {
   const response = await call("invite", `/api/patient-intake/invites/${patientId}`, { method: "POST", headers: auth(clinicianCookie), body: body({ email }) });
   assert.equal(response.status, 201);
   const payload = await json(response);
-  const raw = new URL(payload.inviteUrl).searchParams.get("token");
+  const inviteUrl = new URL(payload.inviteUrl);
+  assert.equal(inviteUrl.search, "", "invite bearer must not be placed in query");
+  const raw = new URLSearchParams(inviteUrl.hash.slice(1)).get("token");
   assert.ok(raw && raw.length >= 32, "invite response must contain a local bearer token");
   return { id: payload.inviteId as number, raw };
 }
@@ -67,6 +73,9 @@ async function counts() {
   const names = ["users", "clinician_staff", "patient_portal_accounts", "patients", "clinics", "patient_portal_identities", "patient_clinic_relationships", "patient_portal_invites", "patient_portal_invite_flows", "patient_portal_relationship_events", "intake_forms", "patient_form_assignments", "form_submissions"];
   const entries = await Promise.all(names.map(async (name) => [name, Number((await q(`SELECT count(*)::int AS count FROM ${name}`)).rows[0].count)] as const));
   entries.push(["sessions", Number((await q('SELECT count(*)::int AS count FROM "session"')).rows[0].count)]);
+  const credentialTableExists = (await q("SELECT to_regclass('public.synthetic_patient_credentials') IS NOT NULL AS present")).rows[0].present;
+  entries.push(["synthetic_credential_table", credentialTableExists ? 1 : 0]);
+  entries.push(["synthetic_credential_rows", credentialTableExists ? Number((await q("SELECT count(*)::int AS count FROM synthetic_patient_credentials")).rows[0].count) : 0]);
   return Object.fromEntries(entries);
 }
 async function requireSchema() {
@@ -93,10 +102,18 @@ async function setup() {
     ids[`clinic${key}`] = (await one("INSERT INTO clinics (name,slug,owner_user_id,is_active,subscription_status,subscription_plan) VALUES ($1,$2,$3,true,'active','suite') RETURNING id", [`${tag} Clinic ${key.toUpperCase()}`, `${tag.toLowerCase()}-${key}`, ids.owner])).id;
     await q("INSERT INTO clinic_memberships (clinic_id,user_id,role,clinical_role,admin_role,access_scope,acceptance_status,is_active,is_primary_clinic) VALUES ($1,$2,'admin','provider','owner','full','active',true,$3)", [ids[`clinic${key}`], ids.owner, key === "b"]);
   }
+  ids.ordinary = (await one("INSERT INTO users (email,username,password_hash,first_name,last_name,title,clinic_name,default_clinic_id,subscription_status,free_account,notes) VALUES ($1,$2,$3,'Synthetic','Ordinary','NP',$4,$5,'active',true,$6) RETURNING id", [`${tag.toLowerCase()}-ordinary@example.invalid`, `${tag.toLowerCase()}-ordinary`, hash, tag, ids.clinicb, tag])).id;
+  await q("INSERT INTO clinic_memberships (clinic_id,user_id,role,clinical_role,admin_role,access_scope,acceptance_status,is_active,is_primary_clinic) VALUES ($1,$2,'provider','provider','standard','full','active',true,true)", [ids.clinicb, ids.ordinary]);
   await q("UPDATE users SET default_clinic_id=$1 WHERE id=$2", [ids.clinicb, ids.owner]);
   ids.patientA = (await one("INSERT INTO patients (user_id,first_name,last_name,gender,email,clinic_id,mrn) VALUES ($1,'Synthetic','Clinic A','female',$2,$3,$4) RETURNING id", [ids.owner, email, ids.clinica, `${tag}-A`])).id;
   ids.patientB = (await one("INSERT INTO patients (user_id,first_name,last_name,gender,email,clinic_id,mrn) VALUES ($1,'Synthetic','Clinic B','female',$2,$3,$4) RETURNING id", [ids.owner, email, ids.clinicb, `${tag}-B`])).id;
-  ids.identity = (await one("INSERT INTO patient_portal_identities (normalized_email,account_status,verification_status,synthetic_password_hash) VALUES ($1,'active','verified',$2) RETURNING id", [email, hash])).id;
+  const credentialTableExists = (await q("SELECT to_regclass('public.synthetic_patient_credentials') IS NOT NULL AS present")).rows[0].present;
+  credentialTableCreated = !credentialTableExists;
+  if (credentialTableCreated) {
+    await q("CREATE UNLOGGED TABLE synthetic_patient_credentials (normalized_email VARCHAR(255) PRIMARY KEY, password_hash VARCHAR(255) NOT NULL)");
+  }
+  await q("INSERT INTO synthetic_patient_credentials (normalized_email,password_hash) VALUES ($1,$2)", [email, hash]);
+  ids.identity = (await one("INSERT INTO patient_portal_identities (normalized_email,account_status,verification_status) VALUES ($1,'active','verified') RETURNING id", [email])).id;
   ids.formA = (await one("INSERT INTO intake_forms (clinician_id,clinic_id,name,description,status) VALUES ($1,$2,$3,$4,'published') RETURNING id", [ids.owner, ids.clinica, `${tag} A-MARKER`, `${tag} A-RESOURCE`])).id;
   ids.formB = (await one("INSERT INTO intake_forms (clinician_id,clinic_id,name,description,status) VALUES ($1,$2,$3,$4,'published') RETURNING id", [ids.owner, ids.clinicb, `${tag} MOKI`, "synthetic local capture"])).id;
   await q("INSERT INTO form_sections (form_id,title,order_index) VALUES ($1,'MOKI',0)", [ids.formB]);
@@ -108,11 +125,19 @@ async function setup() {
 async function exercise() {
   const login = await call("staff_login", "/api/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: body({ username: `${tag.toLowerCase()}-owner`, password }) });
   assert.equal(login.status, 200); const staffCookie = cookie(login);
+  const ordinaryLogin = await call("ordinary_login", "/api/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: body({ username: `${tag.toLowerCase()}-ordinary`, password }) });
+  assert.equal(ordinaryLogin.status, 200); const ordinaryCookie = cookie(ordinaryLogin);
   const initial = await invite(staffCookie, ids.patientB);
   const persistedInvite = await one("SELECT token_digest FROM patient_portal_invites WHERE id=$1", [initial.id]);
   assert.match(persistedInvite.token_digest, /^[0-9a-f]{64}$/);
   assert.notEqual(persistedInvite.token_digest, initial.raw, "raw invite bearer must never be persisted");
+  assert.equal((await call("get_exchange", "/api/patient-intake/exchange")).status, 404, "GET exchange must remain generic 404");
   const flow = await exchange(initial.raw, "exchange");
+  const leaked = await q(
+    "SELECT (SELECT count(*) FROM patient_portal_invites WHERE token_digest LIKE $1) + (SELECT count(*) FROM patient_portal_invite_flows WHERE token_digest LIKE $1) + (SELECT count(*) FROM patient_portal_relationship_events WHERE row_to_json(patient_portal_relationship_events)::text LIKE $1) AS count",
+    [`%${initial.raw}%`],
+  );
+  assert.equal(Number(leaked.rows[0].count), 0, "raw bearer must not appear in database text fields");
   const intakeCookie = await authenticate(flow, "synthetic_auth");
   const accepted = await call("accept", "/api/patient-intake/flow/accept", { method: "POST", headers: auth(intakeCookie) });
   assert.equal(accepted.status, 204);
@@ -154,7 +179,9 @@ async function exercise() {
   const postVerifyResend = await call("post_verify_resend", `/api/patient-intake/invites/${postVerifyInvite.id}/resend`, { method: "POST", headers: auth(staffCookie) });
   assert.equal(postVerifyResend.status, 200);
   const postVerifyPayload = await json(postVerifyResend);
-  const postVerifyRaw = new URL(postVerifyPayload.inviteUrl).searchParams.get("token");
+   const postVerifyUrl = new URL(postVerifyPayload.inviteUrl);
+   assert.equal(postVerifyUrl.search, "");
+   const postVerifyRaw = new URLSearchParams(postVerifyUrl.hash.slice(1)).get("token");
   assert.ok(postVerifyRaw && postVerifyRaw.length >= 32, "resend response must contain a local bearer token");
   const postVerifyFlow = await exchange(postVerifyRaw, "post_verify_exchange");
   const postVerifyCookie = await authenticate(postVerifyFlow, "post_verify_auth");
@@ -165,13 +192,17 @@ async function exercise() {
   const cleanupInvite = await invite(staffCookie, ids.patientB);
   await exchange(cleanupInvite.raw, "cleanup_exchange");
   await q("UPDATE patient_portal_invite_flows SET expires_at=NOW()-interval '1 minute' WHERE invite_id IN (SELECT id FROM patient_portal_invites WHERE clinic_id=$1 AND status='issued')", [ids.clinicb]);
-  const cleaned = await call("flow_cleanup", "/api/patient-intake/flows/cleanup", { method: "POST", headers: auth(staffCookie) }); assert.equal(cleaned.status, 200);
-  assert.ok(Number((await json(cleaned)).expired) >= 1, "expired intake flow must be cleaned");
+  assert.equal((await call("flow_cleanup_public", "/api/patient-intake/flows/cleanup", { method: "POST" })).status, 404);
+  assert.equal((await call("flow_cleanup_intake", "/api/patient-intake/flows/cleanup", { method: "POST", headers: auth(postVerifyCookie) })).status, 404);
+  assert.equal((await call("flow_cleanup_staff", "/api/patient-intake/flows/cleanup", { method: "POST", headers: auth(staffCookie) })).status, 404);
+  assert.equal((await call("flow_cleanup_ordinary", "/api/patient-intake/flows/cleanup", { method: "POST", headers: auth(ordinaryCookie) })).status, 404);
+  const cleaned = await cleanupExpiredPatientIntakeFlows(pool);
+  assert.ok(cleaned.expired >= 1, "expired intake flow must be cleaned internally");
   const leak = await q("SELECT count(*)::int AS count FROM patient_portal_invites WHERE clinic_id IN ($1,$2) AND token_digest !~ '^[0-9a-f]{64}$'", [ids.clinica, ids.clinicb]);
   assert.equal(Number(leak.rows[0].count), 0, "only digests may be persisted");
 
   await q("UPDATE authorization_feature_flags SET enabled=false WHERE flag_key='patient_portal_invite_linking_v1' AND clinic_id IS NULL");
-  const off = await call("flag_off_after", "/api/patient-intake/exchange?token=not-a-real-token"); assert.equal(off.status, 404);
+  const off = await call("flag_off_after", "/api/patient-intake/exchange"); assert.equal(off.status, 404);
   await q("UPDATE authorization_feature_flags SET enabled=true WHERE flag_key='patient_portal_invite_linking_v1' AND clinic_id IS NULL");
 }
 async function cleanup() {
@@ -189,24 +220,48 @@ async function cleanup() {
       await q("DELETE FROM intake_forms WHERE id = ANY($1)", [formIds]);
     }
     if (ids.identity) await q("DELETE FROM patient_portal_identities WHERE id=$1", [ids.identity]);
+    const credentialTableExists = (await q("SELECT to_regclass('public.synthetic_patient_credentials') IS NOT NULL AS present")).rows[0].present;
+    if (credentialTableExists) {
+      await q("DELETE FROM synthetic_patient_credentials WHERE normalized_email=$1", [email]);
+      if (credentialTableCreated) {
+        const remaining = Number((await q("SELECT count(*)::int AS count FROM synthetic_patient_credentials")).rows[0].count);
+        if (remaining === 0) await q("DROP TABLE synthetic_patient_credentials");
+      }
+    }
     if (ids.patientA || ids.patientB) await q("DELETE FROM patients WHERE id = ANY($1)", [[ids.patientA, ids.patientB].filter(Number.isInteger)]);
+    if (ids.ordinary) await q("DELETE FROM users WHERE id=$1", [ids.ordinary]);
     if (ids.clinica || ids.clinicb) await q("DELETE FROM clinics WHERE id = ANY($1)", [[ids.clinica, ids.clinicb].filter(Number.isInteger)]);
     if (ids.owner) await q("DELETE FROM users WHERE id=$1", [ids.owner]);
   } finally { await restoreFlags(); }
 }
 async function main() {
-  if (!baseUrl || !/^(http:\/\/127\.0\.0\.1|http:\/\/localhost|https:\/\/[^/]*replit)/.test(baseUrl) || !process.env.DATABASE_URL) throw new Error("SYNTHETIC_BASE_URL and DATABASE_URL must name a local development target");
+  if (!baseUrl || !/^http:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?$/.test(baseUrl) || !process.env.DATABASE_URL || process.env.NODE_ENV === "production" || process.env.REPLIT_DEPLOYMENT === "1") throw new Error("synthetic validation requires a local development target");
+  await lockClient.connect();
+  await lockClient.query("SELECT pg_advisory_lock(hashtext('patient-intake-synthetic-credentials'))");
+  lockAcquired = true;
   const serverEntry = fs.readFileSync("server/index.ts", "utf8");
   assert.ok(
     serverEntry.includes('if (path.startsWith("/api/patient-intake"))') &&
       serverEntry.includes('logLine += " :: [redacted]"'),
     "intake response logging must remain redacted",
   );
-  const disabled = await call("flag_off_before", "/api/patient-intake/exchange?token=not-a-real-token"); assert.equal(disabled.status, 404);
+  const disabled = await call("flag_off_before", "/api/patient-intake/exchange"); assert.equal(disabled.status, 404);
+  const acceptSource = fs.readFileSync("client/src/pages/patient-intake-accept.tsx", "utf8");
+  assert.ok(
+    acceptSource.indexOf("window.history.replaceState") < acceptSource.indexOf("export default function PatientIntakeAccept"),
+    "acceptance must remove fragment before React renders",
+  );
+  assert.ok(!/localStorage|sessionStorage/.test(acceptSource), "acceptance must not use browser storage");
+  const routeSource = fs.readFileSync("server/routes.ts", "utf8");
+  assert.ok(!routeSource.includes("req.query.token"), "server must never parse exchange tokens from query strings");
   await requireSchema(); before = await counts();
   try { await setup(); await exercise(); } finally { await cleanup(); }
   const after = await counts();
   for (const name of Object.keys(before)) assert.equal(after[name], before[name], `synthetic cleanup changed ${name}`);
   console.log(JSON.stringify({ result: "passed", statuses: Object.fromEntries(Object.entries(status).map(([key, value]) => [key, value])), counts: { before, after } }));
 }
-main().catch((error) => { console.error(JSON.stringify({ result: "failed", message: error instanceof Error ? error.message.replace(/(?:token|password|hash|cookie|session)\\S*/gi, "[redacted]") : "synthetic validation failed" })); process.exitCode = 1; }).finally(() => pool.end());
+main().catch((error) => { console.error(JSON.stringify({ result: "failed", message: error instanceof Error ? error.message.replace(/(?:token|password|hash|cookie|session)\\S*/gi, "[redacted]") : "synthetic validation failed" })); process.exitCode = 1; }).finally(async () => {
+  if (lockAcquired) await lockClient.query("SELECT pg_advisory_unlock(hashtext('patient-intake-synthetic-credentials'))").catch(() => {});
+  await lockClient.end().catch(() => {});
+  await pool.end();
+});

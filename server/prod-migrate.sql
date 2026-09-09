@@ -2364,7 +2364,9 @@ CREATE INDEX IF NOT EXISTS patient_clinic_relationships_status_idx
   ON patient_clinic_relationships (relationship_status);
 CREATE UNIQUE INDEX IF NOT EXISTS patient_clinic_relationships_identity_patient_clinic_uq
   ON patient_clinic_relationships (portal_identity_id, patient_id, clinic_id, relationship_type);
-ALTER TABLE patient_portal_identities ADD COLUMN IF NOT EXISTS synthetic_password_hash VARCHAR(255);
+-- Remove the retired development-only credential column.  Credentials for the
+-- synthetic harness live in its unlogged, development-created table instead.
+ALTER TABLE patient_portal_identities DROP COLUMN IF EXISTS synthetic_password_hash;
 ALTER TABLE patient_clinic_relationships ADD COLUMN IF NOT EXISTS verified_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE patient_clinic_relationships ADD COLUMN IF NOT EXISTS verified_by_staff_id INTEGER REFERENCES clinician_staff(id) ON DELETE SET NULL;
 

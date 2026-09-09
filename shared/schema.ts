@@ -3787,7 +3787,6 @@ export const patientPortalIdentities = pgTable("patient_portal_identities", {
   // account is inferred or required for a relationship to exist.
   accountStatus: varchar("account_status", { length: 30 }).notNull().default("pending"),
   verificationStatus: varchar("verification_status", { length: 30 }).notNull().default("unverified"),
-  syntheticPasswordHash: varchar("synthetic_password_hash", { length: 255 }),
   sessionVersion: integer("session_version").notNull().default(1),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
