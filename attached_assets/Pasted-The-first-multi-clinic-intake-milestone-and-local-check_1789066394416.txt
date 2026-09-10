@@ -1,0 +1,126 @@
+The first multi-clinic intake milestone and local checkpoint 5e31c28 are accepted.
+
+Proceed with planning only for the second milestone: global patient authentication compatibility, multi-clinic selection, and relationship-aware portal access in Replit development.
+
+Do not make code or schema changes yet.
+
+The objective is:
+
+Existing single-clinic patients continue signing in with their current email and password.
+They are not forced to reset their password or recreate their account.
+Patients with only one clinic continue directly into that clinic’s portal.
+Patients with two or more verified clinic relationships land on a clinic-selection dashboard.
+Switching clinics changes the active portal context without combining or exposing either clinic’s records.
+Required plan sections
+1. Dual-authentication compatibility
+
+Explain exactly how login will support both:
+
+Existing legacy patient_portal_accounts
+New global patient_portal_identities
+
+During transition:
+
+Legacy authentication remains available as a fallback.
+Existing password hashes remain intact in legacy accounts.
+Any credential copy must be additive and verifiably equivalent.
+No legacy credential may be deleted, replaced, or invalidated.
+An incomplete identity migration must never prevent legacy login.
+Duplicate normalized emails or conflicting password hashes must enter review rather than being automatically merged.
+
+Include the precise lookup order, generic error behavior, password-reset routing, session creation, and rollback behavior.
+
+2. Existing-account migration
+
+Define a dry-run and additive backfill process that reports:
+
+Unambiguous accounts eligible for identity creation
+Duplicate normalized emails
+Multiple accounts with conflicting password hashes
+Missing or invalid patient records
+Unknown patient clinic ownership
+Multiple patient records within one clinic
+Existing accounts with inactive or unusual status
+
+No backfill may run merely because the code exists. It must require a separate explicit action and remain idempotent.
+
+3. Portal session transition
+
+Define how the new identity session will coexist with the current portalPatientId session.
+
+The plan must prevent:
+
+Session fixation
+Stale clinic context
+Browser-controlled patient or clinic selection
+One tab displaying cached PHI from another clinic
+Relationship revocation being ignored by an existing session
+
+Specify exactly which server-derived values are stored and revalidated on every request.
+
+4. Clinic-selection experience
+
+Define the patient experience for:
+
+Zero active relationships
+One active relationship
+Two or more active relationships
+Intake-only relationships
+Historical read-only relationships
+A relationship revoked while the patient is logged in
+
+The selector must show only approved clinic-identification information and no cross-clinic clinical summaries or record counts.
+
+For the first release, use one active clinic per server session. Explain how another browser tab will detect a clinic change, clear cached data, and reload safely.
+
+5. Portal-route readiness
+
+Produce a complete inventory of every portal route and classify each as:
+
+Already tenant- and relationship-safe
+Requires remediation before multi-clinic access
+Legacy-only during transition
+Identity-level rather than clinic-level
+
+Include reads, writes, downloads, messages, refills, forms, appointments, labs, encounters, documents, tracking, protocols, supplements, notifications, recipes, and account settings.
+
+The clinic selector cannot become functional until every route it can reach is relationship-aware and SQL tenant-scoped.
+
+6. Feature flags
+
+Define separate default-off flags for:
+
+Identity login shadow evaluation
+Additive legacy identity backfill
+Identity-owned sessions
+Relationship-aware portal routes by route family
+Clinic-selection dashboard
+Legacy-login fallback
+
+Disabling the new identity/session/selector flags must restore the unchanged legacy portal path without deleting or reversing data.
+
+7. Required testing
+
+Include:
+
+Existing single-clinic legacy login before and after changes
+Existing password reset
+Existing active session continuation
+Synthetic additive identity migration
+Same password working before and after migration
+Duplicate-email conflict
+Conflicting password hashes
+One-clinic automatic selection
+Two-clinic selector
+Clinic A → Clinic B → Clinic A switching
+Two-tab clinic switching
+Browser back/cache behavior
+Relationship revocation during a session
+Foreign patient/clinic/resource substitution
+Invite-only and historical-read-only relationships
+Rollback to legacy authentication
+Stopping boundary
+
+Return the detailed second-milestone plan, route inventory, migration algorithm, session model, user flows, feature flags, test matrix, and anticipated files.
+
+Do not implement, run a backfill, modify existing accounts, push to Git, publish Replit, or deploy to GCP.
