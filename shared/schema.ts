@@ -3712,7 +3712,7 @@ export const authorizationFeatureFlags = pgTable("authorization_feature_flags", 
   globalFlagUnique: uniqueIndex("authorization_feature_flags_global_uq").on(t.flagKey).where(sql`${t.clinicId} is null`),
   flagIdx: index("authorization_feature_flags_key_idx").on(t.flagKey),
   clinicFlagIdx: index("authorization_feature_flags_clinic_flag_idx").on(t.clinicId, t.flagKey),
-  flagCheck: check("authorization_feature_flags_key_ck", sql`${t.flagKey} in ('SHADOW_CLINIC_SUBSCRIPTION_AUTHZ','ENFORCE_CLINIC_SUBSCRIPTION_AUTHZ','SHADOW_STAFF_MEMBERSHIP_AUTHZ','ENFORCE_STAFF_MEMBERSHIP_AUTHZ','ENABLE_OWNER_RECOVERY_ACCESS','ENABLE_GLOBAL_PATIENT_IDENTITY','SHADOW_PATIENT_CLINIC_RELATIONSHIP','ENFORCE_PATIENT_CLINIC_RELATIONSHIP','ENABLE_CLINIC_SELECTION_DASHBOARD','ENABLE_INACTIVE_CLINIC_READ_ONLY','patient_portal_invite_linking_v1','patient_portal_intake_only_scope_v1','patient_portal_identity_synthetic_auth_v1','patient_portal_relationship_shadow_v1')`),
+   flagCheck: check("authorization_feature_flags_key_ck", sql`${t.flagKey} in ('SHADOW_CLINIC_SUBSCRIPTION_AUTHZ','ENFORCE_CLINIC_SUBSCRIPTION_AUTHZ','SHADOW_STAFF_MEMBERSHIP_AUTHZ','ENFORCE_STAFF_MEMBERSHIP_AUTHZ','ENABLE_OWNER_RECOVERY_ACCESS','ENABLE_GLOBAL_PATIENT_IDENTITY','SHADOW_PATIENT_CLINIC_RELATIONSHIP','ENFORCE_PATIENT_CLINIC_RELATIONSHIP','ENABLE_CLINIC_SELECTION_DASHBOARD','ENABLE_INACTIVE_CLINIC_READ_ONLY','patient_portal_invite_linking_v1','patient_portal_intake_only_scope_v1','patient_portal_identity_synthetic_auth_v1','patient_portal_relationship_shadow_v1','SHADOW_PATIENT_IDENTITY_LOGIN')`),
 }));
 
 export const authorizationShadowDecisions = pgTable("authorization_shadow_decisions", {
@@ -3796,6 +3796,62 @@ export const patientPortalIdentities = pgTable("patient_portal_identities", {
   accountCheck: check("patient_portal_identities_account_status_ck", sql`${t.accountStatus} in ('pending','active','suspended','closed')`),
   verificationCheck: check("patient_portal_identities_verification_ck", sql`${t.verificationStatus} in ('unverified','verified','conflicting','revoked')`),
   sessionVersionCheck: check("patient_portal_identities_session_version_ck", sql`${t.sessionVersion} > 0`),
+}));
+
+// Additive migration inventory.  This mapping owns account-level readiness so
+// the exact legacy account remains authoritative until explicitly enabled.
+export const patientPortalIdentityLegacyAccounts = pgTable("patient_portal_identity_legacy_accounts", {
+  id: serial("id").primaryKey(),
+  identityId: integer("identity_id").notNull().references(() => patientPortalIdentities.id, { onDelete: "cascade" }),
+  legacyAccountId: integer("legacy_account_id").notNull().references(() => patientPortalAccounts.id, { onDelete: "cascade" }).unique(),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: "cascade" }),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }),
+  migrationState: varchar("migration_state", { length: 30 }).notNull().default("legacy_only"),
+  credentialCompatibilityStatus: varchar("credential_compatibility_status", { length: 30 }).notNull().default("unknown"),
+  provenanceRunKey: varchar("provenance_run_key", { length: 160 }).notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  validatedAt: timestamp("validated_at"),
+  enabledAt: timestamp("enabled_at"),
+  conflictedAt: timestamp("conflicted_at"),
+  rolledBackAt: timestamp("rolled_back_at"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  identityLegacyUnique: uniqueIndex("patient_portal_identity_legacy_identity_account_uq").on(t.identityId, t.legacyAccountId),
+  identityIdx: index("patient_portal_identity_legacy_identity_idx").on(t.identityId),
+  patientClinicIdx: index("patient_portal_identity_legacy_patient_clinic_idx").on(t.patientId, t.clinicId),
+  stateIdx: index("patient_portal_identity_legacy_state_idx").on(t.migrationState),
+  stateCheck: check("patient_portal_identity_legacy_state_ck", sql`${t.migrationState} in ('legacy_only','shadow_ready','identity_ready','identity_enabled','conflicting','rollback_legacy')`),
+  credentialCheck: check("patient_portal_identity_legacy_credential_ck", sql`${t.credentialCompatibilityStatus} in ('direct_copy_confirmed','compatible_verified','unknown','conflicting','not_available')`),
+  provenanceCheck: check("patient_portal_identity_legacy_provenance_ck", sql`length(trim(${t.provenanceRunKey})) > 0`),
+  // Cross-table patient/clinic/email agreement is enforced by the
+  // patient_portal_identity_legacy_accounts_provenance_trigger in prod SQL.
+  // These timestamp checks keep lifecycle evidence fail-closed locally too.
+  timestampCheck: check("patient_portal_identity_legacy_timestamp_ck", sql`(
+    (${t.migrationState} in ('legacy_only','shadow_ready') and ${t.enabledAt} is null)
+    or (${t.migrationState} = 'identity_ready' and ${t.validatedAt} is not null)
+    or (${t.migrationState} = 'identity_enabled' and ${t.validatedAt} is not null and ${t.enabledAt} is not null and ${t.conflictedAt} is null and ${t.rolledBackAt} is null)
+    or (${t.migrationState} = 'conflicting' and ${t.conflictedAt} is not null)
+    or (${t.migrationState} = 'rollback_legacy' and ${t.rolledBackAt} is not null)
+  )`),
+}));
+export const insertPatientPortalIdentityLegacyAccountSchema = createInsertSchema(patientPortalIdentityLegacyAccounts).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertPatientPortalIdentityLegacyAccount = z.infer<typeof insertPatientPortalIdentityLegacyAccountSchema>;
+export type PatientPortalIdentityLegacyAccount = typeof patientPortalIdentityLegacyAccounts.$inferSelect;
+
+// PHI-free, opt-in shadow observations. Entity IDs are database IDs only;
+// request material and credentials are deliberately absent.
+export const patientPortalIdentityShadowDecisions = pgTable("patient_portal_identity_shadow_decisions", {
+  id: serial("id").primaryKey(),
+  requestId: varchar("request_id", { length: 100 }).notNull(),
+  legacyAccountId: integer("legacy_account_id").references(() => patientPortalAccounts.id, { onDelete: "set null" }),
+  identityId: integer("identity_id").references(() => patientPortalIdentities.id, { onDelete: "set null" }),
+  reasonCode: varchar("reason_code", { length: 60 }).notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  requestIdx: index("patient_portal_identity_shadow_request_idx").on(t.requestId),
+  reasonIdx: index("patient_portal_identity_shadow_reason_idx").on(t.reasonCode),
+  createdIdx: index("patient_portal_identity_shadow_created_idx").on(t.createdAt),
+  reasonCheck: check("patient_portal_identity_shadow_reason_ck", sql`${t.reasonCode} in ('identity_candidate_found','no_identity','multiple_candidates','linkage_missing','linkage_conflicting','credential_available','credential_compatibility_unknown','relationship_missing','relationship_conflicting')`),
 }));
 
 export const patientClinicRelationships = pgTable("patient_clinic_relationships", {

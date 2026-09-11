@@ -9,7 +9,9 @@
     "start": "NODE_ENV=production node dist/index.js",
     "check": "tsc",
     "test:unit": "vitest run",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "dry-run:patient-portal-identity-migration": "tsx scripts/dry-run-patient-portal-identity-migration.ts --dry-run",
+    "validate:patient-portal-identity-phases-a-d": "tsx scripts/validate-patient-portal-identity-phases-a-d-synthetic.ts"
   },
   "dependencies": {
     "@fullcalendar/core": "^6.1.20",

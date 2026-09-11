@@ -302,6 +302,7 @@ import { SCREENING_DEFINITIONS, getScreeningDefinition, computeAge, computeEligi
 import Stripe from "stripe";
 import bcrypt from "bcrypt";
 import { verifySyntheticCredential } from "./dev-synthetic-credentials";
+import { observePatientPortalIdentityLogin, shadowRequestId } from "./patient-portal-identity-shadow";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -5577,6 +5578,28 @@ Return ONLY this JSON structure:
 
       const valid = await bcrypt.compare(password, account.passwordHash);
       if (!valid) return res.status(401).json({ message: "Invalid email or password" });
+
+      // Optional observation occurs only after legacy bcrypt success. It is
+      // strictly side-effect isolated and cannot delay or alter this response.
+      storageDb.select({ enabled: schema.authorizationFeatureFlags.enabled, expiresAt: schema.authorizationFeatureFlags.expiresAt })
+        .from(schema.authorizationFeatureFlags)
+        .where(and(
+          eq(schema.authorizationFeatureFlags.flagKey, "SHADOW_PATIENT_IDENTITY_LOGIN"),
+          isNull(schema.authorizationFeatureFlags.clinicId),
+          eq(schema.authorizationFeatureFlags.enabled, true),
+        ))
+        .limit(1)
+        .then((rows) => {
+          const row = rows[0];
+          if (row?.enabled && (!row.expiresAt || row.expiresAt > new Date())) {
+            void observePatientPortalIdentityLogin({
+              requestId: shadowRequestId(),
+              normalizedEmail: email,
+              legacyAccountId: account.id,
+            });
+          }
+        })
+        .catch(() => {});
 
       (req.session as any).portalPatientId = account.patientId;
       await new Promise<void>((resolve, reject) => req.session.save((err) => err ? reject(err) : resolve()));

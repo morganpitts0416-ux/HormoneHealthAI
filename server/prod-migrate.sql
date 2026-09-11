@@ -2341,6 +2341,155 @@ CREATE UNIQUE INDEX IF NOT EXISTS patient_portal_identities_legacy_account_uq
 CREATE INDEX IF NOT EXISTS patient_portal_identities_verification_idx
   ON patient_portal_identities (verification_status);
 
+-- Phase A-D legacy-account inventory. This table is additive and is never
+-- populated by this migration; linkage validation is a dry-run concern.
+CREATE TABLE IF NOT EXISTS patient_portal_identity_legacy_accounts (
+  id SERIAL PRIMARY KEY,
+  identity_id INTEGER NOT NULL REFERENCES patient_portal_identities(id) ON DELETE CASCADE,
+  legacy_account_id INTEGER NOT NULL UNIQUE REFERENCES patient_portal_accounts(id) ON DELETE CASCADE,
+  patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  clinic_id INTEGER NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
+  migration_state VARCHAR(30) NOT NULL DEFAULT 'legacy_only',
+  credential_compatibility_status VARCHAR(30) NOT NULL DEFAULT 'unknown',
+  provenance_run_key VARCHAR(160) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  validated_at TIMESTAMP,
+  enabled_at TIMESTAMP,
+  conflicted_at TIMESTAMP,
+  rolled_back_at TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  CONSTRAINT patient_portal_identity_legacy_state_ck CHECK (migration_state IN ('legacy_only','shadow_ready','identity_ready','identity_enabled','conflicting','rollback_legacy')),
+  CONSTRAINT patient_portal_identity_legacy_credential_ck CHECK (credential_compatibility_status IN ('direct_copy_confirmed','compatible_verified','unknown','conflicting','not_available')),
+  CONSTRAINT patient_portal_identity_legacy_provenance_ck CHECK (length(trim(provenance_run_key)) > 0)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS patient_portal_identity_legacy_identity_account_uq
+  ON patient_portal_identity_legacy_accounts (identity_id, legacy_account_id);
+CREATE INDEX IF NOT EXISTS patient_portal_identity_legacy_identity_idx
+  ON patient_portal_identity_legacy_accounts (identity_id);
+CREATE INDEX IF NOT EXISTS patient_portal_identity_legacy_patient_clinic_idx
+  ON patient_portal_identity_legacy_accounts (patient_id, clinic_id);
+CREATE INDEX IF NOT EXISTS patient_portal_identity_legacy_state_idx
+  ON patient_portal_identity_legacy_accounts (migration_state);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'patient_portal_identity_legacy_timestamp_ck') THEN
+    ALTER TABLE patient_portal_identity_legacy_accounts ADD CONSTRAINT patient_portal_identity_legacy_timestamp_ck CHECK (
+      (migration_state IN ('legacy_only','shadow_ready') AND enabled_at IS NULL)
+      OR (migration_state = 'identity_ready' AND validated_at IS NOT NULL)
+      OR (migration_state = 'identity_enabled' AND validated_at IS NOT NULL AND enabled_at IS NOT NULL AND conflicted_at IS NULL AND rolled_back_at IS NULL)
+      OR (migration_state = 'conflicting' AND conflicted_at IS NOT NULL)
+      OR (migration_state = 'rollback_legacy' AND rolled_back_at IS NOT NULL)
+    ) NOT VALID;
+  END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS patient_portal_identity_shadow_decisions (
+  id SERIAL PRIMARY KEY,
+  request_id VARCHAR(100) NOT NULL,
+  legacy_account_id INTEGER REFERENCES patient_portal_accounts(id) ON DELETE SET NULL,
+  identity_id INTEGER REFERENCES patient_portal_identities(id) ON DELETE SET NULL,
+  reason_code VARCHAR(60) NOT NULL CHECK (reason_code IN ('identity_candidate_found','no_identity','multiple_candidates','linkage_missing','linkage_conflicting','credential_available','credential_compatibility_unknown','relationship_missing','relationship_conflicting')),
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS patient_portal_identity_shadow_request_idx ON patient_portal_identity_shadow_decisions (request_id);
+CREATE INDEX IF NOT EXISTS patient_portal_identity_shadow_reason_idx ON patient_portal_identity_shadow_decisions (reason_code);
+CREATE INDEX IF NOT EXISTS patient_portal_identity_shadow_created_idx ON patient_portal_identity_shadow_decisions (created_at);
+
+-- Deterministic, read-only linkage validation helper (patient/clinic agreement
+-- cannot be represented by a cross-table CHECK constraint).
+CREATE OR REPLACE VIEW patient_portal_identity_legacy_linkage_validation AS
+SELECT m.id AS mapping_id, m.identity_id, m.legacy_account_id,
+       m.patient_id, m.clinic_id,
+       (a.patient_id = m.patient_id) AS patient_matches,
+       (p.clinic_id = m.clinic_id) AS clinic_matches
+FROM patient_portal_identity_legacy_accounts m
+JOIN patient_portal_accounts a ON a.id = m.legacy_account_id
+JOIN patients p ON p.id = m.patient_id;
+
+CREATE OR REPLACE FUNCTION patient_portal_identity_legacy_accounts_provenance_guard()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  account_patient INTEGER;
+  account_email TEXT;
+  patient_clinic INTEGER;
+  identity_email TEXT;
+BEGIN
+  SELECT a.patient_id, lower(trim(a.email)) INTO account_patient, account_email
+    FROM patient_portal_accounts a WHERE a.id = NEW.legacy_account_id FOR UPDATE;
+  SELECT p.clinic_id INTO patient_clinic FROM patients p WHERE p.id = NEW.patient_id FOR UPDATE;
+  SELECT lower(trim(i.normalized_email)) INTO identity_email
+    FROM patient_portal_identities i WHERE i.id = NEW.identity_id FOR UPDATE;
+  IF account_patient IS NULL OR account_email IS NULL OR patient_clinic IS NULL OR identity_email IS NULL
+     OR NEW.patient_id IS NULL OR NEW.clinic_id IS NULL
+     OR account_patient <> NEW.patient_id OR patient_clinic <> NEW.clinic_id
+     OR account_email <> identity_email THEN
+    RAISE EXCEPTION 'patient portal identity legacy provenance mismatch' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS patient_portal_identity_legacy_accounts_provenance_trigger
+  ON patient_portal_identity_legacy_accounts;
+CREATE TRIGGER patient_portal_identity_legacy_accounts_provenance_trigger
+  BEFORE INSERT OR UPDATE ON patient_portal_identity_legacy_accounts
+  FOR EACH ROW EXECUTE FUNCTION patient_portal_identity_legacy_accounts_provenance_guard();
+
+CREATE OR REPLACE FUNCTION patient_portal_account_mapping_guard()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF (NEW.patient_id IS DISTINCT FROM OLD.patient_id OR lower(trim(NEW.email)) IS DISTINCT FROM lower(trim(OLD.email)))
+     AND EXISTS (
+       SELECT 1
+       FROM patient_portal_identity_legacy_accounts m
+       JOIN patient_portal_identities i ON i.id = m.identity_id
+       WHERE m.legacy_account_id = OLD.id
+         AND (m.patient_id IS DISTINCT FROM NEW.patient_id
+              OR lower(trim(i.normalized_email)) IS DISTINCT FROM lower(trim(NEW.email)))
+     ) THEN
+    RAISE EXCEPTION 'legacy account change would invalidate identity provenance' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS patient_portal_account_mapping_guard_trigger ON patient_portal_accounts;
+CREATE TRIGGER patient_portal_account_mapping_guard_trigger
+  BEFORE UPDATE OF patient_id, email ON patient_portal_accounts
+  FOR EACH ROW EXECUTE FUNCTION patient_portal_account_mapping_guard();
+
+CREATE OR REPLACE FUNCTION patient_mapping_clinic_guard()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.clinic_id IS DISTINCT FROM OLD.clinic_id
+     AND EXISTS (
+       SELECT 1 FROM patient_portal_identity_legacy_accounts m
+       WHERE m.patient_id = OLD.id AND m.clinic_id IS DISTINCT FROM NEW.clinic_id
+     ) THEN
+    RAISE EXCEPTION 'patient clinic change would invalidate identity provenance' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS patient_mapping_clinic_guard_trigger ON patients;
+CREATE TRIGGER patient_mapping_clinic_guard_trigger
+  BEFORE UPDATE OF clinic_id ON patients
+  FOR EACH ROW EXECUTE FUNCTION patient_mapping_clinic_guard();
+
+CREATE OR REPLACE FUNCTION patient_portal_identity_mapping_guard()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.normalized_email IS DISTINCT FROM OLD.normalized_email
+     AND EXISTS (
+       SELECT 1
+       FROM patient_portal_identity_legacy_accounts m
+       JOIN patient_portal_accounts a ON a.id = m.legacy_account_id
+       WHERE m.identity_id = OLD.id
+         AND lower(trim(a.email)) IS DISTINCT FROM lower(trim(NEW.normalized_email))
+     ) THEN
+    RAISE EXCEPTION 'identity email change would invalidate legacy provenance' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS patient_portal_identity_mapping_guard_trigger ON patient_portal_identities;
+CREATE TRIGGER patient_portal_identity_mapping_guard_trigger
+  BEFORE UPDATE OF normalized_email ON patient_portal_identities
+  FOR EACH ROW EXECUTE FUNCTION patient_portal_identity_mapping_guard();
+
 CREATE TABLE IF NOT EXISTS patient_clinic_relationships (
   id SERIAL PRIMARY KEY,
   portal_identity_id INTEGER NOT NULL REFERENCES patient_portal_identities(id) ON DELETE CASCADE,
@@ -2510,18 +2659,13 @@ END $$;
 -- Expand the pre-existing allowlist without changing any flag values. This is
 -- required for the new flags to be represented in the existing flag table.
 DO $$ BEGIN
-  IF EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'authorization_feature_flags_key_ck'
-      AND conrelid = 'authorization_feature_flags'::regclass
-      AND pg_get_constraintdef(oid) NOT LIKE '%patient_portal_invite_linking_v1%'
-  ) THEN
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'authorization_feature_flags_key_ck' AND conrelid = 'authorization_feature_flags'::regclass) THEN
     ALTER TABLE authorization_feature_flags DROP CONSTRAINT authorization_feature_flags_key_ck;
     ALTER TABLE authorization_feature_flags ADD CONSTRAINT authorization_feature_flags_key_ck CHECK (flag_key IN (
       'SHADOW_CLINIC_SUBSCRIPTION_AUTHZ','ENFORCE_CLINIC_SUBSCRIPTION_AUTHZ','SHADOW_STAFF_MEMBERSHIP_AUTHZ','ENFORCE_STAFF_MEMBERSHIP_AUTHZ',
       'ENABLE_OWNER_RECOVERY_ACCESS','ENABLE_GLOBAL_PATIENT_IDENTITY','SHADOW_PATIENT_CLINIC_RELATIONSHIP','ENFORCE_PATIENT_CLINIC_RELATIONSHIP',
       'ENABLE_CLINIC_SELECTION_DASHBOARD','ENABLE_INACTIVE_CLINIC_READ_ONLY',
-      'patient_portal_invite_linking_v1','patient_portal_intake_only_scope_v1','patient_portal_identity_synthetic_auth_v1','patient_portal_relationship_shadow_v1'
+       'patient_portal_invite_linking_v1','patient_portal_intake_only_scope_v1','patient_portal_identity_synthetic_auth_v1','patient_portal_relationship_shadow_v1','SHADOW_PATIENT_IDENTITY_LOGIN'
     ));
   END IF;
 END $$;
