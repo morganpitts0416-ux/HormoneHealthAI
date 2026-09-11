@@ -1,0 +1,80 @@
+Phase E machinery and synthetic validation are accepted.
+
+First create a local checkpoint commit containing the completed Phase E work. Do not push, publish, or deploy.
+
+After checkpointing, you are authorized to perform one bounded development-database apply for legacy portal account ID 2 only, using a fresh dry-run report.
+
+Preconditions
+
+Immediately before applying:
+
+Rerun the dry-run for account 2.
+Require the account to remain clearly_eligible_single_legacy_account.
+Confirm no conflict or must_remain_legacy_only classification.
+Confirm the patient, clinic, email, account status, and password-hash digest have not changed since classification.
+Capture sanitized before-state counts and digests.
+Verify the apply flag is enabled only for the duration of this exact operation.
+Use a maximum-row limit of 1.
+
+If any precondition differs, stop without applying.
+
+Authorized result
+
+The apply may create only:
+
+One global portal identity
+One identity credential containing a byte-for-byte copy of the existing bcrypt hash
+One legacy-account mapping for account 2
+One patient-clinic relationship derived from the exact existing account → patient → clinic provenance
+Required migration and relationship audit records
+
+The mapping may advance only to:
+
+identity_ready
+
+It must not advance to:
+
+identity_enabled
+Existing access must remain authoritative
+
+After apply:
+
+Account 2 must continue authenticating through the unchanged legacy path.
+Its existing password hash must remain byte-for-byte unchanged.
+Its patient ID, clinic ID, normalized email, status, and account ID must remain unchanged.
+Existing sessions must remain valid.
+No password reset may be required.
+No identity-owned session may be created for the existing account.
+No clinic selector may appear.
+The new relationship must not become authoritative for general portal access.
+Failure or deletion of the new additive records must not be required for legacy login to work.
+Verification
+
+Verify:
+
+Exactly one identity, credential, mapping, and relationship were created for account 2.
+The credential hash is byte-for-byte equal to the preserved legacy hash.
+The legacy account row and authentication fields are unchanged.
+The mapping is identity_ready, not identity_enabled.
+A second apply using the same run/report is rejected or produces a verified no-op.
+A normal legacy login still produces only the legacy portalPatientId session.
+No identity-session fields are created.
+All multi-clinic and identity-session flags remain disabled.
+The apply flag is removed or disabled immediately afterward.
+Existing clinician, staff, patient, clinic, portal-account, and session counts remain unchanged.
+
+Do not ask for, display, log, reset, or test the real account’s plaintext password. Validate hash preservation and legacy-path behavior without impersonating the user.
+
+Stop and report:
+
+Phase E checkpoint commit
+Fresh dry-run classification
+Exact rows created
+Before/after sanitized counts and digests
+Idempotency result
+Legacy-login compatibility result
+Final mapping state
+Final feature-flag state
+Build and TypeScript results
+
+Do not enable identity authentication, activate the clinic selector, push to Git, publish Replit, or deploy to GCP.
