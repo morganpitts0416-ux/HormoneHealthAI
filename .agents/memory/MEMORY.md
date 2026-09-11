@@ -22,3 +22,4 @@
 - [Transcript provenance](transcript-provenance.md) — raw STT is immutable server-owned evidence; retries replace deterministic slots and downstream clinical generation resolves raw first
 - [Audio diagnostic session gate](audio-diagnostic-session-gate.md) — preserve initial test opt-in across SPA redirects; server authorization remains mandatory
 - [Access rollout compatibility gate](access-rollout-compatibility-gate.md) — shadow-only until reviewed evidence is approved; never auto-link identities or let migration completion activate enforcement
+- [Patient portal identity transition](patient-portal-identity-transition.md) — legacy login stays authoritative per account; identity rollout requires durable provenance and explicit enablement

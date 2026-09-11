@@ -11,6 +11,11 @@
     "test:unit": "vitest run",
     "db:push": "drizzle-kit push",
     "dry-run:patient-portal-identity-migration": "tsx scripts/dry-run-patient-portal-identity-migration.ts --dry-run",
+    "patient-portal-identity-migration": "tsx scripts/patient-portal-identity-migration.ts",
+    "patient-portal-identity-source-correction": "tsx scripts/patient-portal-identity-source-correction.ts",
+    "patient-portal-identity-synthetic-auth": "tsx scripts/patient-portal-identity-synthetic-auth.ts",
+    "patient-portal-identity-attach-second-account": "tsx scripts/patient-portal-identity-attach-second-account.ts",
+    "validate:patient-portal-identity-phase-e": "tsx scripts/validate-patient-portal-identity-phase-e-synthetic.ts",
     "validate:patient-portal-identity-phases-a-d": "tsx scripts/validate-patient-portal-identity-phases-a-d-synthetic.ts"
   },
   "dependencies": {

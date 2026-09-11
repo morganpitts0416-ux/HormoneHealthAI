@@ -3712,7 +3712,7 @@ export const authorizationFeatureFlags = pgTable("authorization_feature_flags", 
   globalFlagUnique: uniqueIndex("authorization_feature_flags_global_uq").on(t.flagKey).where(sql`${t.clinicId} is null`),
   flagIdx: index("authorization_feature_flags_key_idx").on(t.flagKey),
   clinicFlagIdx: index("authorization_feature_flags_clinic_flag_idx").on(t.clinicId, t.flagKey),
-   flagCheck: check("authorization_feature_flags_key_ck", sql`${t.flagKey} in ('SHADOW_CLINIC_SUBSCRIPTION_AUTHZ','ENFORCE_CLINIC_SUBSCRIPTION_AUTHZ','SHADOW_STAFF_MEMBERSHIP_AUTHZ','ENFORCE_STAFF_MEMBERSHIP_AUTHZ','ENABLE_OWNER_RECOVERY_ACCESS','ENABLE_GLOBAL_PATIENT_IDENTITY','SHADOW_PATIENT_CLINIC_RELATIONSHIP','ENFORCE_PATIENT_CLINIC_RELATIONSHIP','ENABLE_CLINIC_SELECTION_DASHBOARD','ENABLE_INACTIVE_CLINIC_READ_ONLY','patient_portal_invite_linking_v1','patient_portal_intake_only_scope_v1','patient_portal_identity_synthetic_auth_v1','patient_portal_relationship_shadow_v1','SHADOW_PATIENT_IDENTITY_LOGIN')`),
+   flagCheck: check("authorization_feature_flags_key_ck", sql`${t.flagKey} in ('SHADOW_CLINIC_SUBSCRIPTION_AUTHZ','ENFORCE_CLINIC_SUBSCRIPTION_AUTHZ','SHADOW_STAFF_MEMBERSHIP_AUTHZ','ENFORCE_STAFF_MEMBERSHIP_AUTHZ','ENABLE_OWNER_RECOVERY_ACCESS','ENABLE_GLOBAL_PATIENT_IDENTITY','SHADOW_PATIENT_CLINIC_RELATIONSHIP','ENFORCE_PATIENT_CLINIC_RELATIONSHIP','ENABLE_CLINIC_SELECTION_DASHBOARD','ENABLE_INACTIVE_CLINIC_READ_ONLY','patient_portal_invite_linking_v1','patient_portal_intake_only_scope_v1','patient_portal_identity_synthetic_auth_v1','patient_portal_relationship_shadow_v1','SHADOW_PATIENT_IDENTITY_LOGIN','PATIENT_PORTAL_IDENTITY_APPLY_V1')`),
 }));
 
 export const authorizationShadowDecisions = pgTable("authorization_shadow_decisions", {
@@ -3809,6 +3809,7 @@ export const patientPortalIdentityLegacyAccounts = pgTable("patient_portal_ident
   migrationState: varchar("migration_state", { length: 30 }).notNull().default("legacy_only"),
   credentialCompatibilityStatus: varchar("credential_compatibility_status", { length: 30 }).notNull().default("unknown"),
   provenanceRunKey: varchar("provenance_run_key", { length: 160 }).notNull(),
+  migrationRunId: integer("migration_run_id").references(() => patientPortalIdentityMigrationRuns.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   validatedAt: timestamp("validated_at"),
   enabledAt: timestamp("enabled_at"),
@@ -3852,6 +3853,81 @@ export const patientPortalIdentityShadowDecisions = pgTable("patient_portal_iden
   reasonIdx: index("patient_portal_identity_shadow_reason_idx").on(t.reasonCode),
   createdIdx: index("patient_portal_identity_shadow_created_idx").on(t.createdAt),
   reasonCheck: check("patient_portal_identity_shadow_reason_ck", sql`${t.reasonCode} in ('identity_candidate_found','no_identity','multiple_candidates','linkage_missing','linkage_conflicting','credential_available','credential_compatibility_unknown','relationship_missing','relationship_conflicting')`),
+}));
+
+export const patientPortalCredentials = pgTable("patient_portal_credentials", {
+  id: serial("id").primaryKey(),
+  identityId: integer("identity_id").notNull().references(() => patientPortalIdentities.id, { onDelete: "restrict" }),
+  credentialType: varchar("credential_type", { length: 20 }).notNull().default("password"),
+  passwordHash: varchar("password_hash", { length: 255 }).notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+  source: varchar("source", { length: 30 }).notNull().default("legacy_copy"),
+  sourceLegacyAccountId: integer("source_legacy_account_id").references(() => patientPortalAccounts.id, { onDelete: "set null" }),
+  verifiedAt: timestamp("verified_at"),
+  revokedAt: timestamp("revoked_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  activeIdentityUnique: uniqueIndex("patient_portal_credentials_active_identity_uq").on(t.identityId).where(sql`${t.status} = 'active'`),
+  identityIdx: index("patient_portal_credentials_identity_idx").on(t.identityId, t.status),
+  typeCheck: check("patient_portal_credentials_type_ck", sql`${t.credentialType} = 'password'`),
+  statusCheck: check("patient_portal_credentials_status_ck", sql`${t.status} in ('active','revoked')`),
+  sourceCheck: check("patient_portal_credentials_source_ck", sql`${t.source} = 'legacy_copy'`),
+  timestampCheck: check("patient_portal_credentials_timestamp_ck", sql`
+    (${t.status} = 'active' and ${t.revokedAt} is null and ${t.verifiedAt} is not null)
+    or (${t.status} = 'revoked' and ${t.revokedAt} is not null)
+  `),
+}));
+
+export const patientPortalIdentityMigrationRuns = pgTable("patient_portal_identity_migration_runs", {
+  id: serial("id").primaryKey(),
+  runId: varchar("run_id", { length: 36 }).notNull().unique(),
+  idempotencyKey: varchar("idempotency_key", { length: 160 }).notNull().unique(),
+  reportId: varchar("report_id", { length: 64 }).notNull(),
+  cohortFingerprint: varchar("cohort_fingerprint", { length: 64 }).notNull(),
+  accountIds: integer("account_ids").array().notNull(),
+  maxRows: integer("max_rows").notNull(),
+  operation: varchar("operation", { length: 20 }).notNull().default("apply"),
+  status: varchar("status", { length: 30 }).notNull().default("started"),
+  synthetic: boolean("synthetic").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+}, (t) => ({
+  reportIdx: uniqueIndex("patient_portal_identity_migration_runs_report_uq").on(t.reportId),
+  fingerprintIdx: index("patient_portal_identity_migration_runs_fingerprint_idx").on(t.cohortFingerprint),
+  maxRowsCheck: check("patient_portal_identity_migration_runs_max_rows_ck", sql`${t.maxRows} between 1 and 100`),
+  operationCheck: check("patient_portal_identity_migration_runs_operation_ck", sql`${t.operation} in ('dry_run','apply','enable','rollback','correction','attach')`),
+  statusCheck: check("patient_portal_identity_migration_runs_status_ck", sql`${t.status} in ('started','completed','rejected','failed')`),
+}));
+
+export const patientPortalIdentityMigrationEvents = pgTable("patient_portal_identity_migration_events", {
+  id: serial("id").primaryKey(),
+  runId: integer("run_id").references(() => patientPortalIdentityMigrationRuns.id, { onDelete: "set null" }),
+  entityType: varchar("entity_type", { length: 40 }).notNull(),
+  entityId: integer("entity_id"),
+  action: varchar("action", { length: 40 }).notNull(),
+  oldState: varchar("old_state", { length: 40 }),
+  newState: varchar("new_state", { length: 40 }),
+  reasonCode: varchar("reason_code", { length: 100 }).notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  runIdx: index("patient_portal_identity_migration_events_run_idx").on(t.runId, t.createdAt),
+  entityIdx: index("patient_portal_identity_migration_events_entity_idx").on(t.entityType, t.entityId),
+}));
+
+export const patientPortalIdentitySyntheticSessions = pgTable("patient_portal_identity_synthetic_sessions", {
+  id: serial("id").primaryKey(),
+  sessionToken: varchar("session_token", { length: 36 }).notNull().unique(),
+  sessionVersion: integer("session_version").notNull(),
+  identityId: integer("identity_id").notNull().references(() => patientPortalIdentities.id, { onDelete: "restrict" }),
+  mappingId: integer("mapping_id").notNull().references(() => patientPortalIdentityLegacyAccounts.id, { onDelete: "restrict" }),
+  migrationRunId: integer("migration_run_id").notNull().references(() => patientPortalIdentityMigrationRuns.id, { onDelete: "restrict" }),
+  expiresAt: timestamp("expires_at").notNull(),
+  revokedAt: timestamp("revoked_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  activeIdx: index("patient_portal_identity_synthetic_sessions_active_idx").on(t.identityId, t.revokedAt, t.expiresAt),
+  versionCheck: check("patient_portal_identity_synthetic_sessions_version_ck", sql`${t.sessionVersion} > 0`),
 }));
 
 export const patientClinicRelationships = pgTable("patient_clinic_relationships", {
@@ -3968,6 +4044,10 @@ export const patientPortalRelationshipEvents = pgTable("patient_portal_relations
 export type AuthorizationFeatureFlag = typeof authorizationFeatureFlags.$inferSelect;
 export type AuthorizationShadowDecision = typeof authorizationShadowDecisions.$inferSelect;
 export type PatientPortalIdentity = typeof patientPortalIdentities.$inferSelect;
+export type PatientPortalCredential = typeof patientPortalCredentials.$inferSelect;
+export type PatientPortalIdentityMigrationRun = typeof patientPortalIdentityMigrationRuns.$inferSelect;
+export type PatientPortalIdentityMigrationEvent = typeof patientPortalIdentityMigrationEvents.$inferSelect;
+export type PatientPortalIdentitySyntheticSession = typeof patientPortalIdentitySyntheticSessions.$inferSelect;
 export type PatientClinicRelationship = typeof patientClinicRelationships.$inferSelect;
 export type PatientPortalInvite = typeof patientPortalInvites.$inferSelect;
 export type PatientPortalInviteFlow = typeof patientPortalInviteFlows.$inferSelect;

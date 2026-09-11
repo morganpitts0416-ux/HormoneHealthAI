@@ -1,0 +1,140 @@
+The second-milestone plan is conditionally approved for Phases A–D only:
+
+Compatibility baselines
+Additive schema
+Shadow authentication
+Dry-run migration/classification tooling
+
+Do not implement apply-mode backfill, activate identity sessions, remediate portal route families, or build/enable the clinic selector yet.
+
+Incorporate the following requirements during this approved boundary.
+
+1. Identity records must never poison valid legacy login
+
+Do not route an existing patient into identity authentication merely because an identity with the same normalized email exists.
+
+Add an explicit account-level migration/readiness state. Identity authentication may become authoritative only when the exact legacy account has been deliberately classified, linked, validated, and enabled for the approved cohort.
+
+Suggested concepts:
+
+legacy_only
+shadow_ready
+identity_ready
+identity_enabled
+conflicting
+rollback_legacy
+
+With identity sessions enabled globally or for a clinic:
+
+An existing legacy account that is not explicitly identity_enabled must continue through the unchanged legacy login path.
+An incomplete, duplicate, conflicting, or erroneous identity record must not block an otherwise valid legacy login.
+A conflict may block migration into identity authentication, but it must not disable the pre-existing legacy account.
+Revocation of a confirmed identity or relationship must not be bypassed through fallback after that exact account has become identity-authoritative.
+
+The system must distinguish:
+
+“Not yet migrated—continue legacy access”
+“Migration conflict—continue controlled legacy access and queue review”
+“Explicitly identity-enabled—identity security state is authoritative”
+“Rolled back—return this account to legacy authentication”
+
+Add tests proving a malformed, incomplete, duplicate, or conflicting identity cannot lock a valid legacy-only patient out.
+
+2. Use a many-to-one legacy-account linkage
+
+Do not rely on a single legacy_portal_account_id field on patient_portal_identities.
+
+Add a dedicated mapping structure, such as:
+
+patient_portal_identity_legacy_accounts
+
+It should support:
+
+One global identity linked to multiple clinic-specific legacy portal accounts
+One legacy portal account linked to at most one global identity
+Explicit migration state per linkage
+Clinic and patient provenance
+Credential compatibility status
+Created, validated, enabled, conflicted, and rolled-back timestamps
+Deterministic migration/audit provenance
+
+Required constraints:
+
+A legacy portal account cannot belong to two identities.
+Linkage clinic and patient must agree with the legacy account’s patient and clinic.
+Matching email alone cannot create the linkage.
+Conflicting legacy password hashes cannot be automatically overwritten or tested sequentially.
+Multiple legacy accounts for one identity remain independently recoverable until migration is explicitly completed.
+
+Remove or deprecate the singular legacy-account field only additively. Do not delete it or rewrite existing foundation rows during this boundary.
+
+3. Clarify password-hash handling
+
+Bcrypt hashes for the same password may differ because of salting. Do not treat two non-identical bcrypt hashes as proof that the underlying passwords differ.
+
+For dry-run classification:
+
+Identical hashes may support evidence of a direct copied credential.
+Different hashes are “credential compatibility unknown,” not definitive proof of different passwords.
+Never attempt several legacy hashes during one login to discover which account matches.
+Never ask for or store plaintext passwords during migration.
+Any eventual credential unification must occur through verified login, password reset, or another explicitly approved process.
+4. Shadow mode must be non-blocking
+
+Shadow evaluation may report:
+
+Identity candidate found
+No identity
+Multiple candidates
+Linkage missing
+Linkage conflicting
+Credential available
+Credential compatibility unknown
+Relationship missing or conflicting
+
+It must never:
+
+Change a login response
+Change a session
+Update a last-login timestamp
+Create an identity, credential, linkage, or relationship
+Trigger password reset
+Disable or flag a legacy account in a way that affects access
+
+Do not store submitted passwords, password hashes, emails, names, or PHI in shadow logs.
+
+5. Approved dry-run only
+
+Build the migration command with --dry-run functionality only. Do not implement an operational --apply path yet.
+
+The dry-run report must classify:
+
+Clearly eligible single legacy accounts
+Same email used by separate patient records at different clinics
+Multiple legacy accounts potentially belonging to one person
+Shared-family email
+Same-clinic duplicates
+Missing patient or clinic ownership
+Identity/linkage conflicts
+Credential compatibility unknown
+Accounts that must remain legacy-only
+
+No identities, credentials, mappings, relationships, audit events, or review items may be created by dry-run.
+
+Required stopping report
+
+Stop after Phases A–D and provide:
+
+Before-and-after legacy authentication compatibility results
+Exact schema additions and constraints
+The account-level migration state model
+The many-to-one legacy linkage model
+Shadow login comparison results
+Dry-run classifications and counts
+Proof that dry-run changed zero rows
+Tests showing incomplete/conflicting identities do not block legacy login
+Existing user, account, patient, session, and credential counts before and after
+TypeScript baseline and build results
+Proposed Phase E apply algorithm, without implementing or running it
+
+Do not modify existing credentials, run a backfill, enable identity sessions, change existing login responses, push to Git, publish Replit, or deploy to GCP.

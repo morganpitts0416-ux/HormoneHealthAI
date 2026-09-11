@@ -2352,6 +2352,7 @@ CREATE TABLE IF NOT EXISTS patient_portal_identity_legacy_accounts (
   migration_state VARCHAR(30) NOT NULL DEFAULT 'legacy_only',
   credential_compatibility_status VARCHAR(30) NOT NULL DEFAULT 'unknown',
   provenance_run_key VARCHAR(160) NOT NULL,
+  migration_run_id INTEGER,
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
   validated_at TIMESTAMP,
   enabled_at TIMESTAMP,
@@ -2382,6 +2383,250 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- Provenance is validated by deferred constraint triggers, not a bypass flag.
+-- Every transaction (including the reviewed API below) must commit a coherent
+-- graph; direct source edits fail at commit just like coordinated edits.
+CREATE OR REPLACE FUNCTION patient_portal_identity_validate_final_graph()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_catalog
+AS $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM patient_portal_identity_legacy_accounts m
+    LEFT JOIN patient_portal_accounts a ON a.id=m.legacy_account_id
+    LEFT JOIN patients p ON p.id=m.patient_id
+    LEFT JOIN patient_portal_identities i ON i.id=m.identity_id
+    WHERE a.id IS NULL OR p.id IS NULL OR p.clinic_id IS NULL OR i.id IS NULL
+      OR a.patient_id IS DISTINCT FROM m.patient_id
+      OR p.clinic_id IS DISTINCT FROM m.clinic_id
+      OR lower(trim(a.email)) IS DISTINCT FROM lower(trim(i.normalized_email))
+  ) THEN
+    RAISE EXCEPTION 'patient portal identity provenance graph is invalid' USING ERRCODE='23514';
+  END IF;
+  IF EXISTS (
+    SELECT 1
+    FROM patient_clinic_relationships r
+    WHERE r.relationship_status='active' AND r.scope='full_portal'
+      AND NOT EXISTS (
+        SELECT 1 FROM patient_portal_identity_legacy_accounts m
+        WHERE m.identity_id=r.portal_identity_id
+          AND m.patient_id=r.patient_id AND m.clinic_id=r.clinic_id
+      )
+  ) THEN
+    RAISE EXCEPTION 'active full portal relationship lacks identity mapping provenance' USING ERRCODE='23514';
+  END IF;
+  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+  RETURN NEW;
+END $$;
+
+DROP TRIGGER IF EXISTS patient_portal_identity_legacy_accounts_provenance_trigger ON patient_portal_identity_legacy_accounts;
+DROP TRIGGER IF EXISTS patient_portal_account_mapping_guard_trigger ON patient_portal_accounts;
+DROP TRIGGER IF EXISTS patient_portal_identity_mapping_guard_trigger ON patient_portal_identities;
+DROP TRIGGER IF EXISTS patient_mapping_clinic_guard_trigger ON patients;
+DROP TRIGGER IF EXISTS patient_portal_account_email_collision_lock_trigger ON patient_portal_accounts;
+DROP TRIGGER IF EXISTS patient_portal_identity_email_collision_lock_trigger ON patient_portal_identities;
+DROP TRIGGER IF EXISTS patient_portal_identity_legacy_accounts_provenance_deferred ON patient_portal_identity_legacy_accounts;
+DROP TRIGGER IF EXISTS patient_portal_accounts_provenance_deferred ON patient_portal_accounts;
+DROP TRIGGER IF EXISTS patients_provenance_deferred ON patients;
+DROP TRIGGER IF EXISTS patient_portal_identities_provenance_deferred ON patient_portal_identities;
+CREATE CONSTRAINT TRIGGER patient_portal_identity_legacy_accounts_provenance_deferred
+  AFTER INSERT OR UPDATE OR DELETE ON patient_portal_identity_legacy_accounts
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+  EXECUTE FUNCTION patient_portal_identity_validate_final_graph();
+CREATE CONSTRAINT TRIGGER patient_portal_accounts_provenance_deferred
+  AFTER INSERT OR UPDATE ON patient_portal_accounts
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+  EXECUTE FUNCTION patient_portal_identity_validate_final_graph();
+CREATE CONSTRAINT TRIGGER patients_provenance_deferred
+  AFTER INSERT OR UPDATE ON patients
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+  EXECUTE FUNCTION patient_portal_identity_validate_final_graph();
+CREATE CONSTRAINT TRIGGER patient_portal_identities_provenance_deferred
+  AFTER INSERT OR UPDATE ON patient_portal_identities
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+  EXECUTE FUNCTION patient_portal_identity_validate_final_graph();
+
+CREATE OR REPLACE FUNCTION patient_portal_reviewed_correction(
+  p_idempotency_key UUID,
+  p_field TEXT,
+  p_identity_id INTEGER,
+  p_legacy_account_id INTEGER,
+  p_patient_id INTEGER,
+  p_new_value TEXT,
+  p_reason_code TEXT
+) RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_catalog
+AS $$
+DECLARE
+  m RECORD;
+  run RECORD;
+  arg_fingerprint TEXT;
+  old_state TEXT;
+  next_patient INTEGER;
+  next_clinic INTEGER;
+BEGIN
+  IF p_reason_code IS NULL OR length(trim(p_reason_code))=0
+     OR p_field NOT IN ('patient_email','identity_email','legacy_account_email','patient_clinic','account_patient')
+     OR p_identity_id IS NULL OR p_legacy_account_id IS NULL OR p_patient_id IS NULL THEN
+    RAISE EXCEPTION 'invalid reviewed correction arguments';
+  END IF;
+  arg_fingerprint := md5(concat_ws('|',p_field,p_identity_id,p_legacy_account_id,p_patient_id,p_new_value,p_reason_code));
+  SELECT * INTO run FROM patient_portal_identity_migration_runs WHERE idempotency_key=p_idempotency_key::text AND operation='correction' FOR UPDATE;
+  IF FOUND THEN
+    IF run.report_id <> arg_fingerprint THEN RAISE EXCEPTION 'correction idempotency arguments changed'; END IF;
+    RETURN jsonb_build_object('status','completed','idempotent',true);
+  END IF;
+  SELECT mapping.*, i.normalized_email, a.email AS account_email, p.clinic_id AS actual_clinic
+    INTO m
+    FROM patient_portal_identity_legacy_accounts mapping
+    JOIN patient_portal_identities i ON i.id=mapping.identity_id
+    JOIN patient_portal_accounts a ON a.id=mapping.legacy_account_id
+    JOIN patients p ON p.id=mapping.patient_id
+    WHERE mapping.identity_id=p_identity_id AND mapping.legacy_account_id=p_legacy_account_id AND mapping.patient_id=p_patient_id
+    FOR UPDATE;
+  IF NOT FOUND OR m.migration_state='identity_enabled' THEN RAISE EXCEPTION 'correction graph missing or identity enabled'; END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended(lower(trim(m.account_email)),0::bigint));
+  PERFORM pg_advisory_xact_lock(hashtextextended(lower(trim(coalesce(p_new_value,m.account_email))),0::bigint));
+  -- Email corrections are identity-global: lock and update every sibling
+  -- mapping atomically, rather than leaving a many-to-one graph split.
+  PERFORM 1 FROM patient_portal_identity_legacy_accounts
+    WHERE identity_id=p_identity_id FOR UPDATE;
+  PERFORM 1 FROM patient_portal_accounts a
+    JOIN patient_portal_identity_legacy_accounts sibling ON sibling.legacy_account_id=a.id
+    WHERE sibling.identity_id=p_identity_id FOR UPDATE;
+  PERFORM 1 FROM patients p
+    JOIN patient_portal_identity_legacy_accounts sibling ON sibling.patient_id=p.id
+    WHERE sibling.identity_id=p_identity_id FOR UPDATE;
+  IF EXISTS (
+    SELECT 1 FROM patient_portal_identity_legacy_accounts sibling
+    WHERE sibling.identity_id=p_identity_id AND sibling.migration_state='identity_enabled'
+  ) THEN
+    RAISE EXCEPTION 'global identity correction requires every mapping to be disabled';
+  END IF;
+  old_state := m.migration_state;
+  IF p_field IN ('patient_email','identity_email','legacy_account_email') THEN
+    IF EXISTS (
+      SELECT 1 FROM patient_portal_accounts outside_account
+      WHERE lower(trim(outside_account.email))=lower(trim(p_new_value))
+        AND NOT EXISTS (
+          SELECT 1 FROM patient_portal_identity_legacy_accounts sibling
+          WHERE sibling.identity_id=p_identity_id
+            AND sibling.legacy_account_id=outside_account.id
+        )
+    ) THEN
+      RAISE EXCEPTION 'corrected identity email collides with an unrelated legacy account';
+    END IF;
+    -- Legacy accounts retain an exact-email uniqueness constraint. Assign
+    -- deterministic whitespace variants so all siblings normalize to the same
+    -- identity email without weakening that existing constraint.
+    WITH sibling_accounts AS (
+      SELECT legacy_account_id,
+        row_number() OVER (ORDER BY legacy_account_id) AS ordinal
+      FROM patient_portal_identity_legacy_accounts
+      WHERE identity_id=p_identity_id
+    )
+    UPDATE patient_portal_accounts target_account
+      SET email=repeat(' ', (sibling.ordinal-1)::integer) || trim(p_new_value)
+      FROM sibling_accounts sibling
+      WHERE target_account.id=sibling.legacy_account_id;
+    UPDATE patients SET email=p_new_value WHERE id IN
+      (SELECT patient_id FROM patient_portal_identity_legacy_accounts WHERE identity_id=p_identity_id);
+    UPDATE patient_portal_identities SET normalized_email=lower(trim(p_new_value)) WHERE id=p_identity_id;
+  ELSIF p_field='patient_clinic' THEN
+    next_clinic := p_new_value::integer;
+    IF NOT EXISTS (SELECT 1 FROM clinics WHERE id=next_clinic) THEN RAISE EXCEPTION 'clinic not found'; END IF;
+    UPDATE patients SET clinic_id=next_clinic WHERE id=p_patient_id;
+    UPDATE patient_portal_identity_legacy_accounts SET clinic_id=next_clinic WHERE id=m.id;
+  ELSE
+    next_patient := p_new_value::integer;
+    SELECT clinic_id INTO next_clinic FROM patients WHERE id=next_patient;
+    IF next_clinic IS NULL THEN RAISE EXCEPTION 'target patient missing clinic'; END IF;
+    UPDATE patient_portal_accounts SET patient_id=next_patient WHERE id=p_legacy_account_id;
+    UPDATE patient_portal_identity_legacy_accounts SET patient_id=next_patient,clinic_id=next_clinic WHERE id=m.id;
+  END IF;
+  IF p_field IN ('patient_clinic','account_patient') THEN
+    SELECT clinic_id INTO next_clinic FROM patient_portal_identity_legacy_accounts WHERE id=m.id;
+    SELECT patient_id INTO next_patient FROM patient_portal_identity_legacy_accounts WHERE id=m.id;
+    UPDATE patient_clinic_relationships r SET relationship_status='revoked',scope='historical_read',revoked_at=NOW(),updated_at=NOW()
+      WHERE r.portal_identity_id=p_identity_id AND r.relationship_status='active'
+        AND (r.patient_id,r.clinic_id) IS DISTINCT FROM (next_patient,next_clinic)
+        AND NOT EXISTS (
+          SELECT 1 FROM patient_portal_identity_legacy_accounts sibling
+          WHERE sibling.identity_id=p_identity_id
+            AND sibling.patient_id=r.patient_id AND sibling.clinic_id=r.clinic_id
+        );
+    UPDATE patient_clinic_relationships SET relationship_status='active',scope='full_portal',
+      verification_method='reviewed_correction',verified_at=NOW(),revoked_at=NULL,updated_at=NOW()
+      WHERE portal_identity_id=p_identity_id AND patient_id=next_patient AND clinic_id=next_clinic
+        AND relationship_type='self';
+    IF NOT FOUND THEN
+      INSERT INTO patient_clinic_relationships (portal_identity_id,patient_id,clinic_id,relationship_type,relationship_status,verification_method,scope,verified_at)
+        VALUES (p_identity_id,next_patient,next_clinic,'self','active','reviewed_correction','full_portal',NOW());
+    END IF;
+  END IF;
+  INSERT INTO patient_portal_identity_migration_runs (run_id,idempotency_key,report_id,cohort_fingerprint,account_ids,max_rows,operation,status,synthetic)
+    VALUES (p_idempotency_key,p_idempotency_key,arg_fingerprint,arg_fingerprint,ARRAY[p_legacy_account_id],1,'correction','completed',false)
+    RETURNING * INTO run;
+  INSERT INTO patient_portal_identity_migration_events (run_id,entity_type,entity_id,action,old_state,new_state,reason_code)
+    VALUES (run.id,'legacy_account',p_legacy_account_id,'reviewed_correction',old_state,old_state,p_reason_code);
+  SET CONSTRAINTS ALL IMMEDIATE;
+  RETURN jsonb_build_object('status','completed','idempotent',false);
+END $$;
+REVOKE ALL ON FUNCTION patient_portal_reviewed_correction(UUID,TEXT,INTEGER,INTEGER,INTEGER,TEXT,TEXT) FROM PUBLIC;
+
+-- Synthetic-only second-account attachment. Password compatibility is proved
+-- once in the development CLI; this function performs all graph writes under
+-- locks and never changes either source hash.
+CREATE OR REPLACE FUNCTION patient_portal_reviewed_attach_second_account(
+  p_idempotency_key UUID, p_run_id INTEGER, p_identity_id INTEGER,
+  p_account_id INTEGER, p_patient_id INTEGER, p_reason_code TEXT
+) RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public, pg_catalog AS $$
+DECLARE base RECORD; second RECORD; run RECORD; arg_fingerprint TEXT;
+BEGIN
+  IF p_reason_code IS NULL OR length(trim(p_reason_code))=0 THEN RAISE EXCEPTION 'reason required'; END IF;
+  arg_fingerprint := md5(concat_ws('|',p_run_id,p_identity_id,p_account_id,p_patient_id,p_reason_code));
+  SELECT * INTO run FROM patient_portal_identity_migration_runs WHERE idempotency_key=p_idempotency_key::text AND operation='attach' FOR UPDATE;
+  IF FOUND THEN
+    IF run.report_id <> arg_fingerprint THEN RAISE EXCEPTION 'attach idempotency arguments changed'; END IF;
+    RETURN jsonb_build_object('status','completed','idempotent',true);
+  END IF;
+  SELECT * INTO run FROM patient_portal_identity_migration_runs WHERE id=p_run_id AND synthetic=true AND status='completed' FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'completed synthetic run required'; END IF;
+  SELECT m.*,i.normalized_email,i.account_status,i.verification_status
+    INTO base FROM patient_portal_identity_legacy_accounts m JOIN patient_portal_identities i ON i.id=m.identity_id
+   WHERE m.identity_id=p_identity_id AND m.migration_run_id=p_run_id FOR UPDATE;
+  IF NOT FOUND OR base.migration_state <> 'identity_ready' OR base.account_status <> 'active' OR base.verification_status <> 'verified' THEN RAISE EXCEPTION 'base identity is not compatible'; END IF;
+  SELECT a.*,p.clinic_id INTO second FROM patient_portal_accounts a JOIN patients p ON p.id=a.patient_id
+   WHERE a.id=p_account_id AND a.patient_id=p_patient_id FOR UPDATE;
+  IF NOT FOUND OR NOT second.is_active OR second.clinic_id IS NULL OR lower(trim(second.email)) NOT LIKE '%.invalid' THEN RAISE EXCEPTION 'second account is not synthetic and owned'; END IF;
+  IF EXISTS (SELECT 1 FROM patient_portal_identity_legacy_accounts WHERE legacy_account_id=p_account_id) THEN RAISE EXCEPTION 'second account already mapped'; END IF;
+  IF second.clinic_id=base.clinic_id THEN RAISE EXCEPTION 'second account must be a different clinic'; END IF;
+  IF lower(trim(second.email)) <> lower(trim(base.normalized_email)) THEN
+    RAISE EXCEPTION 'second account email must match identity email';
+  END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended(lower(trim(second.email)),0::bigint));
+  IF (SELECT count(*) FROM patient_portal_credentials WHERE identity_id=p_identity_id AND status='active') <> 1 THEN RAISE EXCEPTION 'exactly one active credential required'; END IF;
+  INSERT INTO patient_portal_identity_legacy_accounts
+    (identity_id,legacy_account_id,patient_id,clinic_id,migration_state,credential_compatibility_status,provenance_run_key,migration_run_id,validated_at)
+    VALUES (p_identity_id,p_account_id,p_patient_id,second.clinic_id,'identity_ready','compatible_verified',p_idempotency_key,p_run_id,NOW());
+  INSERT INTO patient_clinic_relationships
+    (portal_identity_id,patient_id,clinic_id,relationship_type,relationship_status,verification_method,scope,verified_at)
+    VALUES (p_identity_id,p_patient_id,second.clinic_id,'self','active','synthetic_compatibility','full_portal',NOW());
+  INSERT INTO patient_portal_identity_migration_runs
+    (run_id,idempotency_key,report_id,cohort_fingerprint,account_ids,max_rows,operation,status,synthetic)
+    VALUES (p_idempotency_key,p_idempotency_key,arg_fingerprint,arg_fingerprint,ARRAY[p_account_id],1,'attach','completed',true)
+    RETURNING * INTO run;
+  INSERT INTO patient_portal_identity_migration_events (run_id,entity_type,entity_id,action,new_state,reason_code)
+    VALUES (run.id,'legacy_account',p_account_id,'attach','identity_ready',p_reason_code);
+  RETURN jsonb_build_object('status','completed');
+END $$;
+REVOKE ALL ON FUNCTION patient_portal_reviewed_attach_second_account(UUID,INTEGER,INTEGER,INTEGER,INTEGER,TEXT) FROM PUBLIC;
+
 CREATE TABLE IF NOT EXISTS patient_portal_identity_shadow_decisions (
   id SERIAL PRIMARY KEY,
   request_id VARCHAR(100) NOT NULL,
@@ -2394,6 +2639,134 @@ CREATE INDEX IF NOT EXISTS patient_portal_identity_shadow_request_idx ON patient
 CREATE INDEX IF NOT EXISTS patient_portal_identity_shadow_reason_idx ON patient_portal_identity_shadow_decisions (reason_code);
 CREATE INDEX IF NOT EXISTS patient_portal_identity_shadow_created_idx ON patient_portal_identity_shadow_decisions (created_at);
 
+CREATE TABLE IF NOT EXISTS patient_portal_credentials (
+  id SERIAL PRIMARY KEY,
+  identity_id INTEGER NOT NULL REFERENCES patient_portal_identities(id) ON DELETE RESTRICT,
+  credential_type VARCHAR(20) NOT NULL DEFAULT 'password',
+  password_hash VARCHAR(255) NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'active',
+  source VARCHAR(30) NOT NULL DEFAULT 'legacy_copy',
+  source_legacy_account_id INTEGER REFERENCES patient_portal_accounts(id) ON DELETE SET NULL,
+  verified_at TIMESTAMP,
+  revoked_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  CONSTRAINT patient_portal_credentials_type_ck CHECK (credential_type = 'password'),
+  CONSTRAINT patient_portal_credentials_status_ck CHECK (status IN ('active','revoked')),
+  CONSTRAINT patient_portal_credentials_source_ck CHECK (source = 'legacy_copy'),
+  CONSTRAINT patient_portal_credentials_timestamp_ck CHECK (
+    (status = 'active' AND revoked_at IS NULL AND verified_at IS NOT NULL)
+    OR (status = 'revoked' AND revoked_at IS NOT NULL)
+  )
+);
+CREATE UNIQUE INDEX IF NOT EXISTS patient_portal_credentials_active_identity_uq
+  ON patient_portal_credentials (identity_id) WHERE status = 'active';
+CREATE INDEX IF NOT EXISTS patient_portal_credentials_identity_idx
+  ON patient_portal_credentials (identity_id, status);
+
+CREATE TABLE IF NOT EXISTS patient_portal_identity_migration_runs (
+  id SERIAL PRIMARY KEY,
+  run_id UUID NOT NULL UNIQUE,
+  idempotency_key VARCHAR(160) NOT NULL UNIQUE,
+  report_id VARCHAR(64) NOT NULL UNIQUE,
+  cohort_fingerprint VARCHAR(64) NOT NULL,
+  account_ids INTEGER[] NOT NULL,
+  max_rows INTEGER NOT NULL CHECK (max_rows BETWEEN 1 AND 100),
+  operation VARCHAR(20) NOT NULL DEFAULT 'apply' CHECK (operation IN ('dry_run','apply','enable','rollback','correction','attach')),
+  status VARCHAR(30) NOT NULL DEFAULT 'started' CHECK (status IN ('started','completed','rejected','failed')),
+  synthetic BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  completed_at TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS patient_portal_identity_migration_runs_fingerprint_idx
+  ON patient_portal_identity_migration_runs (cohort_fingerprint);
+DO $$ BEGIN
+  ALTER TABLE patient_portal_identity_legacy_accounts ADD COLUMN IF NOT EXISTS migration_run_id INTEGER;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='patient_portal_identity_legacy_run_fk') THEN
+    ALTER TABLE patient_portal_identity_legacy_accounts
+      ADD CONSTRAINT patient_portal_identity_legacy_run_fk FOREIGN KEY (migration_run_id)
+      REFERENCES patient_portal_identity_migration_runs(id) ON DELETE SET NULL;
+  END IF;
+END $$;
+CREATE TABLE IF NOT EXISTS patient_portal_identity_synthetic_sessions (
+  id SERIAL PRIMARY KEY,
+  session_token UUID NOT NULL UNIQUE,
+  session_version INTEGER NOT NULL CHECK (session_version > 0),
+  identity_id INTEGER NOT NULL REFERENCES patient_portal_identities(id) ON DELETE RESTRICT,
+  mapping_id INTEGER NOT NULL REFERENCES patient_portal_identity_legacy_accounts(id) ON DELETE RESTRICT,
+  migration_run_id INTEGER NOT NULL REFERENCES patient_portal_identity_migration_runs(id) ON DELETE RESTRICT,
+  expires_at TIMESTAMP NOT NULL,
+  revoked_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS patient_portal_identity_synthetic_sessions_active_idx
+  ON patient_portal_identity_synthetic_sessions (identity_id, revoked_at, expires_at);
+
+CREATE TABLE IF NOT EXISTS patient_portal_identity_migration_events (
+  id SERIAL PRIMARY KEY,
+  run_id INTEGER REFERENCES patient_portal_identity_migration_runs(id) ON DELETE SET NULL,
+  entity_type VARCHAR(40) NOT NULL,
+  entity_id INTEGER,
+  action VARCHAR(40) NOT NULL,
+  old_state VARCHAR(40),
+  new_state VARCHAR(40),
+  reason_code VARCHAR(100) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS patient_portal_identity_migration_events_run_idx
+  ON patient_portal_identity_migration_events (run_id, created_at);
+CREATE INDEX IF NOT EXISTS patient_portal_identity_migration_events_entity_idx
+  ON patient_portal_identity_migration_events (entity_type, entity_id);
+CREATE OR REPLACE FUNCTION patient_portal_identity_migration_events_append_only()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF current_setting('patient_portal.synthetic_cleanup', true) = 'on' THEN
+    RETURN OLD;
+  END IF;
+  RAISE EXCEPTION 'patient portal identity migration events are append-only' USING ERRCODE = '55000';
+END $$;
+DROP TRIGGER IF EXISTS patient_portal_identity_migration_events_no_update ON patient_portal_identity_migration_events;
+CREATE TRIGGER patient_portal_identity_migration_events_no_update
+  BEFORE UPDATE OR DELETE ON patient_portal_identity_migration_events
+  FOR EACH ROW EXECUTE FUNCTION patient_portal_identity_migration_events_append_only();
+
+-- Development validator cleanup is the only permitted deletion path for the
+-- append-only synthetic audit rows.  It is intentionally narrow: callers must
+-- provide fixture account IDs, all referenced runs must be synthetic or
+-- reviewed corrections, and every account must still be a .invalid fixture.
+CREATE OR REPLACE FUNCTION patient_portal_identity_synthetic_cleanup(p_account_ids INTEGER[])
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_catalog
+AS $$
+DECLARE run_ids INTEGER[];
+BEGIN
+  IF current_setting('patient_portal.synthetic_cleanup_request', true) <> 'on'
+     OR p_account_ids IS NULL OR cardinality(p_account_ids) = 0
+     OR EXISTS (SELECT 1 FROM patient_portal_accounts a
+                WHERE a.id = ANY(p_account_ids)
+                  AND lower(trim(a.email)) NOT LIKE '%.invalid') THEN
+    RAISE EXCEPTION 'synthetic cleanup requires explicit .invalid fixture IDs';
+  END IF;
+  IF EXISTS (SELECT 1 FROM patient_portal_identity_synthetic_sessions s
+             JOIN patient_portal_identity_legacy_accounts m ON m.id=s.mapping_id
+             WHERE m.legacy_account_id = ANY(p_account_ids)) THEN
+    RAISE EXCEPTION 'synthetic graph must be removed before audit cleanup';
+  END IF;
+  SELECT array_agg(id) INTO run_ids
+    FROM patient_portal_identity_migration_runs
+   WHERE account_ids && p_account_ids
+     AND (synthetic OR operation = 'correction');
+  PERFORM set_config('patient_portal.synthetic_cleanup','on',true);
+  DELETE FROM patient_portal_identity_migration_events
+   WHERE run_id = ANY(coalesce(run_ids, ARRAY[]::INTEGER[]));
+  DELETE FROM patient_portal_identity_migration_runs
+   WHERE id = ANY(coalesce(run_ids, ARRAY[]::INTEGER[]));
+  RETURN jsonb_build_object('runs',coalesce(cardinality(run_ids),0));
+END $$;
+REVOKE ALL ON FUNCTION patient_portal_identity_synthetic_cleanup(INTEGER[]) FROM PUBLIC;
+
 -- Deterministic, read-only linkage validation helper (patient/clinic agreement
 -- cannot be represented by a cross-table CHECK constraint).
 CREATE OR REPLACE VIEW patient_portal_identity_legacy_linkage_validation AS
@@ -2405,90 +2778,34 @@ FROM patient_portal_identity_legacy_accounts m
 JOIN patient_portal_accounts a ON a.id = m.legacy_account_id
 JOIN patients p ON p.id = m.patient_id;
 
-CREATE OR REPLACE FUNCTION patient_portal_identity_legacy_accounts_provenance_guard()
-RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE
-  account_patient INTEGER;
-  account_email TEXT;
-  patient_clinic INTEGER;
-  identity_email TEXT;
-BEGIN
-  SELECT a.patient_id, lower(trim(a.email)) INTO account_patient, account_email
-    FROM patient_portal_accounts a WHERE a.id = NEW.legacy_account_id FOR UPDATE;
-  SELECT p.clinic_id INTO patient_clinic FROM patients p WHERE p.id = NEW.patient_id FOR UPDATE;
-  SELECT lower(trim(i.normalized_email)) INTO identity_email
-    FROM patient_portal_identities i WHERE i.id = NEW.identity_id FOR UPDATE;
-  IF account_patient IS NULL OR account_email IS NULL OR patient_clinic IS NULL OR identity_email IS NULL
-     OR NEW.patient_id IS NULL OR NEW.clinic_id IS NULL
-     OR account_patient <> NEW.patient_id OR patient_clinic <> NEW.clinic_id
-     OR account_email <> identity_email THEN
-    RAISE EXCEPTION 'patient portal identity legacy provenance mismatch' USING ERRCODE = '23514';
-  END IF;
-  RETURN NEW;
-END $$;
 DROP TRIGGER IF EXISTS patient_portal_identity_legacy_accounts_provenance_trigger
   ON patient_portal_identity_legacy_accounts;
-CREATE TRIGGER patient_portal_identity_legacy_accounts_provenance_trigger
-  BEFORE INSERT OR UPDATE ON patient_portal_identity_legacy_accounts
-  FOR EACH ROW EXECUTE FUNCTION patient_portal_identity_legacy_accounts_provenance_guard();
-
-CREATE OR REPLACE FUNCTION patient_portal_account_mapping_guard()
-RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN
-  IF (NEW.patient_id IS DISTINCT FROM OLD.patient_id OR lower(trim(NEW.email)) IS DISTINCT FROM lower(trim(OLD.email)))
-     AND EXISTS (
-       SELECT 1
-       FROM patient_portal_identity_legacy_accounts m
-       JOIN patient_portal_identities i ON i.id = m.identity_id
-       WHERE m.legacy_account_id = OLD.id
-         AND (m.patient_id IS DISTINCT FROM NEW.patient_id
-              OR lower(trim(i.normalized_email)) IS DISTINCT FROM lower(trim(NEW.email)))
-     ) THEN
-    RAISE EXCEPTION 'legacy account change would invalidate identity provenance' USING ERRCODE = '23514';
-  END IF;
-  RETURN NEW;
-END $$;
+DROP FUNCTION IF EXISTS patient_portal_identity_legacy_accounts_provenance_guard();
 DROP TRIGGER IF EXISTS patient_portal_account_mapping_guard_trigger ON patient_portal_accounts;
-CREATE TRIGGER patient_portal_account_mapping_guard_trigger
-  BEFORE UPDATE OF patient_id, email ON patient_portal_accounts
-  FOR EACH ROW EXECUTE FUNCTION patient_portal_account_mapping_guard();
-
-CREATE OR REPLACE FUNCTION patient_mapping_clinic_guard()
+DROP FUNCTION IF EXISTS patient_portal_account_mapping_guard();
+CREATE OR REPLACE FUNCTION patient_portal_account_email_collision_lock()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-  IF NEW.clinic_id IS DISTINCT FROM OLD.clinic_id
-     AND EXISTS (
-       SELECT 1 FROM patient_portal_identity_legacy_accounts m
-       WHERE m.patient_id = OLD.id AND m.clinic_id IS DISTINCT FROM NEW.clinic_id
-     ) THEN
-    RAISE EXCEPTION 'patient clinic change would invalidate identity provenance' USING ERRCODE = '23514';
-  END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended(lower(trim(NEW.email)),0::bigint));
   RETURN NEW;
 END $$;
+DROP TRIGGER IF EXISTS patient_portal_account_email_collision_lock_trigger ON patient_portal_accounts;
+CREATE TRIGGER patient_portal_account_email_collision_lock_trigger
+  BEFORE INSERT ON patient_portal_accounts FOR EACH ROW EXECUTE FUNCTION patient_portal_account_email_collision_lock();
+
 DROP TRIGGER IF EXISTS patient_mapping_clinic_guard_trigger ON patients;
-CREATE TRIGGER patient_mapping_clinic_guard_trigger
-  BEFORE UPDATE OF clinic_id ON patients
-  FOR EACH ROW EXECUTE FUNCTION patient_mapping_clinic_guard();
-
-CREATE OR REPLACE FUNCTION patient_portal_identity_mapping_guard()
+DROP FUNCTION IF EXISTS patient_mapping_clinic_guard();
+DROP TRIGGER IF EXISTS patient_portal_identity_mapping_guard_trigger ON patient_portal_identities;
+DROP FUNCTION IF EXISTS patient_portal_identity_mapping_guard();
+CREATE OR REPLACE FUNCTION patient_portal_identity_email_collision_lock()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-  IF NEW.normalized_email IS DISTINCT FROM OLD.normalized_email
-     AND EXISTS (
-       SELECT 1
-       FROM patient_portal_identity_legacy_accounts m
-       JOIN patient_portal_accounts a ON a.id = m.legacy_account_id
-       WHERE m.identity_id = OLD.id
-         AND lower(trim(a.email)) IS DISTINCT FROM lower(trim(NEW.normalized_email))
-     ) THEN
-    RAISE EXCEPTION 'identity email change would invalidate legacy provenance' USING ERRCODE = '23514';
-  END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended(lower(trim(NEW.normalized_email)),0::bigint));
   RETURN NEW;
 END $$;
-DROP TRIGGER IF EXISTS patient_portal_identity_mapping_guard_trigger ON patient_portal_identities;
-CREATE TRIGGER patient_portal_identity_mapping_guard_trigger
-  BEFORE UPDATE OF normalized_email ON patient_portal_identities
-  FOR EACH ROW EXECUTE FUNCTION patient_portal_identity_mapping_guard();
+DROP TRIGGER IF EXISTS patient_portal_identity_email_collision_lock_trigger ON patient_portal_identities;
+CREATE TRIGGER patient_portal_identity_email_collision_lock_trigger
+  BEFORE INSERT ON patient_portal_identities FOR EACH ROW EXECUTE FUNCTION patient_portal_identity_email_collision_lock();
 
 CREATE TABLE IF NOT EXISTS patient_clinic_relationships (
   id SERIAL PRIMARY KEY,
@@ -2513,6 +2830,25 @@ CREATE INDEX IF NOT EXISTS patient_clinic_relationships_status_idx
   ON patient_clinic_relationships (relationship_status);
 CREATE UNIQUE INDEX IF NOT EXISTS patient_clinic_relationships_identity_patient_clinic_uq
   ON patient_clinic_relationships (portal_identity_id, patient_id, clinic_id, relationship_type);
+CREATE OR REPLACE FUNCTION patient_portal_relationship_provenance_guard()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.relationship_status = 'active' AND NEW.scope = 'full_portal'
+     AND NOT EXISTS (
+       SELECT 1 FROM patient_portal_identity_legacy_accounts m
+       WHERE m.identity_id=NEW.portal_identity_id
+         AND m.patient_id=NEW.patient_id AND m.clinic_id=NEW.clinic_id
+     ) THEN
+    RAISE EXCEPTION 'active portal relationship lacks identity mapping provenance' USING ERRCODE='23514';
+  END IF;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS patient_portal_relationship_provenance_trigger ON patient_clinic_relationships;
+DROP TRIGGER IF EXISTS patient_portal_relationship_provenance_deferred ON patient_clinic_relationships;
+CREATE CONSTRAINT TRIGGER patient_portal_relationship_provenance_deferred
+  AFTER INSERT OR UPDATE ON patient_clinic_relationships
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+  EXECUTE FUNCTION patient_portal_relationship_provenance_guard();
 -- Remove the retired development-only credential column.  Credentials for the
 -- synthetic harness live in its unlogged, development-created table instead.
 ALTER TABLE patient_portal_identities DROP COLUMN IF EXISTS synthetic_password_hash;
@@ -2665,7 +3001,7 @@ DO $$ BEGIN
       'SHADOW_CLINIC_SUBSCRIPTION_AUTHZ','ENFORCE_CLINIC_SUBSCRIPTION_AUTHZ','SHADOW_STAFF_MEMBERSHIP_AUTHZ','ENFORCE_STAFF_MEMBERSHIP_AUTHZ',
       'ENABLE_OWNER_RECOVERY_ACCESS','ENABLE_GLOBAL_PATIENT_IDENTITY','SHADOW_PATIENT_CLINIC_RELATIONSHIP','ENFORCE_PATIENT_CLINIC_RELATIONSHIP',
       'ENABLE_CLINIC_SELECTION_DASHBOARD','ENABLE_INACTIVE_CLINIC_READ_ONLY',
-       'patient_portal_invite_linking_v1','patient_portal_intake_only_scope_v1','patient_portal_identity_synthetic_auth_v1','patient_portal_relationship_shadow_v1','SHADOW_PATIENT_IDENTITY_LOGIN'
+       'patient_portal_invite_linking_v1','patient_portal_intake_only_scope_v1','patient_portal_identity_synthetic_auth_v1','patient_portal_relationship_shadow_v1','SHADOW_PATIENT_IDENTITY_LOGIN','PATIENT_PORTAL_IDENTITY_APPLY_V1'
     ));
   END IF;
 END $$;

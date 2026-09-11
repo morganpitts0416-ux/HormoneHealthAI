@@ -268,8 +268,8 @@ try {
     await Promise.all([insertClient.end(), updateClient.end()]);
   }
   await q(`INSERT INTO patient_clinic_relationships
-    (portal_identity_id,patient_id,clinic_id,relationship_type,relationship_status,scope,verified_at)
-    VALUES ($1,$2,$3,'self','active','full_portal',NOW())`,
+    (portal_identity_id,patient_id,clinic_id,relationship_type,relationship_status,scope)
+    VALUES ($1,$2,$3,'self','pending_acceptance','historical_read')`,
     [ids.identityConflict, ids.patientConflict, ids.clinicTwo]);
 
   const off = await login(emailOnlyLocal);

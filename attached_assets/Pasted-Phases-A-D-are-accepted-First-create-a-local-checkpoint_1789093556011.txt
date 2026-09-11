@@ -1,0 +1,129 @@
+Phases A–D are accepted.
+
+First, create a local checkpoint commit on main containing only the completed A–D work. Do not push, publish, or deploy it.
+
+Then implement Phase E machinery and synthetic validation only. Do not run apply-mode against the existing development portal account.
+
+Approved Phase E scope
+
+You may implement:
+
+Explicit --apply functionality gated to Replit development
+patient_portal_credentials
+Additive creation of global identities
+Many-to-one legacy-account mappings
+Explicit patient-clinic relationships based on legacy account provenance
+Account-level readiness transitions through identity_ready
+Synthetic credential verification
+Synthetic identity-owned authentication
+Account-level rollback_legacy
+Migration and relationship audit events
+
+You may not:
+
+Migrate the existing real development portal account
+Mark any existing account identity_enabled
+Change the existing login route’s authoritative behavior
+Enable identity sessions for existing users
+Activate the clinic selector
+Enable general portal relationship enforcement
+Modify or delete any legacy password hash
+Push, publish, or deploy anything
+Apply safety
+
+The --apply command must require:
+
+Development-environment verification
+Default-off authorization flag
+Explicit --apply
+Exact dry-run report ID
+Confirmation that the report is current and unchanged
+Explicit source account IDs or an approved bounded cohort
+Transactional revalidation
+Idempotency key
+Maximum-row limit
+
+It must reject:
+
+Production or unknown environments
+Stale dry-run reports
+Changed source records
+Ambiguous classifications
+Unbounded “apply all” execution
+Missing patient or clinic tenancy
+Conflicting identity or account mappings
+Credential handling
+
+For an eligible synthetic legacy account:
+
+Copy the existing bcrypt hash byte-for-byte into the identity credential record.
+Preserve the original legacy hash unchanged.
+Verify that the same synthetic password authenticates through both paths.
+Do not use differing bcrypt hashes as proof that passwords differ.
+Never attempt multiple hashes sequentially during login.
+Never log passwords or hashes.
+
+One identity may have only one active password credential. Multiple legacy accounts with unknown credential compatibility must remain legacy-only pending an approved credential-unification process.
+
+Readiness states
+
+Apply-mode may advance a synthetic mapping only to identity_ready.
+
+Moving to identity_enabled must be a separate explicit operation after:
+
+Credential verification
+Relationship verification
+Synthetic identity-session testing
+Rollback testing
+
+A migration must never activate authentication merely because it completed.
+
+Source-record integrity workflows
+
+The new source-table guards must not permanently prevent legitimate future operations. Document and test authorized transactional workflows for:
+
+Patient email change
+Global identity email change
+Legacy portal-account email correction
+Patient clinic correction
+Account-to-patient correction
+
+Ordinary direct changes that would invalidate an established mapping should fail, but an authorized reviewed workflow must be possible without deleting audit history or silently changing identity ownership.
+
+Synthetic acceptance tests
+
+Test:
+
+One eligible legacy account migrates to an identity, credential, mapping, and relationship.
+Legacy account and hash remain unchanged.
+Same password verifies through legacy and identity credentials.
+Rerunning apply is a no-op.
+Stale report is rejected.
+Changed source record is rejected.
+Unbounded apply is rejected.
+Duplicate/shared email is rejected.
+Missing clinic or patient is rejected.
+Conflicting linkage is rejected.
+One identity safely maps to two verified clinic-specific legacy accounts only when credential compatibility has been explicitly established.
+An identity-ready account still uses legacy authentication.
+Synthetic explicit enablement creates an identity session.
+Account-level rollback restores legacy-only authentication.
+Neither enablement nor rollback changes the legacy hash.
+Foreign clinic/patient relationships cannot be created.
+Concurrent apply attempts produce one result without duplicates.
+Required stopping report
+
+Stop before touching the existing development account and report:
+
+A–D checkpoint commit
+Exact Phase E files and schema changes
+Synthetic migration results
+Credential equivalence results
+Identity-ready versus identity-enabled behavior
+Rollback results
+Concurrent and stale-report results
+Zero changes to existing accounts, patients, sessions, and hashes
+TypeScript baseline and build results
+Proposed next step for the one eligible development account, without executing it
+
+No Git push, Replit Publish, GCP deployment, existing-account backfill, clinic-selector activation, or general portal enforcement is authorized.

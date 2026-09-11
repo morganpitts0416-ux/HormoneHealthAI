@@ -20,6 +20,7 @@ export const AUTHORIZATION_FLAG_KEYS = [
   "patient_portal_identity_synthetic_auth_v1",
   "patient_portal_relationship_shadow_v1",
   "SHADOW_PATIENT_IDENTITY_LOGIN",
+  "PATIENT_PORTAL_IDENTITY_APPLY_V1",
 ] as const;
 
 export type AuthorizationFlagKey = typeof AUTHORIZATION_FLAG_KEYS[number];
