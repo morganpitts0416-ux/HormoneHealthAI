@@ -15,6 +15,12 @@ Phase E apply/enable/rollback tooling is approved only for synthetic validation 
 
 **How to apply:** Require positive Replit development metadata and reject deployment or CI contexts before opening a database connection. Never apply to or enable a real account without separate explicit approval. Copy bcrypt bytes exactly, leave legacy hashes unchanged, isolate synthetic sessions from legacy sessions, and make rollback identity-wide.
 
+Every apply must create its migration event and relationship event in the same transaction as the identity, credential, mapping, relationship, and completed run.
+
+**Why:** A completed additive graph without dedicated audit events satisfies access invariants but leaves reviewers unable to reconstruct why the identity and relationship were created.
+
+**How to apply:** Treat audit rows as apply postconditions, validate their exact baseline restoration in synthetic tests, and never backfill them silently outside an explicitly reviewed operation.
+
 Reviewed email corrections are identity-global. Because legacy accounts retain exact-email uniqueness while multiple accounts may intentionally share one normalized identity email, sibling raw emails may need deterministic whitespace variants; every sibling must still normalize to the identity email and unrelated normalized collisions must reject.
 
 **Why:** Updating every sibling to one exact raw email violates the legacy uniqueness constraint, while updating only one sibling breaks deferred provenance.

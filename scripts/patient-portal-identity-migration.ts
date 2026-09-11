@@ -146,11 +146,22 @@ try {
     for (const row of final.rows.filter((r) => ids.includes(Number(r.id)))) {
       const identity = (await client.query("INSERT INTO patient_portal_identities (normalized_email,account_status,verification_status) VALUES (lower(trim($1)),'active','verified') RETURNING id", [row.email])).rows[0];
       await client.query("INSERT INTO patient_portal_credentials (identity_id,password_hash,status,source,source_legacy_account_id,verified_at) VALUES ($1,$2,'active','legacy_copy',$3,NOW())", [identity.id, row.password_hash, row.id]);
-      await client.query(`INSERT INTO patient_portal_identity_legacy_accounts
+      const mapping = await client.query(`INSERT INTO patient_portal_identity_legacy_accounts
         (identity_id,legacy_account_id,patient_id,clinic_id,migration_state,credential_compatibility_status,provenance_run_key,migration_run_id,validated_at)
         VALUES ($1,$2,$3,$4,'identity_ready','direct_copy_confirmed',$5,(SELECT id FROM patient_portal_identity_migration_runs WHERE report_id=$6 ORDER BY id DESC LIMIT 1),NOW())`,
         [identity.id, row.id, row.patient_id, row.clinic_id, key, report.reportId]);
-      await client.query("INSERT INTO patient_clinic_relationships (portal_identity_id,patient_id,clinic_id,relationship_type,relationship_status,verification_method,scope,verified_at) VALUES ($1,$2,$3,'self','active','phase_e_apply','full_portal',NOW())", [identity.id, row.patient_id, row.clinic_id]);
+      const relationship = await client.query(`INSERT INTO patient_clinic_relationships
+        (portal_identity_id,patient_id,clinic_id,relationship_type,relationship_status,verification_method,scope,verified_at)
+        VALUES ($1,$2,$3,'self','active','phase_e_apply','full_portal',NOW()) RETURNING id`,
+        [identity.id, row.patient_id, row.clinic_id]);
+      await client.query(`INSERT INTO patient_portal_identity_migration_events
+        (run_id,entity_type,entity_id,action,new_state,reason_code)
+        VALUES ($1,'legacy_account',$2,'apply','identity_ready','phase_e_apply')`,
+        [run.rows[0].id, row.id]);
+      await client.query(`INSERT INTO patient_portal_relationship_events
+        (relationship_id,clinic_id,patient_id,actor_type,event_type,to_status,to_scope)
+        VALUES ($1,$2,$3,'system','relationship_verified','active','full_portal')`,
+        [relationship.rows[0].id, row.clinic_id, row.patient_id]);
     }
     await client.query("UPDATE patient_portal_identity_migration_runs SET status='completed',completed_at=NOW() WHERE report_id=$1", [report.reportId]);
     await client.query("COMMIT");

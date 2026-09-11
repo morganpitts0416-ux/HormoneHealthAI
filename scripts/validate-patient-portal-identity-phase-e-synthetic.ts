@@ -56,6 +56,7 @@ const counts = async () => ({
   relationships: await count("patient_clinic_relationships"),
   runs: await count("patient_portal_identity_migration_runs"),
   events: await count("patient_portal_identity_migration_events"),
+  relationshipEvents: await count("patient_portal_relationship_events"),
   syntheticSessions: await count("patient_portal_identity_synthetic_sessions"),
   credentials: await count("patient_portal_credentials"),
 });
@@ -278,6 +279,10 @@ try {
   assert.notEqual(expired.code, 0);
   await setFlag(flag, true);
   const beforeRace = await graphCounts();
+  const beforeRaceAudit = {
+    migrationEvents: await count("patient_portal_identity_migration_events"),
+    relationshipEvents: await count("patient_portal_relationship_events"),
+  };
   const raceArgs = [...applyArgs.slice(0, -1), crypto.randomUUID()];
   const races = await Promise.all([
     runScript("scripts/patient-portal-identity-migration.ts", applyArgs),
@@ -286,6 +291,8 @@ try {
   assert.ok(races.some((r) => r.code === 0), "concurrent apply must have a winner");
   assert.equal(await count("patient_portal_identities"), beforeRace.identities + 1);
   assert.equal(await count("patient_portal_identity_legacy_accounts"), beforeRace.mappings + 1);
+  assert.equal(await count("patient_portal_identity_migration_events"), beforeRaceAudit.migrationEvents + 1);
+  assert.equal(await count("patient_portal_relationship_events"), beforeRaceAudit.relationshipEvents + 1);
   const winningApplyArgs = races[0].code === 0 ? applyArgs : raceArgs;
   const winningApplyKey = winningApplyArgs[winningApplyArgs.length - 1];
   const applied = await runScript("scripts/patient-portal-identity-migration.ts", winningApplyArgs);
