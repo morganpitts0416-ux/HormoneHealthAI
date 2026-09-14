@@ -1,0 +1,36 @@
+The bounded Phase E apply is accepted. Do not roll it back, enable the identity, or make additional changes to account 2.
+
+Proceed with the next development-only planning and validation boundary. Do not implement identity-owned login or the clinic-selection dashboard yet.
+
+First, create a sanitized stopping addendum for account 2 confirming:
+
+The exact relationship status, scope, type, verification state, and revocation state created for relationship 119.
+That this additive relationship is not currently consulted by legacy authentication or portal authorization.
+That identity 130 and mapping 64 cannot independently authenticate while all flags are disabled.
+That no route can convert identity_ready to identity_enabled through an ordinary HTTP request.
+That the first apply and subsequent audit-record correction are clearly represented as separate historical operations, while all future applies create their required audit records atomically.
+
+Then audit and produce an implementation plan for the next boundary covering:
+
+Every legacy patient login, logout, forgot-password, reset-password, session, and session-invalidation path.
+Password changes and resets while both a legacy hash and identity credential exist.
+A design preventing credential divergence before identity authentication is enabled.
+Every patient-portal route, download, document, form, message, lab, protocol, encounter, medication, upload, and realtime/background path.
+Required identity, clinic relationship, patient record, scope, and resource-ownership checks for each route.
+Guardian/proxy access separately from self-access.
+Clinic-selection metadata that contains no aggregated PHI.
+Stale-session behavior after relationship revocation or identity session-version changes.
+Foreign versus nonexistent resource response equivalence.
+
+The plan must preserve these requirements:
+
+Legacy authentication remains authoritative.
+Account 2 stays identity_ready, not identity_enabled.
+Existing users remain able to log in exactly as they do now.
+No existing password reset or session behavior changes during the audit.
+No relationship enforcement, clinic selector, or identity-owned sessions are enabled.
+No Git push, Replit Publish, or GCP deployment.
+
+Include a route-by-route inventory and divide implementation into independently approved groups. Identify any portal route that is currently unscoped or trusts only a patient ID/session patient ID as a release blocker.
+
+Stop after the audit and plan. Make no application, schema, authentication, or authorization changes without separate approval.
