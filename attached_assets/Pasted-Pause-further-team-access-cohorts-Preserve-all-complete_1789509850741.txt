@@ -1,0 +1,51 @@
+Pause further team-access cohorts. Preserve all completed work and checkpoints.
+
+Use the uploaded hormonehealthai-production-source.zip for the production-baseline cancellation validation.
+
+Verified SHA-256:
+
+f68695b50a572cd266f2643029a7a38df2fe2ac9b85b0168fa58b542a47c6742
+
+This archive produced Cloud Build 900afa28-7597-440f-9e5f-f176874dd7cd and image digest:
+
+sha256:198655e0d8a3c6e363f81ebb643db59a64f8a3ee515641b9b651befc9dd5779c
+
+That image is used by revision hormonehealthai-00567-gub, currently receiving 100% of production traffic.
+
+In a temporary isolated directory:
+
+Verify the archive SHA-256 exactly.
+Extract it without modifying the uploaded ZIP.
+Treat the extracted source as the authoritative production baseline.
+Capture its production build and TypeScript diagnostic baseline.
+Apply only release-readiness/emergency-cancellation-release-candidate.patch.
+If any patch hunk fails, stop and report the conflict. Do not import unrelated development commits.
+Confirm the patched source changes only:
+client/src/pages/billing.tsx
+server/audit.ts
+server/routes.ts
+tests/billing-cancellation.test.ts
+tests/unit/billing-cancellation.test.ts
+Confirm no schema, migration, patient portal, identity, relationship, team-access, deployment-script, or environment file changes.
+Run the production build.
+Compare TypeScript diagnostics before and after; require zero new diagnostics.
+Run all focused cancellation tests.
+Run legacy clinician, staff, and patient authentication compatibility tests against an isolated nonproduction database.
+Use mocked Stripe only.
+Confirm no real Stripe subscription, production database, or GCP service is contacted.
+Scan logs for passwords, hashes, Stripe identifiers, signatures, tokens, session IDs, payment data, and PHI.
+
+Produce:
+
+Archive hash verification
+Baseline versus patched build results
+Baseline versus patched TypeScript results
+Exact five-file diff
+Patch dependency/conflict results
+Cancellation and undo test results
+Webhook verification tests
+Authentication compatibility results
+Sensitive-log scan
+Proposed zero-traffic GCP deployment command and rollback command
+
+Do not push Git, publish, deploy, alter traffic, run a production migration, or access a real subscription. Stop with the production-baseline release-readiness report.
