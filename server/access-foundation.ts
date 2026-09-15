@@ -3,6 +3,12 @@ import type { NextFunction, Request, Response } from "express";
 import { and, eq } from "drizzle-orm";
 import * as schema from "@shared/schema";
 import { db } from "./storage";
+import {
+  createClinicAccessResolver,
+  type ClinicAccessActor,
+  type ClinicRouteContext,
+} from "./clinic-access-resolver";
+import { clinicAccessRouteClassification } from "./clinic-access-shadow";
 
 export const AUTHORIZATION_FLAG_KEYS = [
   "SHADOW_CLINIC_SUBSCRIPTION_AUTHZ",
@@ -25,6 +31,74 @@ export const AUTHORIZATION_FLAG_KEYS = [
 
 export type AuthorizationFlagKey = typeof AUTHORIZATION_FLAG_KEYS[number];
 export type ShadowDecision = "allow" | "deny" | "indeterminate";
+
+export interface AuthorizationShadowDecision {
+  requiredFlag: AuthorizationFlagKey;
+  policyKey: string;
+  decision: ShadowDecision;
+  reason: string;
+  clinicId: number | null;
+  actorType: string;
+  actorId: number | null;
+  patientId: number | null;
+  relationshipId: number | null;
+  evidence: Record<string, unknown>;
+}
+
+/**
+ * The middleware only needs the small write surface below. Keeping this
+ * boundary narrow allows synthetic callers to prove shadow-only behavior
+ * without constructing a Drizzle connection or touching the real database.
+ */
+export interface AuthorizationShadowDatabase {
+  insert: (table: any) => {
+    values: (values: any) => unknown;
+  };
+}
+
+export interface AuthorizationShadowMiddlewareDependencies {
+  db?: AuthorizationShadowDatabase;
+  readFlags?: typeof listAuthorizationFlagStatus;
+  proposeDecisions?: (req: Request) => Promise<AuthorizationShadowDecision[]>;
+}
+
+const teamClinicAccessResolver = createClinicAccessResolver({
+  getMemberships: async (userId) => db
+    .select({
+      userId: schema.clinicMemberships.userId,
+      clinicId: schema.clinicMemberships.clinicId,
+      isActive: schema.clinicMemberships.isActive,
+      acceptanceStatus: schema.clinicMemberships.acceptanceStatus,
+      role: schema.clinicMemberships.role,
+      adminRole: schema.clinicMemberships.adminRole,
+      clinicalRole: schema.clinicMemberships.clinicalRole,
+      accessScope: schema.clinicMemberships.accessScope,
+    })
+    .from(schema.clinicMemberships)
+    .where(eq(schema.clinicMemberships.userId, userId)),
+  getStaffLinks: async (staffId) => {
+    const rows = await db
+      .select({
+        staffId: schema.clinicianStaff.id,
+        clinicianId: schema.clinicianStaff.clinicianId,
+        clinicId: schema.clinicianStaff.clinicId,
+        isActive: schema.clinicianStaff.isActive,
+      })
+      .from(schema.clinicianStaff)
+      .where(eq(schema.clinicianStaff.id, staffId));
+    return rows.flatMap((row) => row.clinicId == null ? [] : [{
+      ...row,
+      clinicId: row.clinicId,
+    }]);
+  },
+  getClinics: async (clinicId) => db
+    .select({
+      id: schema.clinics.id,
+      isActive: schema.clinics.isActive,
+    })
+    .from(schema.clinics)
+    .where(eq(schema.clinics.id, clinicId)),
+});
 
 export function permitsPatientClinicRelationship(
   relationship: { patientId: number; clinicId: number; relationshipStatus: string } | null | undefined,
@@ -75,22 +149,14 @@ export function invalidateAuthorizationFlagCache() {
   // shadow flag stops observation on the very next request.
 }
 
-async function proposedDecisions(req: Request): Promise<Array<{
-  requiredFlag: AuthorizationFlagKey;
-  policyKey: string;
-  decision: ShadowDecision;
-  reason: string;
-  clinicId: number | null;
-  actorType: string;
-  actorId: number | null;
-  patientId: number | null;
-  relationshipId: number | null;
-  evidence: Record<string, unknown>;
-}>> {
+async function proposedDecisions(req: Request): Promise<AuthorizationShadowDecision[]> {
   const sess = req.session as any;
   const clinicId = (sess.staffId
     ? sess.staffClinicianClinicId
     : sess.activeClinicId ?? (req.user as any)?.defaultClinicId) ?? null;
+  const explicitTeamClinicId = (sess.staffId
+    ? sess.staffClinicianClinicId
+    : sess.activeClinicId) ?? null;
   const resolveRouteResource = async (): Promise<{
     kind: string;
     id: number;
@@ -135,6 +201,18 @@ async function proposedDecisions(req: Request): Promise<Array<{
     return null;
   };
   const routeResource = await resolveRouteResource();
+  const teamRoute = clinicAccessRouteClassification(req.path);
+  const teamRouteContext: ClinicRouteContext = {
+    mode: teamRoute.mode,
+    kind: routeResource?.kind === "document" && req.path.endsWith("/download")
+      ? "download"
+      : routeResource?.kind === "workflow_run"
+        ? "job"
+        : teamRoute.kind,
+    ...(routeResource?.resolved && routeResource.clinicId != null
+      ? { resourceClinicId: routeResource.clinicId }
+      : {}),
+  };
 
   const appendClinicStateDecision = async (
     decisions: Awaited<ReturnType<typeof proposedDecisions>>,
@@ -255,22 +333,29 @@ async function proposedDecisions(req: Request): Promise<Array<{
 
   if (sess.staffId) {
     const staffId = Number(sess.staffId);
-    const [staff] = await db
-      .select({ isActive: schema.clinicianStaff.isActive, clinicId: schema.clinicianStaff.clinicId })
-      .from(schema.clinicianStaff)
-      .where(eq(schema.clinicianStaff.id, staffId))
-      .limit(1);
+    const actor: ClinicAccessActor = {
+      type: "staff",
+      staffId,
+      ...(Number.isSafeInteger(Number(sess.staffClinicianId)) && Number(sess.staffClinicianId) > 0
+        ? { clinicianId: Number(sess.staffClinicianId) }
+        : {}),
+    };
+    const membershipDecision = await teamClinicAccessResolver.resolve({
+      actor,
+      clinicId: explicitTeamClinicId,
+      route: teamRouteContext,
+    });
     const decisions: Awaited<ReturnType<typeof proposedDecisions>> = [{
       requiredFlag: "SHADOW_STAFF_MEMBERSHIP_AUTHZ",
       policyKey: "staff_membership",
-      decision: staff?.isActive && staff.clinicId === clinicId ? "allow" : "deny",
-      reason: !staff ? "STAFF_NOT_FOUND" : !staff.isActive ? "STAFF_INACTIVE" : staff.clinicId !== clinicId ? "STAFF_CLINIC_MISMATCH" : "ACTIVE_STAFF_ASSIGNMENT",
-      clinicId,
+      decision: membershipDecision.decision,
+      reason: membershipDecision.reason,
+      clinicId: membershipDecision.clinicId,
       actorType: "staff",
       actorId: staffId,
       patientId: null,
       relationshipId: null,
-      evidence: { storedClinicId: staff?.clinicId ?? null },
+      evidence: {},
     }];
     await appendClinicStateDecision(decisions, "staff", staffId, null, clinicId);
     return decisions;
@@ -278,58 +363,44 @@ async function proposedDecisions(req: Request): Promise<Array<{
 
   const userId = Number((req.user as any)?.id);
   if (!Number.isFinite(userId)) return [];
-  if (!clinicId) {
-    return [{
-      requiredFlag: "SHADOW_STAFF_MEMBERSHIP_AUTHZ",
-      policyKey: "clinic_membership",
-      decision: "indeterminate",
-      reason: "NO_CLINIC_CONTEXT",
-      clinicId: null,
-      actorType: "clinician",
-      actorId: userId,
-      patientId: null,
-      relationshipId: null,
-      evidence: {},
-    }];
-  }
-  const [membership] = await db
-    .select({ id: schema.clinicMemberships.id, isActive: schema.clinicMemberships.isActive })
-    .from(schema.clinicMemberships)
-    .where(and(eq(schema.clinicMemberships.userId, userId), eq(schema.clinicMemberships.clinicId, clinicId)))
-    .limit(1);
-  const [clinic] = await db
-    .select({ isActive: schema.clinics.isActive })
-    .from(schema.clinics)
-    .where(eq(schema.clinics.id, clinicId))
-    .limit(1);
+  const membershipDecision = await teamClinicAccessResolver.resolve({
+    actor: { type: "clinician", userId },
+    clinicId: explicitTeamClinicId,
+    route: teamRouteContext,
+  });
   const decisions: Awaited<ReturnType<typeof proposedDecisions>> = [{
     requiredFlag: "SHADOW_STAFF_MEMBERSHIP_AUTHZ",
     policyKey: "clinic_membership",
-    decision: membership?.isActive && clinic?.isActive ? "allow" : "deny",
-    reason: !membership ? "NO_MEMBERSHIP" : !membership.isActive ? "MEMBERSHIP_INACTIVE" : !clinic ? "CLINIC_NOT_FOUND" : !clinic.isActive ? "CLINIC_INACTIVE" : "ACTIVE_MEMBERSHIP",
-    clinicId,
+    decision: membershipDecision.decision,
+    reason: membershipDecision.reason,
+    clinicId: membershipDecision.clinicId,
     actorType: "clinician",
     actorId: userId,
     patientId: null,
     relationshipId: null,
-    evidence: { membershipId: membership?.id ?? null, legacyClinicActive: clinic?.isActive ?? null },
+    evidence: {},
   }];
-  if (routeResource) {
+  if (routeResource?.kind === "clinic_switch") {
     let decision: ShadowDecision;
     let reason: string;
     if (!routeResource.resolved) {
       decision = "indeterminate";
       reason = "MISSING_CONTEXT_RESOURCE_OWNERSHIP";
-    } else if (routeResource.kind === "clinic_switch") {
-      const [targetMembership] = await db.select({ id: schema.clinicMemberships.id, isActive: schema.clinicMemberships.isActive })
+    } else {
+      const [targetMembership] = await db.select({
+        id: schema.clinicMemberships.id,
+        isActive: schema.clinicMemberships.isActive,
+        acceptanceStatus: schema.clinicMemberships.acceptanceStatus,
+      })
         .from(schema.clinicMemberships)
         .where(and(eq(schema.clinicMemberships.userId, userId), eq(schema.clinicMemberships.clinicId, routeResource.id)))
         .limit(1);
-      decision = targetMembership?.isActive ? "allow" : "indeterminate";
-      reason = targetMembership?.isActive ? "TARGET_CLINIC_MEMBERSHIP_RESOLVED" : "MISSING_CONTEXT_TARGET_CLINIC_MEMBERSHIP";
-    } else {
-      decision = routeResource.clinicId === clinicId ? "allow" : "deny";
-      reason = decision === "allow" ? "RESOURCE_CLINIC_MATCH" : "RESOURCE_CLINIC_MISMATCH";
+      decision = targetMembership?.isActive && targetMembership.acceptanceStatus === "active"
+        ? "allow"
+        : "indeterminate";
+      reason = decision === "allow"
+        ? "TARGET_CLINIC_MEMBERSHIP_RESOLVED"
+        : "MISSING_CONTEXT_TARGET_CLINIC_MEMBERSHIP";
     }
     decisions.push({
       requiredFlag: "SHADOW_STAFF_MEMBERSHIP_AUTHZ",
@@ -356,15 +427,21 @@ function safeRoutePath(path: string): string {
     .slice(0, 500);
 }
 
-export function authorizationShadowMiddleware() {
+export function authorizationShadowMiddleware(
+  dependencies: AuthorizationShadowMiddlewareDependencies = {},
+) {
+  const database = dependencies.db ?? db;
+  const readFlags = dependencies.readFlags ?? listAuthorizationFlagStatus;
+  const getProposedDecisions = dependencies.proposeDecisions ?? proposedDecisions;
+
   return async (req: Request, res: Response, next: NextFunction) => {
     if (!req.path.startsWith("/api") || req.path.startsWith("/api/access-foundation")) return next();
-    let decisions: Awaited<ReturnType<typeof proposedDecisions>> = [];
+    let decisions: AuthorizationShadowDecision[] = [];
     try {
-      const flags = await listAuthorizationFlagStatus(null);
+      const flags = await readFlags(null);
       const enabled = new Set(flags.filter((f) => f.enabled).map((f) => f.flagKey));
       if (enabled.size) {
-        decisions = (await proposedDecisions(req)).filter((decision) => enabled.has(decision.requiredFlag));
+        decisions = (await getProposedDecisions(req)).filter((decision) => enabled.has(decision.requiredFlag));
       }
     } catch {
       decisions = [];
@@ -384,23 +461,29 @@ export function authorizationShadowMiddleware() {
           : currentDecision === proposed.decision && currentDecision === "deny" ? "expected_denial"
           : currentDecision === "allow" ? "unexpected_denial"
           : "unexpected_grant";
-        db.insert(schema.authorizationShadowDecisions).values({
-          requestId,
-          actorType: proposed.actorType,
-          actorId: proposed.actorId,
-          clinicId: proposed.clinicId,
-          patientId: proposed.patientId,
-          relationshipId: proposed.relationshipId,
-          method: req.method,
-          routePath: safeRoutePath(req.path),
-          policyKey: proposed.policyKey,
-          currentDecision,
-          proposedDecision: proposed.decision,
-          differenceType,
-          currentReason: `HTTP_${res.statusCode}`,
-          proposedReason: proposed.reason,
-          evidence: proposed.evidence,
-        }).catch((err) => console.warn("[auth-shadow] write failed:", err?.message ?? err));
+        const recordWriteFailure = (err: unknown) =>
+          console.warn("[auth-shadow] write failed:", (err as { message?: unknown })?.message ?? err);
+        try {
+          void Promise.resolve(database.insert(schema.authorizationShadowDecisions).values({
+            requestId,
+            actorType: proposed.actorType,
+            actorId: proposed.actorId,
+            clinicId: proposed.clinicId,
+            patientId: proposed.patientId,
+            relationshipId: proposed.relationshipId,
+            method: req.method,
+            routePath: safeRoutePath(req.path),
+            policyKey: proposed.policyKey,
+            currentDecision,
+            proposedDecision: proposed.decision,
+            differenceType,
+            currentReason: `HTTP_${res.statusCode}`,
+            proposedReason: proposed.reason,
+            evidence: proposed.evidence,
+          })).catch(recordWriteFailure);
+        } catch (err) {
+          recordWriteFailure(err);
+        }
       }
     });
     next();

@@ -1,0 +1,88 @@
+{
+  "compatibilityModeAuthoritative": true,
+  "enforcementApproved": false,
+  "totals": {
+    "clinicians": 10,
+    "memberships": 9,
+    "staff": 1,
+    "clinics": 6,
+    "providers": 4,
+    "shadowDecisions": 938
+  },
+  "clinicians": [
+    {
+      "clinicianId": 7,
+      "clinicId": 4,
+      "reasonCode": "DEFAULT_CLINIC_MEMBERSHIP_MISSING"
+    },
+    {
+      "clinicianId": 7,
+      "reasonCode": "NO_COHERENT_ACTIVE_CLINIC_MEMBERSHIP"
+    }
+  ],
+  "staffLinkage": [],
+  "clinicOwnership": [
+    {
+      "clinicId": 1,
+      "reasonCode": "CLINIC_MULTIPLE_OWNERS"
+    },
+    {
+      "clinicId": 1,
+      "ownerUserId": 1,
+      "reasonCode": "CLINIC_OWNER_MISMATCH"
+    },
+    {
+      "clinicId": 5,
+      "reasonCode": "CLINIC_ZERO_OWNERS"
+    },
+    {
+      "clinicId": 6,
+      "reasonCode": "CLINIC_ZERO_OWNERS"
+    }
+  ],
+  "providerAuthority": [],
+  "staleClinicIds": [
+    {
+      "clinicianId": 7,
+      "clinicId": 4,
+      "reasonCode": "STALE_DEFAULT_CLINIC_ID"
+    }
+  ],
+  "activeSessions": [],
+  "shadowDecisions": [
+    {
+      "reasonCode": "LEGACY_ALLOW_NEW_DENY",
+      "count": 50
+    },
+    {
+      "reasonCode": "LEGACY_DENY_NEW_ALLOW",
+      "count": 206
+    },
+    {
+      "reasonCode": "INDETERMINATE_SHADOW_DECISION",
+      "count": 47
+    }
+  ],
+  "counts": {
+    "clinicians": 2,
+    "staffLinkage": 0,
+    "clinicOwnership": 4,
+    "providerAuthority": 0,
+    "staleClinicIds": 1,
+    "activeSessions": 0,
+    "shadowDecisions": 303,
+    "shadowCompared": 938,
+    "shadowAgreement": 635,
+    "byReasonCode": {
+      "DEFAULT_CLINIC_MEMBERSHIP_MISSING": 1,
+      "NO_COHERENT_ACTIVE_CLINIC_MEMBERSHIP": 1,
+      "CLINIC_MULTIPLE_OWNERS": 1,
+      "CLINIC_OWNER_MISMATCH": 1,
+      "CLINIC_ZERO_OWNERS": 2,
+      "STALE_DEFAULT_CLINIC_ID": 1,
+      "LEGACY_ALLOW_NEW_DENY": 50,
+      "LEGACY_DENY_NEW_ALLOW": 206,
+      "INDETERMINATE_SHADOW_DECISION": 47
+    }
+  }
+}

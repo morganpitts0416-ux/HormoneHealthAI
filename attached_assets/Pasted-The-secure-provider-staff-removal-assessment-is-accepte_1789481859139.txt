@@ -1,0 +1,105 @@
+The secure provider/staff removal assessment is accepted as the architectural direction, but implementation is approved only for the first development boundary below.
+
+Preserve the emergency cancellation branch independently. Do not merge cancellation and team-access work.
+
+Approved first boundary
+
+Implement in Replit development only:
+
+A comprehensive synthetic compatibility and revocation regression harness.
+A centralized clinician/staff clinic-access resolver.
+Shadow-only comparison of the centralized resolver against current authorization behavior.
+Read-only inventory and reporting of existing users who would be denied.
+No real enforcement and no team-management mutation endpoints yet.
+Resolver requirements
+
+The proposed resolver must:
+
+Distinguish clinician, staff, patient-portal, integration, webhook, and system actors.
+Require exact active clinic membership and active acceptance for clinicians.
+Require exact active staff assignment for staff.
+Never treat defaultClinicId as authorization.
+Never silently fall back to an owner, clinician, or another clinic.
+Recognize base-authentication-only routes such as logout and explicit clinic reselection.
+Return sanitized allow, deny, or indeterminate reasons.
+Make no response or session change while shadow-only.
+Route inventory
+
+Inventory every route currently protected by:
+
+requireAuth
+requireClinicianOnly
+getEffectiveClinicId
+Direct use of activeClinicId
+Direct use of defaultClinicId
+Staff session fields
+
+Classify every route as:
+
+Base authentication only
+Active clinic required
+Owner required
+Clinic administrator permitted
+Patient portal
+Integration/webhook/system
+Public
+Indeterminate and requiring review
+
+Include downloads, jobs, queued AI work, messages, Spruce, orders, scheduling, forms, workflows, and administrative routes.
+
+Existing-user preservation
+
+With all enforcement disabled:
+
+Clinician login must remain unchanged.
+Staff login must remain unchanged.
+Existing sessions must remain valid.
+Patient login and portal behavior must remain unchanged.
+No membership, staff, provider, patient assignment, user, session, invitation, or password record may be changed.
+No existing user may be required to reset a password.
+
+Produce a pre-enforcement report containing:
+
+Every clinician lacking a coherent active membership for their current/default clinic.
+Every staff session or staff record with inconsistent clinician/clinic linkage.
+Every clinic with zero, multiple, or mismatched owners.
+Every active provider lacking coherent active authority.
+Every stale defaultClinicId or activeClinicId.
+Every current request that legacy behavior permits but the new resolver would deny.
+Every request legacy behavior denies but the new resolver would permit.
+Every indeterminate decision.
+
+Do not include names, emails, PHI, session IDs, passwords, tokens, or clinical content in reports.
+
+Synthetic tests
+
+Test:
+
+Active clinician
+Revoked clinician with stale session
+Clinician with two clinics where only one is revoked
+Missing membership
+Stale default clinic
+Stale active clinic
+Active staff
+Revoked staff with stale session
+Staff/clinic mismatch
+Active provider with preserved history
+Sole owner
+Multiple or mismatched owners
+Direct API and download attempts
+Queued job revalidation decisions
+Patient portal noninterference
+
+All shadow failures must be nonblocking. Missing flags, flag-read errors, logging failures, and incomplete context must leave current behavior unchanged.
+
+Stopping boundary
+
+Do not add deactivation/reactivation endpoints or UI.
+Do not hard-delete anyone.
+Do not invalidate sessions.
+Do not enforce the resolver.
+Do not modify account 2 or multi-clinic identity work.
+Do not push, publish, deploy, or modify GCP.
+
+Stop with the route inventory, sanitized compatibility report, shadow results, test results, exact diff, and proposed independently approved enforcement groups.
