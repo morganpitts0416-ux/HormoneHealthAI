@@ -13,6 +13,21 @@
 export type EntityId = number;
 export type AccessDecision = "allow" | "deny" | "indeterminate";
 
+/**
+ * The only transitional enforcement operation: a proposed policy can
+ * preserve a legacy grant, but can never create one.  Keep this free of
+ * request/session/database dependencies so historical compatibility rows can
+ * be checked in an isolated synthetic test.
+ */
+export function combineLegacyAndProposedDecision(
+  legacyAllow: boolean,
+  proposedDecision: AccessDecision,
+): boolean {
+  return legacyAllow && proposedDecision === "allow";
+}
+
+export const combinedAccessDecision = combineLegacyAndProposedDecision;
+
 export const TEAM_ACCESS_COMPATIBILITY_REASON_CODES = {
   noCurrentOrDefaultClinic: "NO_CURRENT_OR_DEFAULT_CLINIC",
   currentMembershipMissing: "CURRENT_CLINIC_MEMBERSHIP_MISSING",

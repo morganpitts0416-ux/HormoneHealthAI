@@ -16,7 +16,8 @@
     "patient-portal-identity-synthetic-auth": "tsx scripts/patient-portal-identity-synthetic-auth.ts",
     "patient-portal-identity-attach-second-account": "tsx scripts/patient-portal-identity-attach-second-account.ts",
     "validate:patient-portal-identity-phase-e": "tsx scripts/validate-patient-portal-identity-phase-e-synthetic.ts",
-    "validate:patient-portal-identity-phases-a-d": "tsx scripts/validate-patient-portal-identity-phases-a-d-synthetic.ts"
+    "validate:patient-portal-identity-phases-a-d": "tsx scripts/validate-patient-portal-identity-phases-a-d-synthetic.ts",
+    "validate:team-access-rollback": "NODE_ENV=development tsx scripts/team-access-rollback-synthetic.ts --development-rollback"
   },
   "dependencies": {
     "@fullcalendar/core": "^6.1.20",

@@ -112,6 +112,32 @@ describe("team access route inventory parser", () => {
     ]);
   });
 
+  it("assigns explorer-defined blocked-review categories without indeterminate fallthrough", () => {
+    const entries = parseExpressRoutes(`
+      app.get("/api/admin/clinicians", requireAdmin, (req, res) => res.json([]));
+      app.get("/api/ops/status", requireOpsEnabled, (req, res) => res.json({}));
+      app.get("/api/ops/users", requireOpsRole("owner"), (req, res) => res.json([]));
+      app.post("/api/ops/auth/login", requireOpsEnabled, (req, res) => res.json({}));
+      app.get("/api/forms/public/:token", (req, res) => res.json({}));
+      app.post("/api/jobs/send-appointment-reminders", (req, res) => res.json({}));
+      app.get("/api/config/google-maps", (req, res) => res.json({}));
+      app.post("/api/billing/guest-setup-intent", (req, res) => res.json({}));
+      app.get("/api/pharmacy-lookup", (req, res) => res.json({}));
+    `);
+    expect(entries.map((entry) => entry.classification)).toEqual([
+      "platform_admin",
+      "ops_portal",
+      "ops_portal_role_restricted",
+      "ops_portal_auth",
+      "token_bound_public_flow",
+      "system_job_secret",
+      "safe_public_config",
+      "constrained_payment_bootstrap",
+      "dual_actor_base_auth",
+    ]);
+    expect(entries.some((entry) => entry.classification === "indeterminate_review")).toBe(false);
+  });
+
   it("distinguishes owner and clinic-administrator guards from authentication", () => {
     const entries = parseExpressRoutes(`
       app.patch("/api/clinic/settings", requireClinicianOnly, async (req, res) => {
@@ -169,6 +195,7 @@ describe("team access route inventory parser", () => {
         );
       }
     }
+    expect(entries.filter((entry) => entry.classification === "indeterminate_review")).toHaveLength(0);
   });
 
   it("renders a deterministic report without source snippets or request data", () => {

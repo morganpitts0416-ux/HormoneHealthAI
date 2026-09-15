@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createClinicAccessResolver,
+  combineLegacyAndProposedDecision,
   resolveClinicAccess,
   type ClinicAccessEvidence,
 } from "../../server/clinic-access-resolver";
@@ -24,6 +25,19 @@ const staffLink = (overrides: Partial<NonNullable<ClinicAccessEvidence["staffLin
 });
 
 describe("shadow-only clinic access resolver", () => {
+  it("combines legacy and proposed decisions without escalation", () => {
+    const historicalLegacyDenyRows = Array.from({ length: 206 }, () => ({
+      legacyAllow: false,
+      proposedDecision: "allow" as const,
+    }));
+    expect(historicalLegacyDenyRows.every((row) =>
+      !combineLegacyAndProposedDecision(row.legacyAllow, row.proposedDecision),
+    )).toBe(true);
+    expect(combineLegacyAndProposedDecision(true, "allow")).toBe(true);
+    expect(combineLegacyAndProposedDecision(false, "allow")).toBe(false);
+    expect(combineLegacyAndProposedDecision(true, "deny")).toBe(false);
+  });
+
   it("allows an exact active accepted clinician membership", () => {
     expect(resolveClinicAccess({
       actor: { type: "clinician", userId: 10 },
@@ -179,6 +193,35 @@ describe("shadow-only clinic access resolver", () => {
     expect(clinician).toMatchObject({ decision: "allow", reason: "BASE_AUTHENTICATED" });
     expect(staff).toMatchObject({ decision: "allow", reason: "BASE_AUTHENTICATED" });
     expect(anonymous).toMatchObject({ decision: "deny", reason: "AUTHENTICATION_REQUIRED" });
+  });
+
+  it("keeps revoked Clinic A authenticated while allowing explicit reselection of active Clinic B", () => {
+    const memberships = [
+      membership({ clinicId: 1, isActive: false }),
+      membership({ clinicId: 2, isActive: true }),
+    ];
+    const stillAuthenticated = resolveClinicAccess({
+      actor: { type: "clinician", userId: 10 },
+      route: { mode: "base-auth-only" },
+    });
+    const revokedA = resolveClinicAccess({
+      actor: { type: "clinician", userId: 10 },
+      clinicId: 1,
+      evidence: { memberships },
+    });
+    const explicitB = resolveClinicAccess({
+      actor: { type: "clinician", userId: 10 },
+      clinicId: 2,
+      evidence: { memberships },
+    });
+    const noSilentFallback = resolveClinicAccess({
+      actor: { type: "clinician", userId: 10 },
+      evidence: { memberships },
+    });
+    expect(stillAuthenticated).toMatchObject({ decision: "allow", reason: "BASE_AUTHENTICATED" });
+    expect(revokedA).toMatchObject({ decision: "deny", reason: "MEMBERSHIP_INACTIVE" });
+    expect(explicitB).toMatchObject({ decision: "allow", reason: "ACTIVE_ACCEPTED_MEMBERSHIP" });
+    expect(noSilentFallback).toMatchObject({ decision: "indeterminate", reason: "CLINIC_CONTEXT_REQUIRED" });
   });
 
   it("distinguishes portal, integrations, webhooks, and system actors without portal interference", () => {

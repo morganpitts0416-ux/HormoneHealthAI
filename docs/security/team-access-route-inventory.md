@@ -8,14 +8,23 @@ This is a read-only static inventory of HTTP route declarations in `server/**/*.
 
 | Classification | Routes |
 | --- | ---: |
-| base_authentication_only | 61 |
+| base_authentication_only | 60 |
 | active_clinic_required | 251 |
 | owner_required | 8 |
-| clinic_administrator_permitted | 20 |
+| clinic_administrator_permitted | 17 |
+| platform_admin | 12 |
+| ops_portal | 3 |
+| ops_portal_auth | 3 |
+| ops_portal_role_restricted | 9 |
 | patient_portal | 57 |
 | integration_webhook_system | 2 |
-| public | 10 |
-| indeterminate_review | 33 |
+| public | 9 |
+| token_bound_public_flow | 6 |
+| system_job_secret | 1 |
+| safe_public_config | 2 |
+| constrained_payment_bootstrap | 1 |
+| dual_actor_base_auth | 1 |
+| indeterminate_review | 0 |
 
 ## Evidence fields
 
@@ -25,28 +34,42 @@ This is a read-only static inventory of HTTP route declarations in `server/**/*.
 - Owner, administrator, patient-portal, and webhook signals are conservative lexical indicators, not proof of runtime authorization.
 - A route whose authorization cannot be established statically is `indeterminate_review`; this report intentionally does not infer access from a missing middleware.
 
+## Explorer-defined blocked-review categories
+
+The following categories resolve routes whose source uses a specialized boundary. They are review labels, not authorization grants, and must not be folded into a real-user enforcement family:
+
+- `platform_admin`: platform-level `/api/admin` routes (excluding clinic Spruce administration).
+- `ops_portal`, `ops_portal_auth`, `ops_portal_role_restricted`: isolated operations portal routes, split by session/auth and role evidence.
+- `token_bound_public_flow`: public endpoints whose access is bound to an invite, reset, form, packet, or other token.
+- `system_job_secret`: scheduler/job endpoint guarded by a deployment secret.
+- `safe_public_config`: intentionally public, non-user configuration such as publishable client keys.
+- `constrained_payment_bootstrap`: unauthenticated payment setup bootstrap with a deliberately narrow Stripe operation.
+- `dual_actor_base_auth`: one endpoint that explicitly accepts either of two authenticated actor/session families.
+
+The current inventory has zero `indeterminate_review` routes. New unrecognized routes should remain indeterminate until a reviewer assigns an evidence-backed category; they must never be silently treated as a real-user route.
+
 ## Route inventory
 
 | Method | Path | Classification | Source | Auth middleware | Clinic evidence | Staff session fields | Other signals |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| POST | /api/admin/auto-bootstrap | indeterminate_review | server/routes.ts:4852 | none | none | none | none |
-| POST | /api/admin/bootstrap | base_authentication_only | server/routes.ts:4840 | requireClinicianOnly | none | none | none |
-| GET | /api/admin/clinicians | indeterminate_review | server/routes.ts:4869 | none | none | none | requireAdmin |
-| POST | /api/admin/clinicians | clinic_administrator_permitted | server/routes.ts:4905 | none | defaultClinicId | none | adminRole, requireAdmin |
-| DELETE | /api/admin/clinicians/:id | indeterminate_review | server/routes.ts:5035 | none | none | none | requireAdmin |
-| PATCH | /api/admin/clinicians/:id | indeterminate_review | server/routes.ts:5009 | none | none | none | requireAdmin |
-| GET | /api/admin/clinics | indeterminate_review | server/routes.ts:5120 | none | none | none | requireAdmin |
-| POST | /api/admin/clinics/:id/backfill | indeterminate_review | server/routes.ts:5214 | none | none | none | requireAdmin |
-| GET | /api/admin/clinics/:id/members | indeterminate_review | server/routes.ts:5252 | none | none | none | requireAdmin |
-| POST | /api/admin/clinics/:id/members | clinic_administrator_permitted | server/routes.ts:5229 | none | defaultClinicId | none | requireAdmin |
-| POST | /api/admin/clinics/setup | clinic_administrator_permitted | server/routes.ts:5132 | none | defaultClinicId | none | requireAdmin |
+| POST | /api/admin/auto-bootstrap | platform_admin | server/routes.ts:4852 | none | none | none | none |
+| POST | /api/admin/bootstrap | platform_admin | server/routes.ts:4840 | requireClinicianOnly | none | none | none |
+| GET | /api/admin/clinicians | platform_admin | server/routes.ts:4869 | none | none | none | requireAdmin |
+| POST | /api/admin/clinicians | platform_admin | server/routes.ts:4905 | none | defaultClinicId | none | adminRole, requireAdmin |
+| DELETE | /api/admin/clinicians/:id | platform_admin | server/routes.ts:5035 | none | none | none | requireAdmin |
+| PATCH | /api/admin/clinicians/:id | platform_admin | server/routes.ts:5009 | none | none | none | requireAdmin |
+| GET | /api/admin/clinics | platform_admin | server/routes.ts:5120 | none | none | none | requireAdmin |
+| POST | /api/admin/clinics/:id/backfill | platform_admin | server/routes.ts:5214 | none | none | none | requireAdmin |
+| GET | /api/admin/clinics/:id/members | platform_admin | server/routes.ts:5252 | none | none | none | requireAdmin |
+| POST | /api/admin/clinics/:id/members | platform_admin | server/routes.ts:5229 | none | defaultClinicId | none | requireAdmin |
+| POST | /api/admin/clinics/setup | platform_admin | server/routes.ts:5132 | none | defaultClinicId | none | requireAdmin |
 | GET | /api/admin/spruce-routing | active_clinic_required | server/routes.ts:22634 | requireAuth | getEffectiveClinicId | none | none |
 | POST | /api/admin/spruce-routing | active_clinic_required | server/routes.ts:22646 | requireAuth | getEffectiveClinicId | none | none |
 | DELETE | /api/admin/spruce-routing/:id | active_clinic_required | server/routes.ts:22695 | requireAuth | getEffectiveClinicId | none | none |
 | PATCH | /api/admin/spruce-routing/:id | active_clinic_required | server/routes.ts:22672 | requireAuth | getEffectiveClinicId | none | none |
 | GET | /api/admin/spruce-unrouted | base_authentication_only | server/routes.ts:22712 | requireAuth | none | none | none |
 | PATCH | /api/admin/spruce-unrouted/:id/review | base_authentication_only | server/routes.ts:22723 | requireAuth | none | none | none |
-| GET | /api/admin/usage-report | indeterminate_review | server/routes.ts:5051 | none | none | none | requireAdmin |
+| GET | /api/admin/usage-report | platform_admin | server/routes.ts:5051 | none | none | none | requireAdmin |
 | POST | /api/ai-chat | active_clinic_required | server/routes.ts:18961 | requireAuth | getEffectiveClinicId | none | integration |
 | GET | /api/appointment-types | active_clinic_required | server/routes.ts:15947 | requireAuth | getEffectiveClinicId | none | none |
 | POST | /api/appointment-types | active_clinic_required | server/routes.ts:15960 | requireAuth | getEffectiveClinicId | none | none |
@@ -65,15 +88,15 @@ This is a read-only static inventory of HTTP route declarations in `server/**/*.
 | PATCH | /api/auth/profile | owner_required | server/routes.ts:1345 | requireClinicianOnly | defaultClinicId | none | adminRole, isOwnerOrAdmin |
 | POST | /api/auth/register | public | server/routes.ts:769 | none | none | none | ownerUserId |
 | POST | /api/auth/reset-password | public | server/routes.ts:1485 | none | none | none | none |
-| POST | /api/auth/staff-set-password | indeterminate_review | server/routes.ts:9267 | none | none | none | none |
-| GET | /api/auth/validate-reset-token/:token | public | server/routes.ts:1460 | none | none | none | none |
+| POST | /api/auth/staff-set-password | token_bound_public_flow | server/routes.ts:9267 | none | none | none | none |
+| GET | /api/auth/validate-reset-token/:token | token_bound_public_flow | server/routes.ts:1460 | none | none | none | none |
 | GET | /api/availability/slots | active_clinic_required | server/routes.ts:16344 | requireAuth | getEffectiveClinicId | none | none |
 | POST | /api/baa/sign | base_authentication_only | server/routes.ts:14762 | requireAuth | none | staffId | administrator |
 | GET | /api/baa/status | base_authentication_only | server/routes.ts:14742 | requireAuth | none | staffClinicianId | none |
 | POST | /api/billing/cancel | base_authentication_only | server/routes.ts:15267 | requireAuth | none | none | none |
-| GET | /api/billing/config | indeterminate_review | server/routes.ts:14806 | none | none | none | none |
+| GET | /api/billing/config | safe_public_config | server/routes.ts:14806 | none | none | none | none |
 | POST | /api/billing/create-setup-intent | base_authentication_only | server/routes.ts:14981 | requireAuth | none | none | none |
-| POST | /api/billing/guest-setup-intent | indeterminate_review | server/routes.ts:14966 | none | none | none | none |
+| POST | /api/billing/guest-setup-intent | constrained_payment_bootstrap | server/routes.ts:14966 | none | none | none | none |
 | POST | /api/billing/reactivate | base_authentication_only | server/routes.ts:15288 | requireAuth | none | none | none |
 | GET | /api/billing/status | owner_required | server/routes.ts:14844 | requireAuth | defaultClinicId | staffClinicianId, staffId | adminRole, isClinicOwner, ownerUserId |
 | POST | /api/billing/subscribe | base_authentication_only | server/routes.ts:15015 | requireAuth | none | none | none |
@@ -138,7 +161,7 @@ This is a read-only static inventory of HTTP route declarations in `server/**/*.
 | GET | /api/clinician/notifications | active_clinic_required | server/routes.ts:2745 | requireAuth | getEffectiveClinicId | none | none |
 | POST | /api/clinics/:id/providers/check | base_authentication_only | server/routes.ts:15429 | requireAuth | none | none | none |
 | POST | /api/clinics/:id/providers/confirm-add | base_authentication_only | server/routes.ts:15486 | requireAuth | none | none | none |
-| GET | /api/config/google-maps | indeterminate_review | server/routes.ts:14813 | none | none | none | none |
+| GET | /api/config/google-maps | safe_public_config | server/routes.ts:14813 | none | none | none | none |
 | GET | /api/cpt/search | base_authentication_only | server/routes.ts:18742 | requireAuth | none | none | none |
 | GET | /api/debug/session-info | active_clinic_required | server/routes.ts:1046 | requireAuth | getEffectiveClinicId, defaultClinicId | none | none |
 | GET | /api/diagnoses/search | active_clinic_required | server/routes.ts:18690 | requireAuth | getEffectiveClinicId | none | none |
@@ -197,7 +220,7 @@ This is a read-only static inventory of HTTP route declarations in `server/**/*.
 | GET | /api/form-workflows/:id/runs | active_clinic_required | server/routes.ts:23745 | requireAuth | getEffectiveClinicId | none | none |
 | PUT | /api/form-workflows/:id/steps | active_clinic_required | server/routes.ts:23718 | requireAuth | getEffectiveClinicId | none | none |
 | GET | /api/form-workflows/forms | active_clinic_required | server/routes.ts:23617 | requireAuth | getEffectiveClinicId | none | none |
-| GET | /api/forms/public/:token | indeterminate_review | server/routes.ts:17378 | none | none | none | none |
+| GET | /api/forms/public/:token | token_bound_public_flow | server/routes.ts:17378 | none | none | none | none |
 | POST | /api/forms/public/:token/submit | active_clinic_required | server/routes.ts:17427 | none | defaultClinicId | none | Webhook, webhook |
 | POST | /api/forms/send-to-email | active_clinic_required | server/routes.ts:7529 | requireAuth | getEffectiveClinicId | none | none |
 | POST | /api/generate-dietary-guidance | active_clinic_required | server/routes.ts:2459 | requireAuth | getEffectiveClinicId | none | none |
@@ -229,8 +252,8 @@ This is a read-only static inventory of HTTP route declarations in `server/**/*.
 | POST | /api/integrations/spruce/webhook | integration_webhook_system | server/routes.ts:23572 | none | none | none | /webhook , /webhook", integrations, webhook |
 | POST | /api/interpret-labs | public | server/routes.ts:1521 | none | none | none | none |
 | POST | /api/interpret-labs-female | public | server/routes.ts:1979 | none | none | none | none |
-| POST | /api/jobs/send-appointment-reminders | indeterminate_review | server/routes.ts:16402 | none | none | none | none |
-| GET | /api/join-clinic/:token | indeterminate_review | server/routes.ts:8975 | none | none | none | adminRole |
+| POST | /api/jobs/send-appointment-reminders | system_job_secret | server/routes.ts:16402 | none | none | none | none |
+| GET | /api/join-clinic/:token | token_bound_public_flow | server/routes.ts:8975 | none | none | none | adminRole |
 | POST | /api/join-clinic/:token | clinic_administrator_permitted | server/routes.ts:9006 | none | defaultClinicId | none | adminRole |
 | GET | /api/june-preferences | base_authentication_only | server/routes.ts:18834 | requireAuth | none | staffClinicianId, staffId | none |
 | POST | /api/june-preferences | active_clinic_required | server/routes.ts:18848 | requireAuth | getEffectiveClinicId | staffClinicianId, staffId | none |
@@ -255,23 +278,23 @@ This is a read-only static inventory of HTTP route declarations in `server/**/*.
 | POST | /api/note-templates | active_clinic_required | server/routes.ts:16678 | requireAuth | getEffectiveClinicId | none | none |
 | DELETE | /api/note-templates/:id | active_clinic_required | server/routes.ts:16750 | requireAuth | getEffectiveClinicId | none | none |
 | PATCH | /api/note-templates/:id | active_clinic_required | server/routes.ts:16703 | requireAuth | getEffectiveClinicId | none | none |
-| GET | /api/ops/admins | indeterminate_review | server/ops/routes.ts:678 | none | none | none | requireOpsRole |
-| POST | /api/ops/admins | indeterminate_review | server/ops/routes.ts:719 | none | none | none | requireOpsRole |
-| PATCH | /api/ops/admins/:id | indeterminate_review | server/ops/routes.ts:781 | none | none | none | requireOpsRole |
-| GET | /api/ops/audit-log | indeterminate_review | server/ops/routes.ts:627 | none | none | none | requireOpsRole |
-| POST | /api/ops/auth/login | indeterminate_review | server/ops/routes.ts:233 | none | none | none | none |
-| POST | /api/ops/auth/logout | indeterminate_review | server/ops/routes.ts:356 | none | none | none | none |
-| GET | /api/ops/auth/me | indeterminate_review | server/ops/routes.ts:373 | none | none | none | none |
-| GET | /api/ops/baa-signatures | indeterminate_review | server/ops/routes.ts:482 | none | none | none | requireOpsRole |
-| POST | /api/ops/bootstrap | indeterminate_review | server/ops/routes.ts:139 | none | none | none | none |
-| GET | /api/ops/clinics | indeterminate_review | server/ops/routes.ts:378 | none | none | none | requireOpsRole |
-| GET | /api/ops/overview | indeterminate_review | server/ops/routes.ts:95 | none | none | none | none |
-| GET | /api/ops/security-events | indeterminate_review | server/ops/routes.ts:571 | none | none | none | requireOpsRole |
-| GET | /api/ops/status | indeterminate_review | server/ops/routes.ts:83 | none | none | none | none |
-| GET | /api/ops/subscriptions | indeterminate_review | server/ops/routes.ts:536 | none | none | none | requireOpsRole |
-| GET | /api/ops/users | indeterminate_review | server/ops/routes.ts:431 | none | none | none | requireOpsRole |
-| GET | /api/packets/public/:token | indeterminate_review | server/routes.ts:18073 | none | none | none | none |
-| PATCH | /api/packets/public/:token/progress | indeterminate_review | server/routes.ts:18092 | none | none | none | none |
+| GET | /api/ops/admins | ops_portal_role_restricted | server/ops/routes.ts:678 | none | none | none | requireOpsRole |
+| POST | /api/ops/admins | ops_portal_role_restricted | server/ops/routes.ts:719 | none | none | none | requireOpsRole |
+| PATCH | /api/ops/admins/:id | ops_portal_role_restricted | server/ops/routes.ts:781 | none | none | none | requireOpsRole |
+| GET | /api/ops/audit-log | ops_portal_role_restricted | server/ops/routes.ts:627 | none | none | none | requireOpsRole |
+| POST | /api/ops/auth/login | ops_portal_auth | server/ops/routes.ts:233 | none | none | none | none |
+| POST | /api/ops/auth/logout | ops_portal_auth | server/ops/routes.ts:356 | none | none | none | none |
+| GET | /api/ops/auth/me | ops_portal_auth | server/ops/routes.ts:373 | none | none | none | none |
+| GET | /api/ops/baa-signatures | ops_portal_role_restricted | server/ops/routes.ts:482 | none | none | none | requireOpsRole |
+| POST | /api/ops/bootstrap | ops_portal | server/ops/routes.ts:139 | none | none | none | none |
+| GET | /api/ops/clinics | ops_portal_role_restricted | server/ops/routes.ts:378 | none | none | none | requireOpsRole |
+| GET | /api/ops/overview | ops_portal | server/ops/routes.ts:95 | none | none | none | none |
+| GET | /api/ops/security-events | ops_portal_role_restricted | server/ops/routes.ts:571 | none | none | none | requireOpsRole |
+| GET | /api/ops/status | ops_portal | server/ops/routes.ts:83 | none | none | none | none |
+| GET | /api/ops/subscriptions | ops_portal_role_restricted | server/ops/routes.ts:536 | none | none | none | requireOpsRole |
+| GET | /api/ops/users | ops_portal_role_restricted | server/ops/routes.ts:431 | none | none | none | requireOpsRole |
+| GET | /api/packets/public/:token | token_bound_public_flow | server/routes.ts:18073 | none | none | none | none |
+| PATCH | /api/packets/public/:token/progress | token_bound_public_flow | server/routes.ts:18092 | none | none | none | none |
 | GET | /api/patient-intake/exchange | patient_portal | server/routes.ts:5385 | none | none | none | patient-intake |
 | POST | /api/patient-intake/exchange | patient_portal | server/routes.ts:5387 | none | none | none | patient-intake |
 | POST | /api/patient-intake/flow/accept | patient_portal | server/routes.ts:5409 | none | none | none | PatientPortal, patient-intake |
@@ -350,7 +373,7 @@ This is a read-only static inventory of HTTP route declarations in `server/**/*.
 | POST | /api/patients/import | active_clinic_required | server/routes.ts:3692 | requireAuth | getEffectiveClinicId | none | none |
 | POST | /api/patients/merge | active_clinic_required | server/routes.ts:18611 | requireClinicianOnly | getEffectiveClinicId | none | none |
 | GET | /api/patients/search | active_clinic_required | server/routes.ts:3847 | requireAuth | getEffectiveClinicId | none | none |
-| GET | /api/pharmacy-lookup | indeterminate_review | server/routes.ts:4187 | none | none | staffClinicianId | none |
+| GET | /api/pharmacy-lookup | dual_actor_base_auth | server/routes.ts:4187 | none | none | staffClinicianId | none |
 | PATCH | /api/portal/account | patient_portal | server/routes.ts:5739 | none | none | none | /portal/ |
 | GET | /api/portal/account/documents | patient_portal | server/routes.ts:5807 | none | none | none | /portal/ |
 | GET | /api/portal/appointments | patient_portal | server/routes.ts:15797 | none | none | none | /portal/ |

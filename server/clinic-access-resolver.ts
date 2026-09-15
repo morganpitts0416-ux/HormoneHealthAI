@@ -10,6 +10,26 @@
 
 export type ClinicAccessDecision = "allow" | "deny" | "indeterminate";
 
+/**
+ * Transitional enforcement is deliberately non-escalating.  This helper is
+ * pure so callers and synthetic tests can prove the rule without constructing
+ * a request, session, or database connection.
+ *
+ * An indeterminate proposed decision is not an authorization grant.  The
+ * middleware treats that value as unavailable policy context and leaves the
+ * legacy response in charge rather than calling this function.
+ */
+export function combineLegacyAndProposedDecision(
+  legacyAllow: boolean,
+  proposedDecision: ClinicAccessDecision,
+): boolean {
+  return legacyAllow && proposedDecision === "allow";
+}
+
+/** Explicit name for callers documenting the transitional final decision. */
+export const combinedClinicAccessDecision = combineLegacyAndProposedDecision;
+export const finalAuthorizationAllow = combineLegacyAndProposedDecision;
+
 export type ClinicActorType =
   | "clinician"
   | "staff"

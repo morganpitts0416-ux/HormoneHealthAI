@@ -10,6 +10,8 @@ import {
 } from "./clinic-access-resolver";
 import { clinicAccessRouteClassification } from "./clinic-access-shadow";
 
+export { combineLegacyAndProposedDecision } from "./clinic-access-resolver";
+
 export const AUTHORIZATION_FLAG_KEYS = [
   "SHADOW_CLINIC_SUBSCRIPTION_AUTHZ",
   "ENFORCE_CLINIC_SUBSCRIPTION_AUTHZ",
@@ -27,6 +29,17 @@ export const AUTHORIZATION_FLAG_KEYS = [
   "patient_portal_relationship_shadow_v1",
   "SHADOW_PATIENT_IDENTITY_LOGIN",
   "PATIENT_PORTAL_IDENTITY_APPLY_V1",
+  // Family-specific enforcement gates.  They are intentionally absent from
+  // existing installations until explicitly approved and therefore default
+  // off through listAuthorizationFlagStatus().
+  "SHADOW_ORDINARY_CLINIC_ACCESS_AUTHZ",
+  "ENFORCE_ORDINARY_CLINIC_ACCESS_AUTHZ",
+  "SHADOW_PATIENT_CHART_DOWNLOAD_RESOURCES_AUTHZ",
+  "ENFORCE_PATIENT_CHART_DOWNLOAD_RESOURCES_AUTHZ",
+  "SHADOW_JOBS_WORKFLOWS_AUTHZ",
+  "ENFORCE_JOBS_WORKFLOWS_AUTHZ",
+  "SHADOW_OWNER_ADMIN_TEAM_MANAGEMENT_AUTHZ",
+  "ENFORCE_OWNER_ADMIN_TEAM_MANAGEMENT_AUTHZ",
 ] as const;
 
 export type AuthorizationFlagKey = typeof AUTHORIZATION_FLAG_KEYS[number];
@@ -117,6 +130,10 @@ const ENFORCEMENT_FLAGS = new Set<AuthorizationFlagKey>([
   "ENFORCE_PATIENT_CLINIC_RELATIONSHIP",
   "ENABLE_CLINIC_SELECTION_DASHBOARD",
   "ENABLE_INACTIVE_CLINIC_READ_ONLY",
+  "ENFORCE_ORDINARY_CLINIC_ACCESS_AUTHZ",
+  "ENFORCE_PATIENT_CHART_DOWNLOAD_RESOURCES_AUTHZ",
+  "ENFORCE_JOBS_WORKFLOWS_AUTHZ",
+  "ENFORCE_OWNER_ADMIN_TEAM_MANAGEMENT_AUTHZ",
 ]);
 
 export async function listAuthorizationFlagStatus(clinicId?: number | null) {
@@ -441,7 +458,8 @@ export function authorizationShadowMiddleware(
       const flags = await readFlags(null);
       const enabled = new Set(flags.filter((f) => f.enabled).map((f) => f.flagKey));
       if (enabled.size) {
-        decisions = (await getProposedDecisions(req)).filter((decision) => enabled.has(decision.requiredFlag));
+        const proposed = await getProposedDecisions(req);
+        decisions = proposed.filter((decision) => enabled.has(decision.requiredFlag));
       }
     } catch {
       decisions = [];

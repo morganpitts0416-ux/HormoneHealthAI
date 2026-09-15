@@ -12,6 +12,7 @@ import {
   type ShadowComparisonReason,
 } from "./team-access-compatibility";
 import {
+  combineLegacyAndProposedDecision,
   type ClinicAccessActor,
   type ClinicAccessDecision,
   type ClinicAccessRequest,
@@ -19,6 +20,8 @@ import {
   type ClinicActorType,
   type ClinicRouteMode,
 } from "./clinic-access-resolver";
+
+export { combineLegacyAndProposedDecision };
 
 export type ClinicShadowRouteClass =
   | "base-auth-only"

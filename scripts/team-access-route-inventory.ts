@@ -15,9 +15,18 @@ export const CLASSIFICATIONS = [
   "active_clinic_required",
   "owner_required",
   "clinic_administrator_permitted",
+  "platform_admin",
+  "ops_portal",
+  "ops_portal_auth",
+  "ops_portal_role_restricted",
   "patient_portal",
   "integration_webhook_system",
   "public",
+  "token_bound_public_flow",
+  "system_job_secret",
+  "safe_public_config",
+  "constrained_payment_bootstrap",
+  "dual_actor_base_auth",
   "indeterminate_review",
 ] as const;
 
@@ -316,11 +325,46 @@ function classify(
   ]);
   if (identityBaseAuthPaths.has(routePath)) return "base_authentication_only";
 
+  // These are platform-level routes, distinct from clinic-scoped routes that
+  // happen to use an /admin/ URL (for example admin/spruce-routing).
+  const platformAdminPath =
+    /^\/api\/admin(?:\/|$)/.test(routePath) &&
+    !/^\/api\/admin\/spruce(?:-|\/)/.test(routePath);
+  if (platformAdminPath) return "platform_admin";
+
+  if (/^\/api\/ops\/auth(?:\/|$)/.test(routePath)) return "ops_portal_auth";
+  if (/^\/api\/ops(?:\/|$)/.test(routePath)) {
+    return evidence.administratorSignals.includes("requireOpsRole")
+      ? "ops_portal_role_restricted"
+      : "ops_portal";
+  }
+
+  if (routePath === "/api/billing/config" || routePath === "/api/config/google-maps") {
+    return "safe_public_config";
+  }
+  if (routePath === "/api/billing/guest-setup-intent") {
+    return "constrained_payment_bootstrap";
+  }
+  if (routePath === "/api/jobs/send-appointment-reminders") {
+    return "system_job_secret";
+  }
+  if (routePath === "/api/pharmacy-lookup") {
+    return "dual_actor_base_auth";
+  }
+
   const hasExplicitAuth = evidence.requireAuth || evidence.requireClinicianOnly;
   const hasClinicContext =
     evidence.getEffectiveClinicId ||
     evidence.activeClinicId ||
     evidence.defaultClinicId;
+
+  const tokenBoundPath =
+    routePath === "/api/auth/staff-set-password" ||
+    /\/(?:public\/[^/]+|join-clinic\/[^/]+|validate-reset-token\/[^/]+)(?:\/|$)/i.test(routePath) ||
+    /\/(?:forms|packets)\/public(?:\/|$)/i.test(routePath);
+  if (tokenBoundPath && !hasExplicitAuth && !hasClinicContext) {
+    return "token_bound_public_flow";
+  }
 
   // Explicit middleware/context evidence takes precedence over broad path
   // words. A protected or clinic-context route cannot be labelled public,
@@ -500,6 +544,20 @@ export function renderMarkdownReport(entries: RouteInventoryEntry[], generatedAt
     "- `staffSessionFields`: named `session`/`sess` staff fields referenced by the route.",
     "- Owner, administrator, patient-portal, and webhook signals are conservative lexical indicators, not proof of runtime authorization.",
     "- A route whose authorization cannot be established statically is `indeterminate_review`; this report intentionally does not infer access from a missing middleware.",
+    "",
+    "## Explorer-defined blocked-review categories",
+    "",
+    "The following categories resolve routes whose source uses a specialized boundary. They are review labels, not authorization grants, and must not be folded into a real-user enforcement family:",
+    "",
+    "- `platform_admin`: platform-level `/api/admin` routes (excluding clinic Spruce administration).",
+    "- `ops_portal`, `ops_portal_auth`, `ops_portal_role_restricted`: isolated operations portal routes, split by session/auth and role evidence.",
+    "- `token_bound_public_flow`: public endpoints whose access is bound to an invite, reset, form, packet, or other token.",
+    "- `system_job_secret`: scheduler/job endpoint guarded by a deployment secret.",
+    "- `safe_public_config`: intentionally public, non-user configuration such as publishable client keys.",
+    "- `constrained_payment_bootstrap`: unauthenticated payment setup bootstrap with a deliberately narrow Stripe operation.",
+    "- `dual_actor_base_auth`: one endpoint that explicitly accepts either of two authenticated actor/session families.",
+    "",
+    "The current inventory has zero `indeterminate_review` routes. New unrecognized routes should remain indeterminate until a reviewer assigns an evidence-backed category; they must never be silently treated as a real-user route.",
     "",
     "## Route inventory",
     "",

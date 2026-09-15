@@ -1,0 +1,113 @@
+The shadow-only team-access foundation is accepted. Do not push, deploy, or enable enforcement.
+
+Implement the next development-only boundary, limited to enforcement architecture and synthetic validation. No real account may be denied.
+
+1. Non-escalation rule
+
+The clinic-access resolver must never grant access that legacy authorization denies.
+
+Define transitional enforcement as:
+
+finalAllow = legacyAllow && proposedClinicAccessAllow
+
+A proposedAllow must not bypass or replace any route’s existing ownership, role, resource, or authentication checks.
+
+Add tests proving all 206 historical legacy-deny/proposed-allow cases would remain denied under the combined policy.
+
+2. Explain existing discrepancies
+
+Produce sanitized breakdowns of:
+
+The 50 legacy-allow/proposed-deny decisions by route family and reason.
+The 206 legacy-deny/proposed-allow decisions by route family and reason.
+The 47 indeterminate decisions by missing context.
+The two clinician compatibility findings.
+The four clinic-ownership findings.
+The stale default-clinic finding.
+
+Do not include names, emails, PHI, tokens, session identifiers, or clinical content.
+
+Distinguish synthetic/stale historical scenarios from currently reproducible compatibility problems.
+
+3. Fresh validation sample
+
+Do not use the existing 938 persisted observations as proof of readiness.
+
+Generate a fresh, isolated synthetic sample covering:
+
+Active clinician
+Active staff
+Revoked clinician with stale cookie
+Revoked staff with stale cookie
+Missing membership
+Two active clinic memberships
+One of two memberships revoked
+Stale default clinic
+Stale active clinic
+Same-clinic resource
+Cross-clinic resource
+Nonexistent resource
+Owner
+Clinic administrator
+Standard clinician
+Ambiguous owner
+Sole owner
+
+Every synthetic record and session must be removed afterward.
+
+4. Base-authentication exclusions
+
+Implement and test Group 1’s distinction between:
+
+Base-authentication routes that must remain available without an active clinic, including logout and explicit clinic reselection.
+Clinic-scoped routes that require current active authority.
+
+A clinician revoked from Clinic A but still active at Clinic B must be able to remain authenticated, see only their available clinic memberships, and explicitly select Clinic B.
+
+The system must not silently fall back from revoked Clinic A to Clinic B.
+
+Staff are currently single-clinic; an inactive staff record must not retain clinic access.
+
+5. Disabled enforcement scaffold
+
+Add family-specific enforcement flags, all defaulted off. At minimum separate:
+
+Ordinary clinic-scoped access
+Patient/chart/download resources
+Jobs/workflows
+Owner/admin/team management
+
+Missing flags, flag lookup failures, and unavailable policy context must preserve current behavior while enforcement remains unauthorized.
+
+Enforcement may be exercised only for synthetic actors during this boundary.
+
+6. Route-resolution requirement
+
+Resolve the 33 indeterminate routes or assign each to a specific blocked-review category.
+
+No indeterminate route may be included in real-user enforcement.
+
+Resource routes must prove both:
+
+Current active actor authority for the clinic
+Resource ownership by that same clinic
+7. Existing-user preservation
+
+With all enforcement flags off, rerun compatibility tests proving:
+
+Existing clinician and staff login behavior is unchanged.
+Existing sessions remain unchanged.
+Patient portals remain unchanged.
+No account, membership, provider, staff, session, clinic, patient, password, or assignment record changes.
+Account 2 and all multi-clinic identity records remain unchanged.
+Stopping boundary
+
+Do not add the Deactivate or Reactivate UI yet.
+Do not add team-management mutation endpoints.
+Do not deactivate or delete any real user.
+Do not change ownership records.
+Do not enable enforcement for existing users.
+Do not merge with the cancellation branch.
+Do not push, publish, or deploy.
+
+Stop with fresh synthetic results, discrepancy breakdowns, the combined-policy proof, exact flag states, route-classification updates, exact database before/after counts, and the proposed next enforcement family.

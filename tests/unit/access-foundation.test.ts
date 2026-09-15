@@ -191,4 +191,5 @@ describe("authorization shadow middleware", () => {
     expect(warn).toHaveBeenCalledWith("[auth-shadow] write failed:", "synchronous write failed");
     warn.mockRestore();
   });
+
 });
