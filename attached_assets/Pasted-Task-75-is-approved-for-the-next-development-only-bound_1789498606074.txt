@@ -1,0 +1,84 @@
+Task #75 is approved for the next development-only boundary.
+
+Implement synthetic-only enforcement for a narrowly reviewed allowlist of ordinary clinic-scoped routes.
+
+Required architecture
+Preserve finalAllow = legacyAllow && proposedClinicAccessAllow.
+The new policy may restrict a legacy allow but may never convert a legacy denial into an allow.
+Middleware must execute after existing authentication.
+Existing route-specific role, ownership, resource, and validation checks remain in place.
+Do not replace current authorization with the resolver.
+Indeterminate results must not authorize anything denied by legacy behavior.
+Route allowlist
+
+Before implementation, enumerate the exact routes included.
+
+Exclude:
+
+Patient, chart, document, download, lab, encounter, and other resource-ID routes
+Jobs, workflows, queued AI work, and integrations
+Billing and cancellation
+Owner, admin, staff, provider, invitation, and team-management routes
+Patient portal and patient-intake routes
+Platform admin and operations portals
+Public, token-bound, bootstrap, webhook, and system-secret routes
+Login, logout, /api/auth/me, membership listing, and explicit clinic reselection
+
+Do not broadly attach enforcement to all 251 classified routes. Start with a small explicit allowlist whose handlers require clinic context but do not accept patient/resource identifiers.
+
+Feature flags
+
+Use the ordinary-clinic-access family flags already defined:
+
+Shadow flag defaults absent/off.
+Enforcement flag defaults absent/off.
+Do not create an enabled flag row.
+Missing or failed flag resolution must preserve current behavior.
+
+Actual Express enforcement may operate only for explicitly synthetic actors during validation. No real development user may be denied.
+
+Required authenticated HTTP tests
+
+Test through the real Express middleware and session stack—not only the pure policy function:
+
+Active clinician succeeds.
+Active staff succeeds only where the route permits staff.
+Revoked clinician’s stale cookie is denied.
+Revoked staff’s stale cookie is denied.
+Missing membership is denied.
+Stale activeClinicId is denied.
+Stale defaultClinicId does not authorize.
+Clinic A revocation does not prevent explicit selection and use of active Clinic B.
+The application never silently switches clinics.
+Staff/clinic mismatch is denied.
+Browser clinic headers, query parameters, bodies, and unsigned cookies cannot override server context.
+A legacy denial remains denied even when the resolver returns allow.
+Flag disabled, absent, expired, or unreadable reproduces current behavior exactly.
+
+Use uniform sanitized actor-level denial responses. Do not reveal whether another clinic or membership exists.
+
+Compatibility protections
+
+With flags off:
+
+Existing clinician and staff login behavior remains unchanged.
+Existing sessions remain unchanged.
+Patient portal behavior remains unchanged.
+Billing and the emergency cancellation patch remain untouched.
+Account 2 and all identity/relationship records remain unchanged.
+No ownership, membership, provider, staff, session, patient, password, or clinic record changes.
+
+All synthetic users, memberships, staff records, clinics, providers, and sessions must be removed or transactionally rolled back.
+
+Stop conditions
+
+Stop if the allowlisted middleware requires changes to session format, login, password handling, clinic selection, patient authorization, or current real-user behavior.
+
+Do not add team-management UI or mutation endpoints.
+Do not deactivate or reactivate real users.
+Do not resolve existing ownership or membership findings automatically.
+Do not enable enforcement for real accounts.
+Do not merge the cancellation branch.
+Do not push, publish, or deploy.
+
+Report the exact allowlisted routes, middleware placement, flag behavior, authenticated HTTP results, database before/after counts, compatibility results, and the next proposed route family.

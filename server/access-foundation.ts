@@ -75,6 +75,202 @@ export interface AuthorizationShadowMiddlewareDependencies {
   proposeDecisions?: (req: Request) => Promise<AuthorizationShadowDecision[]>;
 }
 
+/**
+ * Development-only ordinary clinic access boundary.
+ *
+ * This is deliberately an exact method/path list rather than a prefix or
+ * classification-based attachment.  Each entry was reviewed against its
+ * handler: it requires an authenticated clinician/staff session, has no
+ * patient/resource identifier, and does not belong to an excluded route
+ * family.  Any expansion must add a separately audited exact entry.
+ */
+export const ORDINARY_CLINIC_ACCESS_ALLOWLIST = [
+  { method: "GET", path: "/api/preferences/defaults" },
+  { method: "GET", path: "/api/preferences/supplements" },
+  { method: "POST", path: "/api/preferences/supplements" },
+  { method: "GET", path: "/api/preferences/lab-ranges" },
+  { method: "PUT", path: "/api/preferences/lab-ranges" },
+  { method: "GET", path: "/api/note-templates" },
+  { method: "POST", path: "/api/note-templates" },
+  { method: "GET", path: "/api/note-phrases" },
+  { method: "POST", path: "/api/note-phrases" },
+] as const;
+
+// Descriptive alias for validation/reporting consumers.
+export const ORDINARY_CLINIC_ACCESS_ROUTE_ALLOWLIST = ORDINARY_CLINIC_ACCESS_ALLOWLIST;
+
+type OrdinaryClinicAccessAllowlistEntry = (typeof ORDINARY_CLINIC_ACCESS_ALLOWLIST)[number];
+
+const ORDINARY_CLINIC_ACCESS_EXCLUSIONS = [
+  "/patients/",
+  "/charts/",
+  "/documents/",
+  "/downloads/",
+  "/labs/",
+  "/encounters/",
+  "/jobs/",
+  "/workflows/",
+  "/integrations/",
+  "/billing/",
+  "/cancel",
+  "/admin/",
+  "/staff",
+  "/provider",
+  "/invite",
+  "/team",
+  "/portal/",
+  "/patient-intake/",
+  "/auth/",
+  "/webhooks/",
+  "/bootstrap",
+  "/me/active-clinic",
+  "/me/memberships",
+] as const;
+
+/**
+ * Handler-audit guard.  Keeping this executable makes an accidental future
+ * widening fail loudly instead of silently putting an excluded family behind
+ * this boundary.
+ */
+export function auditOrdinaryClinicAccessAllowlist(): void {
+  const seen = new Set<string>();
+  for (const entry of ORDINARY_CLINIC_ACCESS_ALLOWLIST) {
+    if (!/^(GET|POST|PUT)$/.test(entry.method) || !entry.path.startsWith("/api/")) {
+      throw new Error(`Invalid ordinary clinic access allowlist entry: ${entry.method} ${entry.path}`);
+    }
+    const key = `${entry.method} ${entry.path}`;
+    if (seen.has(key)) throw new Error(`Duplicate ordinary clinic access allowlist entry: ${key}`);
+    seen.add(key);
+    if (entry.path.includes(":") || ORDINARY_CLINIC_ACCESS_EXCLUSIONS.some((part) => entry.path.includes(part))) {
+      throw new Error(`Excluded route in ordinary clinic access allowlist: ${key}`);
+    }
+  }
+}
+
+auditOrdinaryClinicAccessAllowlist();
+
+/**
+ * A request can only become eligible for development enforcement when a
+ * trusted validation harness marks the in-process Request object.  No value
+ * from headers, query parameters, request bodies, or cookies is consulted.
+ * A WeakSet keeps the marker out of the session and response surfaces.
+ */
+const syntheticValidationRequests = new WeakSet<object>();
+
+export function establishSyntheticValidationMarker(req: Request): void {
+  if (process.env.NODE_ENV !== "development") {
+    throw new Error("Synthetic validation markers require NODE_ENV=development");
+  }
+  syntheticValidationRequests.add(req);
+}
+
+export const markSyntheticValidationRequest = establishSyntheticValidationMarker;
+export const establishSyntheticValidationActorMarker = establishSyntheticValidationMarker;
+
+export function isSyntheticValidationRequest(req: Request): boolean {
+  return syntheticValidationRequests.has(req);
+}
+
+export interface OrdinaryClinicAccessMiddlewareDependencies {
+  readFlags?: typeof listAuthorizationFlagStatus;
+  resolve?: (req: Request, clinicId: number | null) => Promise<{
+    decision: "allow" | "deny" | "indeterminate";
+  }>;
+}
+
+export function ordinaryClinicAccessAllowlistedRequest(req: Request): OrdinaryClinicAccessAllowlistEntry | null {
+  return ORDINARY_CLINIC_ACCESS_ALLOWLIST.find((entry) =>
+    entry.method === req.method && entry.path === req.path,
+  ) ?? null;
+}
+
+function serverClinicContext(req: Request): number | null {
+  const sess = req.session as any;
+  if (sess?.staffId) {
+    return Number.isSafeInteger(Number(sess.staffClinicianClinicId)) && Number(sess.staffClinicianClinicId) > 0
+      ? Number(sess.staffClinicianClinicId)
+      : null;
+  }
+  // A default clinic is intentionally not a context for this boundary.
+  return Number.isSafeInteger(Number(sess?.activeClinicId)) && Number(sess.activeClinicId) > 0
+    ? Number(sess.activeClinicId)
+    : null;
+}
+
+function ordinaryActor(req: Request): ClinicAccessActor | null {
+  const sess = req.session as any;
+  if (sess?.staffId && sess?.staffClinicianId) {
+    return {
+      type: "staff",
+      staffId: Number(sess.staffId),
+      clinicianId: Number(sess.staffClinicianId),
+    };
+  }
+  const userId = Number((req.user as any)?.id);
+  return Number.isSafeInteger(userId) && userId > 0 ? { type: "clinician", userId } : null;
+}
+
+/**
+ * Development-only enforcement for the reviewed list.  It is mounted after
+ * passport/session and the external-reviewer legacy deny-list, and is placed
+ * after requireAuth on each allowlisted route.  Existing handler checks still
+ * run after this middleware.
+ */
+export function ordinaryClinicAccessEnforcementMiddleware(
+  dependencies: OrdinaryClinicAccessMiddlewareDependencies = {},
+) {
+  const readFlags = dependencies.readFlags ?? listAuthorizationFlagStatus;
+  const resolve = dependencies.resolve ?? (async (req: Request, clinicId: number | null) => {
+    const actor = ordinaryActor(req);
+    if (!actor) return { decision: "indeterminate" as const };
+    return teamClinicAccessResolver.resolve({
+      actor,
+      clinicId,
+      route: { mode: "clinic", kind: "ordinary" },
+    });
+  });
+
+  return async (req: Request, res: Response, next: NextFunction) => {
+    if (process.env.NODE_ENV !== "development") return next();
+    if (!ordinaryClinicAccessAllowlistedRequest(req) || !isSyntheticValidationRequest(req)) return next();
+
+    const clinicId = serverClinicContext(req);
+    let enforcementEnabled = false;
+    try {
+      const flags = await readFlags(clinicId);
+      enforcementEnabled = flags.some((flag) =>
+        flag.flagKey === "ENFORCE_ORDINARY_CLINIC_ACCESS_AUTHZ" && flag.enabled,
+      );
+    } catch {
+      // A failed/unreadable flag resolution preserves legacy behavior.
+      return next();
+    }
+    if (!enforcementEnabled) return next();
+
+    let proposed: { decision: "allow" | "deny" | "indeterminate" };
+    try {
+      proposed = await resolve(req, clinicId);
+    } catch {
+      // Resolver failure is unavailable evidence. Under an explicitly enabled
+      // synthetic enforcement flag it is a sanitized denial, never a grant or
+      // a silent switch to another clinic.
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    // requireAuth has already passed.  This is the explicit
+    // finalAllow = legacyAllow && proposedAllow rule: legacyAllow is true here
+    // only because the route's existing authentication middleware called next.
+    const legacyAllow = res.locals?.legacyAllow !== false;
+    const proposedAllow = proposed.decision === "allow";
+    const finalAllow = legacyAllow && proposedAllow;
+    if (finalAllow) return next();
+
+    // Uniform actor-level denial: do not reveal whether a clinic or membership
+    // exists, and do not return resolver reason codes to the caller.
+    return res.status(403).json({ message: "Access denied" });
+  };
+}
+
 const teamClinicAccessResolver = createClinicAccessResolver({
   getMemberships: async (userId) => db
     .select({

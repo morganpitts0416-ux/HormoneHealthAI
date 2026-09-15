@@ -67,7 +67,10 @@ import {
   type ExternalProvider,
 } from "./external-messaging";
 import { storage, chartReviewStorage, db as storageDb, setupClinicForNewUser, updateClinicSeats, createProviderWithMembership, updateClinicPlanFromStripe } from "./storage";
-import { listAuthorizationFlagStatus } from "./access-foundation";
+import {
+  listAuthorizationFlagStatus,
+  ordinaryClinicAccessEnforcementMiddleware,
+} from "./access-foundation";
 import rateLimit from "express-rate-limit";
 import { logPhiAccess, ipFromReq, uaFromReq } from "./phi-audit";
 
@@ -762,6 +765,9 @@ async function autoSavePhotoId(
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Exact development-only boundary. It runs after requireAuth on each
+  // allowlisted route; existing handler authorization and validation remains.
+  const enforceOrdinaryClinicAccess = ordinaryClinicAccessEnforcementMiddleware();
 
   // ── Auth routes ────────────────────────────────────────────────────────────
 
@@ -9299,7 +9305,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
   });
 
   // ── Clinician Preferences: Defaults Reference ─────────────────────────────
-  app.get("/api/preferences/defaults", requireAuth, async (req, res) => {
+  app.get("/api/preferences/defaults", requireAuth, enforceOrdinaryClinicAccess, async (req, res) => {
     res.json({
       labMarkers: LAB_MARKER_DEFAULTS,
       symptomKeys: SYMPTOM_KEYS,
@@ -9342,7 +9348,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
   });
 
   // ── Clinician Preferences: Supplement Library ─────────────────────────────
-  app.get("/api/preferences/supplements", requireAuth, async (req, res) => {
+  app.get("/api/preferences/supplements", requireAuth, enforceOrdinaryClinicAccess, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
@@ -9358,7 +9364,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
     }
   });
 
-  app.post("/api/preferences/supplements", requireAuth, async (req, res) => {
+  app.post("/api/preferences/supplements", requireAuth, enforceOrdinaryClinicAccess, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
@@ -9532,7 +9538,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
   });
 
   // ── Clinician Preferences: Lab Range Overrides ────────────────────────────
-  app.get("/api/preferences/lab-ranges", requireAuth, async (req, res) => {
+  app.get("/api/preferences/lab-ranges", requireAuth, enforceOrdinaryClinicAccess, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
@@ -9543,7 +9549,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
     }
   });
 
-  app.put("/api/preferences/lab-ranges", requireAuth, async (req, res) => {
+  app.put("/api/preferences/lab-ranges", requireAuth, enforceOrdinaryClinicAccess, async (req, res) => {
     try {
       const sess = req.session as any;
       if (sess.staffId && (sess.staffAdminRole ?? "standard") === "standard") {
@@ -16666,7 +16672,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
   });
 
   // ── Note Templates & Phrases ──────────────────────────────────────────────
-  app.get("/api/note-templates", requireAuth, async (req: any, res) => {
+  app.get("/api/note-templates", requireAuth, enforceOrdinaryClinicAccess, async (req: any, res) => {
     try {
       const clinicId = getEffectiveClinicId(req);
       if (!clinicId) return res.status(400).json({ message: "No clinic context" });
@@ -16675,7 +16681,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       res.json(list);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.post("/api/note-templates", requireAuth, async (req: any, res) => {
+  app.post("/api/note-templates", requireAuth, enforceOrdinaryClinicAccess, async (req: any, res) => {
     try {
       const clinicId = getEffectiveClinicId(req);
       if (!clinicId) return res.status(400).json({ message: "No clinic context" });
@@ -16757,7 +16763,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  app.get("/api/note-phrases", requireAuth, async (req: any, res) => {
+  app.get("/api/note-phrases", requireAuth, enforceOrdinaryClinicAccess, async (req: any, res) => {
     try {
       const clinicId = getEffectiveClinicId(req);
       if (!clinicId) return res.status(400).json({ message: "No clinic context" });
@@ -16765,7 +16771,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       res.json(list);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.post("/api/note-phrases", requireAuth, async (req: any, res) => {
+  app.post("/api/note-phrases", requireAuth, enforceOrdinaryClinicAccess, async (req: any, res) => {
     try {
       const clinicId = getEffectiveClinicId(req);
       if (!clinicId) return res.status(400).json({ message: "No clinic context" });

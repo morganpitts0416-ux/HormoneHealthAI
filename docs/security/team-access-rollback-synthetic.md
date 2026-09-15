@@ -60,3 +60,44 @@ passed through the existing output sanitizer before it is emitted. Patient and
 identity table deltas are asserted to be zero during the transaction. This is
 validation evidence only: it does not enable enforcement, alter ownership, or
 modify existing accounts, patients, clinics, identity records, or sessions.
+
+## Ordinary clinic access development boundary
+
+The approved synthetic-only enforcement boundary is an exact method/path
+allowlist:
+
+- `GET /api/preferences/defaults`
+- `GET /api/preferences/supplements`
+- `POST /api/preferences/supplements`
+- `GET /api/preferences/lab-ranges`
+- `PUT /api/preferences/lab-ranges`
+- `GET /api/note-templates`
+- `POST /api/note-templates`
+- `GET /api/note-phrases`
+- `POST /api/note-phrases`
+
+These handlers were audited before inclusion. They require the existing
+authenticated clinician/staff session, require clinic context, and do not
+accept patient or resource identifiers. Resource-ID, patient/chart/document/
+download/lab/encounter, jobs/workflows/integration, billing/cancellation,
+owner/admin/staff/provider/invitation/team-management, patient portal/intake,
+platform operations, public/token/bootstrap/webhook/system-secret, login/
+logout/auth-me/membership/reselection route families remain excluded.
+
+The enforcement middleware is placed after session/passport authentication and
+the external-reviewer legacy deny-list, then after `requireAuth` on each
+allowlisted route. Existing handler role, validation, ownership, and resource
+checks remain in place. It computes
+`finalAllow = legacyAllow && proposedAllow`; it can only restrict a legacy
+allow.
+
+`SHADOW_ORDINARY_CLINIC_ACCESS_AUTHZ` and
+`ENFORCE_ORDINARY_CLINIC_ACCESS_AUTHZ` are absent/off by default. Missing,
+expired, or unreadable flag state preserves legacy behavior exactly. Even when
+the enforcement flag is enabled, only a server-side marker attached by a
+development validation harness can activate the boundary. Browser headers,
+query/body values, and unsigned cookies are never accepted as markers or
+clinic context. Synthetic denials use the uniform sanitized response
+`{"message":"Access denied"}`; no clinic existence or membership detail is
+returned. No real user, session format, clinic selection, login/password
+behavior, or database record is changed by this boundary.
