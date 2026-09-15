@@ -73,6 +73,10 @@ import {
 } from "./access-foundation";
 import rateLimit from "express-rate-limit";
 import { logPhiAccess, ipFromReq, uaFromReq } from "./phi-audit";
+import {
+  createAppointmentTypesReadHandler,
+  createAvailabilitySlotsReadHandler,
+} from "./scheduling-read-handlers";
 
 // ── Auth rate limiters (Phase 1 HIPAA hardening) ─────────────────────────────
 // Applied only to login/password-reset endpoints; no global limiting.
@@ -15950,18 +15954,12 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
   });
 
   // ── Appointment Types ──────────────────────────────────────────────────────
-  app.get("/api/appointment-types", requireAuth, async (req: any, res) => {
-    try {
-      const clinicId = getEffectiveClinicId(req);
-      if (!clinicId) return res.json([]);
-      const includeInactive = req.query.includeInactive === "true";
-      const types = await storage.getAppointmentTypes(clinicId, includeInactive);
-      res.json(types);
-    } catch (err) {
-      console.error("[Scheduling] appointment-types GET error:", err);
-      res.status(500).json({ message: "Failed to load appointment types" });
-    }
-  });
+  app.get(
+    "/api/appointment-types",
+    requireAuth,
+    enforceOrdinaryClinicAccess,
+    createAppointmentTypesReadHandler({ storage, getClinicId: getEffectiveClinicId }),
+  );
 
   app.post("/api/appointment-types", requireAuth, requireSchedulingAdmin, async (req: any, res) => {
     try {
@@ -16347,61 +16345,12 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
 
   // ── Slot availability ─────────────────────────────────────────────────────
   // GET /api/availability/slots?providerId=&typeId=&date=YYYY-MM-DD
-  app.get("/api/availability/slots", requireAuth, async (req: any, res) => {
-    try {
-      const clinicId = getEffectiveClinicId(req);
-      if (!clinicId) return res.json([]);
-      const providerId = Number(req.query.providerId);
-      const typeId = req.query.typeId ? Number(req.query.typeId) : null;
-      const dateStr = String(req.query.date || "");
-      if (!providerId || !dateStr) return res.status(400).json({ message: "providerId and date required" });
-
-      const date = new Date(dateStr + "T00:00:00");
-      if (isNaN(date.getTime())) return res.status(400).json({ message: "Invalid date" });
-      const dayOfWeek = date.getDay();
-
-      const dayStart = new Date(date); dayStart.setHours(0, 0, 0, 0);
-      const dayEnd = new Date(date); dayEnd.setHours(23, 59, 59, 999);
-
-      const [availability, blocks, dayAppts, type] = await Promise.all([
-        storage.getProviderAvailability(clinicId, providerId),
-        storage.getCalendarBlocks(clinicId, dayStart, dayEnd, providerId),
-        storage.getAppointmentsByClinicAndRange(clinicId, dayStart, dayEnd, providerId),
-        typeId ? storage.getAppointmentTypeById(typeId, clinicId) : Promise.resolve(null),
-      ]);
-
-      const duration = type?.durationMinutes ?? 30;
-      const slots: { start: string; end: string }[] = [];
-      const todaysWindows = availability.filter(a => a.dayOfWeek === dayOfWeek);
-
-      for (const win of todaysWindows) {
-        const [sH, sM] = String(win.startTime).split(":").map(Number);
-        const [eH, eM] = String(win.endTime).split(":").map(Number);
-        const winStart = new Date(date); winStart.setHours(sH, sM, 0, 0);
-        const winEnd = new Date(date); winEnd.setHours(eH, eM, 0, 0);
-        let cursor = new Date(winStart);
-        while (cursor.getTime() + duration * 60000 <= winEnd.getTime()) {
-          const slotEnd = new Date(cursor.getTime() + duration * 60000);
-          // Skip if overlaps any existing appt
-          const conflicts = dayAppts.some(a => {
-            const aStart = new Date(a.appointmentStart);
-            const aEnd = a.appointmentEnd ? new Date(a.appointmentEnd) : new Date(aStart.getTime() + (a.durationMinutes ?? 30) * 60000);
-            return aStart < slotEnd && aEnd > cursor && a.status !== "cancelled" && a.status !== "no_show";
-          });
-          // Skip if overlaps any block
-          const blocked = blocks.some(b => new Date(b.startAt) < slotEnd && new Date(b.endAt) > cursor);
-          if (!conflicts && !blocked) {
-            slots.push({ start: cursor.toISOString(), end: slotEnd.toISOString() });
-          }
-          cursor = new Date(cursor.getTime() + duration * 60000);
-        }
-      }
-      res.json(slots);
-    } catch (err) {
-      console.error("[Scheduling] slots error:", err);
-      res.status(500).json({ message: "Failed to compute slots" });
-    }
-  });
+  app.get(
+    "/api/availability/slots",
+    requireAuth,
+    enforceOrdinaryClinicAccess,
+    createAvailabilitySlotsReadHandler({ storage, getClinicId: getEffectiveClinicId }),
+  );
 
   // ── Reminder sweep — call every ~15 minutes from Cloud Scheduler ──────────
   // Sends 24h-out email reminders for upcoming native appointments with patient email.

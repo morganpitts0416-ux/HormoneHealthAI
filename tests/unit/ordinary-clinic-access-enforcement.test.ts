@@ -6,6 +6,7 @@ import {
   establishSyntheticValidationMarker,
   ordinaryClinicAccessEnforcementMiddleware,
   ORDINARY_CLINIC_ACCESS_ALLOWLIST,
+  ordinaryClinicAccessAllowlistedRequest,
 } from "../../server/access-foundation";
 
 type Decision = "allow" | "deny" | "indeterminate";
@@ -138,7 +139,19 @@ describe("ordinary clinic access enforcement boundary", () => {
       { method: "POST", path: "/api/note-templates" },
       { method: "GET", path: "/api/note-phrases" },
       { method: "POST", path: "/api/note-phrases" },
+      { method: "GET", path: "/api/appointment-types" },
+      { method: "GET", path: "/api/availability/slots" },
     ]);
+  });
+
+  it("includes only the two reviewed scheduling reads and excludes clinician-owned medication data", () => {
+    const request = (path: string) => {
+      const req = { method: "GET", path } as express.Request;
+      return ordinaryClinicAccessAllowlistedRequest(req);
+    };
+    expect(request("/api/appointment-types")?.path).toBe("/api/appointment-types");
+    expect(request("/api/availability/slots")?.path).toBe("/api/availability/slots");
+    expect(request("/api/medication-dictionary")).toBeNull();
   });
 
   it.each([

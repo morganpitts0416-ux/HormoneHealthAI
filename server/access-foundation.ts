@@ -94,6 +94,8 @@ export const ORDINARY_CLINIC_ACCESS_ALLOWLIST = [
   { method: "POST", path: "/api/note-templates" },
   { method: "GET", path: "/api/note-phrases" },
   { method: "POST", path: "/api/note-phrases" },
+  { method: "GET", path: "/api/appointment-types" },
+  { method: "GET", path: "/api/availability/slots" },
 ] as const;
 
 // Descriptive alias for validation/reporting consumers.

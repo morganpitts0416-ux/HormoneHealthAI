@@ -318,6 +318,7 @@ export interface IStorage {
 
   // Providers (clinic roster used by scheduler)
   getProvidersByClinic(clinicId: number, includeInactive?: boolean): Promise<schema.Provider[]>;
+  getProviderByIdInClinic(id: number, clinicId: number): Promise<schema.Provider | null>;
 
   // Patient Chart
   getPatientChart(patientId: number, clinicianId: number): Promise<schema.PatientChart | null>;
@@ -2748,6 +2749,18 @@ export class DbStorage implements IStorage {
     const conds = [eq(schema.providers.clinicId, clinicId)];
     if (!includeInactive) conds.push(eq(schema.providers.isActive, true));
     return db.select().from(schema.providers).where(and(...conds)).orderBy(schema.providers.displayName);
+  }
+
+  async getProviderByIdInClinic(id: number, clinicId: number): Promise<schema.Provider | null> {
+    const [row] = await db
+      .select()
+      .from(schema.providers)
+      .where(and(
+        eq(schema.providers.id, id),
+        eq(schema.providers.clinicId, clinicId),
+      ))
+      .limit(1);
+    return row ?? null;
   }
 
   // ── Patient Chart ─────────────────────────────────────────────────────────────

@@ -101,3 +101,53 @@ clinic context. Synthetic denials use the uniform sanitized response
 `{"message":"Access denied"}`; no clinic existence or membership detail is
 returned. No real user, session format, clinic selection, login/password
 behavior, or database record is changed by this boundary.
+
+## Scheduling/reference boundary (accepted)
+
+The next development-only read boundary is intentionally split as follows:
+
+* `GET /api/medication-dictionary` is **excluded**. Its handler is already
+  authenticated, but the collection is clinician-owned (`clinicianId`) and has
+  no clinic context. The caller is the clinician medication-dictionary page;
+  no server-side caller was found. It is not clinic reference data, and
+  forcing ordinary clinic authorization onto it would invent a tenant
+  constraint that the handler/storage contract does not have.
+* `GET /api/appointment-types` is **included**. The scheduling page,
+  appointment dialog, and account-scheduling page are authenticated
+  clinician/staff consumers; no server-side caller was found. The handler
+  obtains context only from the server session's effective clinic and
+  `getAppointmentTypes` requires `appointment_types.clinic_id = clinicId`;
+  `includeInactive` changes only active filtering.
+* `GET /api/availability/slots` is **included**. It is an authenticated
+  clinic scheduling consumer with no current frontend or server-side caller
+  (there is no patient-portal or public-booking caller in the current
+  application). The server session supplies the clinic; browser `providerId`,
+  `typeId`, and `date` values are selectors, never context. Provider and
+  appointment-type IDs are first resolved with same-clinic predicates. A
+  provider or type from another clinic produces the existing array response
+  (`[]`) and schedule queries are not run.
+  Availability, calendar-block, appointment, and type lookups retain their
+  clinic predicates, so no provider schedule or slot crosses the boundary.
+
+Only the latter two exact `GET` entries were added to
+`ORDINARY_CLINIC_ACCESS_ALLOWLIST`, and their middleware is placed immediately
+after `requireAuth`, like the prior ordinary routes. Existing handler checks
+and response formats are unchanged. The middleware still computes
+`finalAllow = legacyAllow && proposedAllow`; it is development-only, requires
+the in-process synthetic `WeakSet` marker, and does not activate for real
+users. Missing, disabled, expired, or unreadable family flags preserve legacy
+behavior. Browser headers, query/body values, and unsigned cookies cannot
+provide either the marker or clinic context.
+
+The focused HTTP matrix covers authenticated active clinician and permitted
+staff, revoked/stale clinician and staff sessions, missing membership, stale
+default/active clinic, explicit second-clinic selection, cross-clinic
+clinic-ID substitution, browser overrides, legacy denial plus proposed allow,
+and absent/disabled/expired/unreadable flags. Synthetic fixture tests also
+assert that appointment types, providers, and slots from a second clinic are
+never returned; they use isolated test stores and do not mutate real records.
+
+This is not a public availability policy. If patient-portal or public-booking
+availability is introduced, it requires a separately audited route and policy
+covering unauthenticated access, provider publication, booking ownership,
+rate limiting, and clinic selection; this boundary must not be reused for it.

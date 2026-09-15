@@ -1,0 +1,52 @@
+The nine-route ordinary-access boundary is accepted.
+
+Proceed with the next development-only read-only scheduling/reference boundary, subject to handler and consumer review.
+
+Review:
+
+GET /api/medication-dictionary
+GET /api/appointment-types
+GET /api/availability/slots
+
+For each route, determine:
+
+Current authentication middleware.
+Every frontend and server-side caller.
+Whether it is clinician-only, staff-accessible, patient-portal, public-booking, or shared reference data.
+How clinic context is derived.
+Whether SQL/storage queries constrain by clinic.
+Whether browser query, header, body, or cookie values can override clinic context.
+Whether the response contains PHI, clinic-sensitive configuration, provider schedules, or only global reference data.
+
+Apply ordinary clinic-access enforcement only if the route is already authenticated and genuinely clinic-scoped.
+
+Specifically:
+
+Do not force clinic authorization onto globally shared medication reference data unless exposure requires it.
+Do not alter patient portal or public scheduling access.
+Do not expose provider availability across clinics.
+Do not change route response formats.
+Preserve finalAllow = legacyAllow && proposedClinicAccessAllow.
+
+Enforcement must remain limited to synthetic actors through the existing development-only harness. All family flags remain absent/off for real users.
+
+Required HTTP tests:
+
+Active clinician
+Permitted active staff
+Revoked clinician stale session
+Revoked staff stale session
+Missing membership
+Stale default and active clinic
+Explicit active second-clinic selection
+Cross-clinic clinic-ID substitution
+Browser override attempts
+Legacy denial plus proposed allow
+Disabled, missing, expired, and unreadable flag behavior
+No cross-clinic appointment types, providers, or availability returned
+
+If availability/slots has public or patient-facing consumers, exclude it and report the required separate policy instead of changing it.
+
+Stop with the exact route decisions, callers, middleware placement, tests, database rollback proof, and next proposed cohort.
+
+Do not add removal UI or mutations, enable real-user enforcement, alter account 2, merge cancellation work, push, publish, or deploy.
