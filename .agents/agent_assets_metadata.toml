@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "LBZ9WkEFfBVes2JhIELzJ"
+uri = "file://docs/production-cancellation-release-handoff.md"
+type = "text"
+title = "Production Cancellation Release Handoff"
+description = "Authenticated GCP retrieval, isolated five-file patch validation, mocked testing, zero-traffic Cloud Run deployment, and rollback instructions."
+logical_id = "a29ad7f3-76f8-4a8e-bff7-89d3d8955097"
+content_hash = "sha256:957c7231bda1b7f938b9258a706e8a7d064834e3eea8184d8662cfd725941368"
+size = 11406
+mtime_ms = 1789583013764
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e875d9ae-9408-41c6-b604-1dd6c96355f6/a29ad7f3-76f8-4a8e-bff7-89d3d8955097/beee6944-7c27-4f45-bb14-5e5f2a23183e"
+storage_version_token = "1789583021620898"
+content_type = "text/markdown"
