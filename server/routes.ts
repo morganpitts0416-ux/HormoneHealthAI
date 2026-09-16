@@ -70,6 +70,7 @@ import { storage, chartReviewStorage, db as storageDb, setupClinicForNewUser, up
 import {
   listAuthorizationFlagStatus,
   ordinaryClinicAccessEnforcementMiddleware,
+  patientChartDownloadResourcesAuthzMiddleware,
 } from "./access-foundation";
 import rateLimit from "express-rate-limit";
 import { logPhiAccess, ipFromReq, uaFromReq } from "./phi-audit";
@@ -772,6 +773,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Exact development-only boundary. It runs after requireAuth on each
   // allowlisted route; existing handler authorization and validation remains.
   const enforceOrdinaryClinicAccess = ordinaryClinicAccessEnforcementMiddleware();
+  const enforcePatientChartDownloadResourcesAuthz = patientChartDownloadResourcesAuthzMiddleware();
 
   // ── Auth routes ────────────────────────────────────────────────────────────
 
@@ -3873,7 +3875,7 @@ Rules:
     }
   });
 
-  app.get("/api/patients/:id", requireAuth, async (req, res) => {
+  app.get("/api/patients/:id", requireAuth, enforcePatientChartDownloadResourcesAuthz, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
@@ -3883,7 +3885,9 @@ Rules:
         return res.status(404).json({ error: "Patient not found" });
       }
       logPhiAccess({ actorType: "clinician", actorId: clinicianId, clinicId, action: "view_patient_profile", patientId: id, ipAddress: ipFromReq(req), userAgent: uaFromReq(req) });
-      const labHistory = await storage.getLabResultsByPatient(id);
+      const labHistory = clinicId
+        ? await storage.getLabResultsByPatientInClinic(id, clinicId)
+        : [];
       res.json({ patient, labHistory });
     } catch (error) {
       console.error("Error getting patient:", error);
@@ -4298,7 +4302,7 @@ Rules:
   // ── Patient Chart endpoints ──────────────────────────────────────────────────
 
   // GET /api/patients/:id/chart — fetch this patient's EHR chart
-  app.get("/api/patients/:id/chart", requireAuth, async (req, res) => {
+  app.get("/api/patients/:id/chart", requireAuth, enforcePatientChartDownloadResourcesAuthz, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
@@ -6597,16 +6601,16 @@ Return ONLY this JSON structure:
   });
 
   // GET /api/patients/:id/messages — clinician fetches message thread
-  app.get("/api/patients/:id/messages", requireAuth, async (req, res) => {
+  app.get("/api/patients/:id/messages", requireAuth, enforcePatientChartDownloadResourcesAuthz, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
       const patientId = parseInt(req.params.id);
       const patient = await storage.getPatient(patientId, clinicianId, clinicId);
       if (!patient) return res.status(404).json({ message: "Patient not found" });
-      const messages = await storage.getPortalMessages(patientId);
+      const messages = await storage.getPortalMessages(patientId, clinicId);
       // Mark patient messages as read
-      await storage.markPortalMessagesRead(patientId, 'clinician');
+      await storage.markPortalMessagesRead(patientId, 'clinician', clinicId);
       res.json(messages);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch messages" });
@@ -6862,7 +6866,7 @@ Return ONLY this JSON structure:
   });
 
   // POST /api/patients/:id/messages — clinician replies to patient
-  app.post("/api/patients/:id/messages", requireAuth, async (req, res) => {
+  app.post("/api/patients/:id/messages", requireAuth, enforcePatientChartDownloadResourcesAuthz, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
@@ -6871,13 +6875,14 @@ Return ONLY this JSON structure:
       if (!patient) return res.status(404).json({ message: "Patient not found" });
       const { content } = req.body;
       if (!content?.trim()) return res.status(400).json({ message: "Message content is required" });
-      const msg = await storage.createPortalMessage({
+      const msg = await storage.createPortalMessageInClinic({
         patientId,
         clinicianId,
         senderType: 'clinician',
         content: content.trim(),
         readAt: null,
-      });
+      }, clinicId!);
+      if (!msg) return res.status(404).json({ message: "Patient not found" });
 
       // Fire-and-forget: notify patient via email (only if they have a portal account with an email)
       const portalAccount = await storage.getPortalAccountByPatientId(patientId);
@@ -7795,7 +7800,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
   }
 
   // GET /api/patients/:id/photo-id — most recent Photo ID document with file data for thumbnail
-  app.get("/api/patients/:id/photo-id", requireAuth, async (req: any, res) => {
+  app.get("/api/patients/:id/photo-id", requireAuth, enforcePatientChartDownloadResourcesAuthz, async (req: any, res) => {
     try {
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
@@ -7823,7 +7828,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
   });
 
   // GET /api/patients/:id/documents — list patient docs (no payloads)
-  app.get("/api/patients/:id/documents", requireAuth, async (req, res) => {
+  app.get("/api/patients/:id/documents", requireAuth, enforcePatientChartDownloadResourcesAuthz, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
@@ -7907,7 +7912,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
   );
 
   // GET /api/patients/:id/documents/:docId/download — stream the file
-  app.get("/api/patients/:id/documents/:docId/download", requireAuth, async (req, res) => {
+  app.get("/api/patients/:id/documents/:docId/download", requireAuth, enforcePatientChartDownloadResourcesAuthz, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
@@ -7920,7 +7925,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       if (!patient) return res.status(404).json({ message: "Patient not found" });
       if (clinicId == null) return res.status(403).json({ message: "Clinic context required" });
 
-      const doc = await storage.getPatientDocument(docId, clinicId);
+      const doc = await storage.getPatientDocument(docId, clinicId, patientId);
       if (!doc || doc.patientId !== patientId) return res.status(404).json({ message: "Document not found" });
       logPhiAccess({ actorType: "clinician", actorId: clinicianId, clinicId, action: "download_patient_document", patientId, resourceId: String(docId), ipAddress: ipFromReq(req), userAgent: uaFromReq(req) });
 
@@ -10117,7 +10122,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
   });
 
   // GET /api/encounters/:id — get single encounter
-  app.get("/api/encounters/:id", requireAuth, async (req, res) => {
+  app.get("/api/encounters/:id", requireAuth, enforcePatientChartDownloadResourcesAuthz, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
@@ -23972,7 +23977,7 @@ IMPORTANT:
   });
 
   // GET /api/clinical-orders/active — active orders for dashboard widget
-  app.get("/api/clinical-orders/active", requireAuth, async (req, res) => {
+  app.get("/api/clinical-orders/active", requireAuth, enforcePatientChartDownloadResourcesAuthz, async (req, res) => {
     try {
       const clinicId = getEffectiveClinicId(req);
       const clinicianId = getClinicianId(req);
@@ -23986,7 +23991,7 @@ IMPORTANT:
   });
 
   // GET /api/patients/:id/clinical-orders
-  app.get("/api/patients/:id/clinical-orders", requireAuth, async (req, res) => {
+  app.get("/api/patients/:id/clinical-orders", requireAuth, enforcePatientChartDownloadResourcesAuthz, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);

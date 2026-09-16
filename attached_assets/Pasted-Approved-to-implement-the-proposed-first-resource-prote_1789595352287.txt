@@ -1,0 +1,32 @@
+Approved to implement the proposed first resource-protection cohort exactly as described, in Replit development only.
+
+Additional conditions:
+
+Limit implementation to the exact 10 method/path pairs listed.
+Keep all enforcement restricted to server-marked synthetic requests. Do not enable enforcement for any real user.
+Do not create or enable feature-flag rows.
+Preserve finalAllow = legacyAllow && proposedAllow; the new policy must never turn an existing denial into an allowance.
+Perform actor revalidation before any PHI query, document streaming, transcript lookup, message mutation or delivery, order promotion, or provider/assignee expansion.
+Put patient, clinic, and resource ownership constraints inside the applicable SQL queries—not only in route-level checks.
+For the document-download route, require document ID, patient ID, and clinic ID in the same ownership lookup.
+For encounters, report separately on any legacy null-clinic records. Do not automatically reassign or repair them.
+For messages, prove that a denied request cannot mark messages read, insert a message, send email, or invoke external forwarding.
+For GET /api/clinical-orders/active, prove that a denied request cannot trigger the existing scheduled-to-active mutation.
+Preserve equivalent non-disclosing behavior for foreign and nonexistent resources.
+Do not add or expose any provider/staff Deactivate or Remove control yet.
+Do not modify Account 2, patient identity work, portal authentication, billing, subscription cancellation, Stripe, GCP, production data, or Git remotes.
+
+After implementation, stop and provide:
+
+Exact changed files and routes
+Exact SQL ownership constraints introduced
+Authenticated synthetic results for all 10 routes
+Stale clinician and staff session results
+Cross-clinic and nonexistent-resource equivalence results
+Proof that every denied indirect effect was prevented
+Before/during/after database counts and cleanup results
+Feature-flag state
+Build, schema-drift, and TypeScript baseline results
+A revised inventory of remaining routes and indirect paths that must be secured before deactivation can truthfully take effect everywhere
+
+Do not push, publish, deploy, or enable real-user enforcement.

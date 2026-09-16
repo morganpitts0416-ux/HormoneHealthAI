@@ -172,9 +172,10 @@ export interface IStorage {
   markProtocolViewed(protocolId: number): Promise<void>;
 
   // Portal messaging operations
-  getPortalMessages(patientId: number): Promise<PortalMessage[]>;
+  getPortalMessages(patientId: number, clinicId?: number | null): Promise<PortalMessage[]>;
   createPortalMessage(msg: InsertPortalMessage): Promise<PortalMessage>;
-  markPortalMessagesRead(patientId: number, readBySenderType: 'patient' | 'clinician'): Promise<void>;
+  createPortalMessageInClinic(msg: InsertPortalMessage, clinicId: number): Promise<PortalMessage | undefined>;
+  markPortalMessagesRead(patientId: number, readBySenderType: 'patient' | 'clinician', clinicId?: number | null): Promise<void>;
   // ── Unified Communication Timeline (portal + Spruce merged) ─────────────
   getPatientCommunicationTimeline(patientId: number, clinicId: number): Promise<CommunicationTimelineItem[]>;
   getUnreadPortalMessageCount(patientId: number, unreadBySenderType: 'patient' | 'clinician'): Promise<number>;
@@ -204,7 +205,7 @@ export interface IStorage {
   // Patient uploaded documents (outside records, PA forms, PMP, scans, etc.)
   createPatientDocument(doc: InsertPatientDocument): Promise<PatientDocumentSummary>;
   listPatientDocuments(patientId: number, clinicId: number): Promise<PatientDocumentSummary[]>;
-  getPatientDocument(docId: number, clinicId: number): Promise<PatientDocument | undefined>;
+  getPatientDocument(docId: number, clinicId: number, patientId?: number): Promise<PatientDocument | undefined>;
   deletePatientDocument(docId: number, clinicId: number): Promise<boolean>;
   getPatientLabDocuments(patientId: number, clinicId: number): Promise<PatientDocumentSummary[]>;
 
@@ -1318,19 +1319,21 @@ export class DbStorage implements IStorage {
   }
 
   // ── Portal message operations ─────────────────────────────────────────────────
-  async getPortalMessages(patientId: number): Promise<PortalMessage[]> {
+  async getPortalMessages(patientId: number, clinicId?: number | null): Promise<PortalMessage[]> {
     // PATIENT SAFETY GATE: only return patient-visible messages.
     // Internal notes, memos, and workflow notes are NEVER returned here.
-    return await db
-      .select()
-      .from(schema.portalMessages)
-      .where(
-        and(
-          eq(schema.portalMessages.patientId, patientId),
-          eq(schema.portalMessages.visibility, 'patient_visible'),
-        )
-      )
-      .orderBy(schema.portalMessages.createdAt);
+    const query = clinicId
+      ? db.select({ message: schema.portalMessages }).from(schema.portalMessages)
+          .innerJoin(schema.patients, and(
+            eq(schema.patients.id, schema.portalMessages.patientId),
+            eq(schema.patients.clinicId, clinicId),
+          ))
+          .where(and(eq(schema.portalMessages.patientId, patientId), eq(schema.portalMessages.visibility, 'patient_visible')))
+          .orderBy(schema.portalMessages.createdAt)
+      : db.select().from(schema.portalMessages)
+          .where(and(eq(schema.portalMessages.patientId, patientId), eq(schema.portalMessages.visibility, 'patient_visible')))
+          .orderBy(schema.portalMessages.createdAt);
+    return (await query).map((row: any) => row.message ?? row) as PortalMessage[];
   }
 
   async createPortalMessage(msg: InsertPortalMessage): Promise<PortalMessage> {
@@ -1346,21 +1349,45 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  async markPortalMessagesRead(patientId: number, readBySenderType: 'patient' | 'clinician'): Promise<void> {
+  /** Tenant-enforced message insert. The INSERT itself can only select a
+   * patient belonging to the requested clinic; route checks are defense in
+   * depth, not the ownership boundary. */
+  async createPortalMessageInClinic(
+    msg: InsertPortalMessage,
+    clinicId: number,
+  ): Promise<PortalMessage | undefined> {
+    const result = await db.execute(sql`
+      INSERT INTO portal_messages
+        (patient_id, clinician_id, sender_type, content, read_at,
+         external_message_id, message_type, visibility, delivery_channel,
+         external_delivery_id)
+      SELECT ${msg.patientId}, ${msg.clinicianId}, ${msg.senderType}, ${msg.content},
+             ${msg.readAt ?? null}, ${msg.externalMessageId ?? null},
+             ${msg.messageType ?? "message"},
+             ${msg.visibility ?? ((msg.messageType ?? "message") === "message" ? "patient_visible" : "internal_only")},
+             ${msg.deliveryChannel ?? null}, ${msg.externalDeliveryId ?? null}
+      FROM patients
+      WHERE patients.id = ${msg.patientId} AND patients.clinic_id = ${clinicId}
+      RETURNING *
+    `);
+    const row = (result as any).rows?.[0];
+    return row ? mapRow(row) as PortalMessage : undefined;
+  }
+
+  async markPortalMessagesRead(patientId: number, readBySenderType: 'patient' | 'clinician', clinicId?: number | null): Promise<void> {
     // Mark messages sent by the OTHER party as read.
     // Only mark patient-visible messages (internal notes have no read state for patients).
     const senderToMark = readBySenderType === 'patient' ? 'clinician' : 'patient';
     await db
       .update(schema.portalMessages)
       .set({ readAt: new Date() })
-      .where(
-        and(
+      .where(and(
           eq(schema.portalMessages.patientId, patientId),
           eq(schema.portalMessages.senderType, senderToMark),
           eq(schema.portalMessages.visibility, 'patient_visible'),
-          isNull(schema.portalMessages.readAt)
-        )
-      );
+          isNull(schema.portalMessages.readAt),
+          ...(clinicId ? [sql`EXISTS (SELECT 1 FROM patients p WHERE p.id = ${schema.portalMessages.patientId} AND p.clinic_id = ${clinicId})`] : []),
+        ));
   }
 
   async getUnreadPortalMessageCount(patientId: number, unreadBySenderType: 'patient' | 'clinician'): Promise<number> {
@@ -1856,11 +1883,12 @@ export class DbStorage implements IStorage {
     return rows as PatientDocumentSummary[];
   }
 
-  async getPatientDocument(docId: number, clinicId: number): Promise<PatientDocument | undefined> {
+  async getPatientDocument(docId: number, clinicId: number, patientId?: number): Promise<PatientDocument | undefined> {
     const rows = await db.select().from(schema.patientDocuments)
       .where(and(
         eq(schema.patientDocuments.id, docId),
         eq(schema.patientDocuments.clinicId, clinicId),
+        ...(patientId != null ? [eq(schema.patientDocuments.patientId, patientId)] : []),
       ))
       .limit(1);
     return rows[0];
@@ -2216,13 +2244,22 @@ export class DbStorage implements IStorage {
   async getEncounter(id: number, clinicianId: number, clinicId?: number | null): Promise<ClinicalEncounter | undefined> {
     const scope = clinicId
       ? or(
-          eq(schema.clinicalEncounters.clinicId, clinicId),
-          and(eq(schema.clinicalEncounters.clinicianId, clinicianId), isNull(schema.clinicalEncounters.clinicId))
+          and(
+            eq(schema.clinicalEncounters.clinicId, clinicId),
+            eq(schema.patients.clinicId, clinicId),
+          ),
+          and(
+            eq(schema.clinicalEncounters.clinicianId, clinicianId),
+            isNull(schema.clinicalEncounters.clinicId),
+            eq(schema.patients.clinicId, clinicId),
+          ),
         )
       : eq(schema.clinicalEncounters.clinicianId, clinicianId);
-    const result = await db.select().from(schema.clinicalEncounters)
-      .where(and(eq(schema.clinicalEncounters.id, id), scope));
-    return result[0];
+    const result = await db.select({ encounter: schema.clinicalEncounters })
+      .from(schema.clinicalEncounters)
+      .innerJoin(schema.patients, eq(schema.patients.id, schema.clinicalEncounters.patientId))
+      .where(and(eq(schema.clinicalEncounters.id, id), scope as any));
+    return result[0]?.encounter;
   }
 
   async createEncounter(data: InsertClinicalEncounter): Promise<ClinicalEncounter> {
@@ -7729,7 +7766,11 @@ export interface AssignedToMeItem {
   const orders = await db
     .select()
     .from(schema.clinicalOrders)
-    .where(and(eq(schema.clinicalOrders.patientId, patientId), eq(schema.clinicalOrders.clinicId, clinicId)))
+    .where(and(
+      eq(schema.clinicalOrders.patientId, patientId),
+      eq(schema.clinicalOrders.clinicId, clinicId),
+      sql`EXISTS (SELECT 1 FROM patients p WHERE p.id = ${schema.clinicalOrders.patientId} AND p.clinic_id = ${clinicId})`,
+    ))
     .orderBy(desc(schema.clinicalOrders.createdAt));
   if (!orders.length) return [];
   const orderIds = orders.map(o => o.id);
@@ -7752,7 +7793,10 @@ export interface AssignedToMeItem {
     const providers = await db.select({
       id: schema.users.id, firstName: schema.users.firstName, lastName: schema.users.lastName,
       title: schema.users.title, npi: schema.users.npi, signatureImage: schema.users.signatureImage,
-    }).from(schema.users).where(inArray(schema.users.id, providerIds));
+      }).from(schema.users).where(and(
+        inArray(schema.users.id, providerIds),
+        sql`EXISTS (SELECT 1 FROM providers pr WHERE pr.user_id = ${schema.users.id} AND pr.clinic_id = ${clinicId} AND pr.is_active = true)`,
+      ));
     for (const p of providers) providerMap[p.id] = p;
   }
   // Legacy fallback: orders created before order_assignees have no junction rows.
@@ -7764,12 +7808,19 @@ export interface AssignedToMeItem {
   await Promise.all([
     legacyUserIds.length
       ? db.select({ id: schema.users.id, firstName: schema.users.firstName, lastName: schema.users.lastName, title: schema.users.title })
-          .from(schema.users).where(inArray(schema.users.id, legacyUserIds))
+          .from(schema.users).where(and(
+            inArray(schema.users.id, legacyUserIds),
+            sql`EXISTS (SELECT 1 FROM clinic_memberships cm WHERE cm.user_id = ${schema.users.id} AND cm.clinic_id = ${clinicId} AND cm.is_active = true AND cm.acceptance_status = 'active')`,
+          ))
           .then(rows => { for (const u of rows) legacyUserMap[u.id] = [u.title, u.firstName, u.lastName].filter(Boolean).join(" "); })
       : Promise.resolve(),
     legacyStaffIds.length
       ? db.select({ id: schema.clinicianStaff.id, firstName: schema.clinicianStaff.firstName, lastName: schema.clinicianStaff.lastName, credentials: schema.clinicianStaff.credentials })
-          .from(schema.clinicianStaff).where(inArray(schema.clinicianStaff.id, legacyStaffIds))
+           .from(schema.clinicianStaff).where(and(
+             inArray(schema.clinicianStaff.id, legacyStaffIds),
+             eq(schema.clinicianStaff.clinicId, clinicId),
+             eq(schema.clinicianStaff.isActive, true),
+           ))
           .then(rows => { for (const s of rows) legacyStaffMap[s.id] = [s.firstName, s.lastName].filter(Boolean).join(" ") + (s.credentials ? `, ${s.credentials}` : ""); })
       : Promise.resolve(),
   ]);
@@ -7797,6 +7848,7 @@ export interface AssignedToMeItem {
     .set({ status: 'active' })
     .where(and(
       eq(schema.clinicalOrders.clinicId, clinicId),
+      sql`EXISTS (SELECT 1 FROM patients p WHERE p.id = ${schema.clinicalOrders.patientId} AND p.clinic_id = ${clinicId})`,
       eq(schema.clinicalOrders.status, 'scheduled'),
       isNotNull(schema.clinicalOrders.activateOn),
       lte(schema.clinicalOrders.activateOn, todayStr),
@@ -7804,7 +7856,11 @@ export interface AssignedToMeItem {
   const orders = await db
     .select()
     .from(schema.clinicalOrders)
-    .where(and(eq(schema.clinicalOrders.clinicId, clinicId), eq(schema.clinicalOrders.status, 'active')))
+    .where(and(
+      eq(schema.clinicalOrders.clinicId, clinicId),
+      eq(schema.clinicalOrders.status, 'active'),
+      sql`EXISTS (SELECT 1 FROM patients p WHERE p.id = ${schema.clinicalOrders.patientId} AND p.clinic_id = ${clinicId})`,
+    ))
     .orderBy(desc(schema.clinicalOrders.createdAt));
   if (!orders.length) return [];
   const orderIds = orders.map(o => o.id);
@@ -7815,7 +7871,10 @@ export interface AssignedToMeItem {
     db.select().from(schema.orderAssignees)
       .where(inArray(schema.orderAssignees.orderId, orderIds)),
     db.select({ id: schema.patients.id, firstName: schema.patients.firstName, lastName: schema.patients.lastName })
-      .from(schema.patients).where(inArray(schema.patients.id, patientIds)),
+      .from(schema.patients).where(and(
+        inArray(schema.patients.id, patientIds),
+        eq(schema.patients.clinicId, clinicId),
+      )),
   ]);
   const patientMap = Object.fromEntries(patients.map(p => [p.id, p]));
   const byOrder = completions.reduce((acc, c) => {
@@ -7831,7 +7890,10 @@ export interface AssignedToMeItem {
     const providers = await db.select({
       id: schema.users.id, firstName: schema.users.firstName, lastName: schema.users.lastName,
       title: schema.users.title, npi: schema.users.npi, signatureImage: schema.users.signatureImage,
-    }).from(schema.users).where(inArray(schema.users.id, providerIds));
+    }).from(schema.users).where(and(
+      inArray(schema.users.id, providerIds),
+      sql`EXISTS (SELECT 1 FROM providers pr WHERE pr.user_id = ${schema.users.id} AND pr.clinic_id = ${clinicId} AND pr.is_active = true)`,
+    ));
     for (const p of providers) providerMap[p.id] = p;
   }
   // Legacy fallback: orders created before order_assignees have no junction rows.
@@ -7842,12 +7904,19 @@ export interface AssignedToMeItem {
   await Promise.all([
     legacyUserIds2.length
       ? db.select({ id: schema.users.id, firstName: schema.users.firstName, lastName: schema.users.lastName, title: schema.users.title })
-          .from(schema.users).where(inArray(schema.users.id, legacyUserIds2))
+           .from(schema.users).where(and(
+             inArray(schema.users.id, legacyUserIds2),
+             sql`EXISTS (SELECT 1 FROM clinic_memberships cm WHERE cm.user_id = ${schema.users.id} AND cm.clinic_id = ${clinicId} AND cm.is_active = true AND cm.acceptance_status = 'active')`,
+           ))
           .then(rows => { for (const u of rows) legacyUserMap2[u.id] = [u.title, u.firstName, u.lastName].filter(Boolean).join(" "); })
       : Promise.resolve(),
     legacyStaffIds2.length
       ? db.select({ id: schema.clinicianStaff.id, firstName: schema.clinicianStaff.firstName, lastName: schema.clinicianStaff.lastName, credentials: schema.clinicianStaff.credentials })
-          .from(schema.clinicianStaff).where(inArray(schema.clinicianStaff.id, legacyStaffIds2))
+           .from(schema.clinicianStaff).where(and(
+             inArray(schema.clinicianStaff.id, legacyStaffIds2),
+             eq(schema.clinicianStaff.clinicId, clinicId),
+             eq(schema.clinicianStaff.isActive, true),
+           ))
           .then(rows => { for (const s of rows) legacyStaffMap2[s.id] = [s.firstName, s.lastName].filter(Boolean).join(" ") + (s.credentials ? `, ${s.credentials}` : ""); })
       : Promise.resolve(),
   ]);

@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import type { NextFunction, Request, Response } from "express";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import * as schema from "@shared/schema";
 import { db } from "./storage";
 import {
@@ -100,6 +100,176 @@ export const ORDINARY_CLINIC_ACCESS_ALLOWLIST = [
 
 // Descriptive alias for validation/reporting consumers.
 export const ORDINARY_CLINIC_ACCESS_ROUTE_ALLOWLIST = ORDINARY_CLINIC_ACCESS_ALLOWLIST;
+
+/** The first reviewed patient/chart resource cohort.  This is intentionally
+ * exact (not a prefix matcher); additions require a separate approval. */
+export const PATIENT_CHART_DOWNLOAD_RESOURCES_AUTHZ_ALLOWLIST = [
+  { method: "GET", path: "/api/patients/:id" },
+  { method: "GET", path: "/api/patients/:id/chart" },
+  { method: "GET", path: "/api/patients/:id/photo-id" },
+  { method: "GET", path: "/api/patients/:id/documents" },
+  { method: "GET", path: "/api/patients/:id/documents/:docId/download" },
+  { method: "GET", path: "/api/encounters/:id" },
+  { method: "GET", path: "/api/patients/:id/messages" },
+  { method: "POST", path: "/api/patients/:id/messages" },
+  { method: "GET", path: "/api/patients/:id/clinical-orders" },
+  { method: "GET", path: "/api/clinical-orders/active" },
+] as const;
+
+export const PATIENT_CHART_DOWNLOAD_RESOURCES_AUTHZ_ROUTE_ALLOWLIST =
+  PATIENT_CHART_DOWNLOAD_RESOURCES_AUTHZ_ALLOWLIST;
+
+export function auditPatientChartDownloadResourcesAllowlist(): void {
+  const seen = new Set<string>();
+  for (const entry of PATIENT_CHART_DOWNLOAD_RESOURCES_AUTHZ_ALLOWLIST) {
+    const key = `${entry.method} ${entry.path}`;
+    if (seen.has(key) || !entry.path.startsWith("/api/")) {
+      throw new Error(`Invalid or duplicate patient resource allowlist entry: ${key}`);
+    }
+    seen.add(key);
+  }
+  if (seen.size !== 10) throw new Error("Patient resource allowlist must contain exactly 10 entries");
+}
+
+auditPatientChartDownloadResourcesAllowlist();
+
+/** Inventory evidence only: legacy null-clinic encounters are counted but
+ * never reassigned or repaired by this cohort. */
+export async function countLegacyNullClinicEncounters(): Promise<number> {
+  const rows = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(schema.clinicalEncounters)
+    .where(isNull(schema.clinicalEncounters.clinicId));
+  return Number(rows[0]?.count ?? 0);
+}
+
+function resourceAllowlistedRequest(req: Request) {
+  // req.route.path is the mounted Express template, unlike req.path which is
+  // attacker-controlled URL text. Never normalize numeric segments: parseInt
+  // must not make values such as 10abc eligible for this boundary.
+  const path = typeof req.route?.path === "string" ? req.route.path : null;
+  if (!path) return null;
+  // The mounted template is necessary but not sufficient: Express accepts
+  // `10abc` for `:id`, while legacy handlers often parseInt it. Fail closed
+  // before any handler can perform that coercion.
+  if (Object.values(req.params ?? {}).some((value) => !/^[1-9]\d*$/.test(String(value)))) {
+    return null;
+  }
+  return PATIENT_CHART_DOWNLOAD_RESOURCES_AUTHZ_ALLOWLIST.find((entry) =>
+    entry.method === req.method && entry.path === path,
+  ) ?? null;
+}
+
+function resourceTemplateMatches(req: Request): boolean {
+  const path = typeof req.route?.path === "string" ? req.route.path : null;
+  return !!path && PATIENT_CHART_DOWNLOAD_RESOURCES_AUTHZ_ALLOWLIST.some((entry) =>
+    entry.method === req.method && entry.path === path,
+  );
+}
+
+function resourceClinicContext(req: Request): number | null {
+  const sess = req.session as any;
+  const value = sess?.staffId ? sess.staffClinicianClinicId : sess?.activeClinicId;
+  return Number.isSafeInteger(Number(value)) && Number(value) > 0 ? Number(value) : null;
+}
+
+/**
+ * Development-only enforcement for the exact first resource cohort.  The
+ * marker is process-local and cannot be supplied by a browser.  Legacy route
+ * authentication remains authoritative: finalAllow = legacyAllow &&
+ * proposedAllow.
+ */
+export function patientChartDownloadResourcesAuthzMiddleware() {
+  return patientChartDownloadResourcesAuthzMiddlewareWithDependencies();
+}
+
+export interface PatientChartDownloadResourcesAuthzDependencies {
+  readFlags?: typeof listAuthorizationFlagStatus;
+  /** Must only inspect current actor membership/staff linkage. */
+  resolveActor?: (req: Request, clinicId: number) => Promise<{ decision: "allow" | "deny" | "indeterminate" }>;
+  /** Called only after actor access has been allowed. */
+  resolveResourceClinic?: (req: Request) => Promise<number | null | undefined>;
+}
+
+export function patientChartDownloadResourcesAuthzMiddlewareWithDependencies(
+  dependencies: PatientChartDownloadResourcesAuthzDependencies = {},
+) {
+  const readFlags = dependencies.readFlags ?? listAuthorizationFlagStatus;
+  const resolveActor = dependencies.resolveActor ?? (async (req: Request, clinicId: number) => {
+    const actor = ordinaryActor(req);
+    if (!actor) return { decision: "indeterminate" as const };
+    return teamClinicAccessResolver.resolve({
+      actor,
+      clinicId,
+      route: { mode: "clinic", kind: "chart-review" },
+    });
+  });
+  const resolveResourceClinic = dependencies.resolveResourceClinic ?? (async (req: Request) => {
+    const patientMatch = req.path.match(/^\/api\/patients\/(\d+)/);
+    const encounterMatch = req.path.match(/^\/api\/encounters\/(\d+)/);
+    if (patientMatch) {
+      const [row] = await db.select({ clinicId: schema.patients.clinicId })
+        .from(schema.patients).where(eq(schema.patients.id, Number(patientMatch[1]))).limit(1);
+      return row?.clinicId ?? null;
+    }
+    if (encounterMatch) {
+      const [row] = await db.select({ clinicId: schema.clinicalEncounters.clinicId })
+        .from(schema.clinicalEncounters)
+        .where(eq(schema.clinicalEncounters.id, Number(encounterMatch[1]))).limit(1);
+      // Legacy null-clinic rows are inventory-only and never grants.
+      return row?.clinicId ?? null;
+    }
+    return resourceAllowlistedRequest(req)?.path === "/api/clinical-orders/active"
+      ? resourceClinicContext(req)
+      : null;
+  });
+
+  return async (req: Request, res: Response, next: NextFunction) => {
+    if (process.env.NODE_ENV !== "development" ||
+        !resourceTemplateMatches(req) ||
+        !isSyntheticValidationRequest(req)) return next();
+    const clinicId = resourceClinicContext(req);
+    let enabled = false;
+    let shadowEnabled = false;
+    try {
+      const flags = await readFlags(clinicId);
+      shadowEnabled = flags.some((flag) =>
+        flag.flagKey === "SHADOW_PATIENT_CHART_DOWNLOAD_RESOURCES_AUTHZ" && flag.enabled,
+      );
+      enabled = flags.some((flag) =>
+        flag.flagKey === "ENFORCE_PATIENT_CHART_DOWNLOAD_RESOURCES_AUTHZ" && flag.enabled,
+      );
+    } catch {
+      return next();
+    }
+    // Shadow is deliberately observational; enforcement is the only branch
+    // that can restrict a request, and both flags are absent/off by default.
+    if (!enabled) {
+      void shadowEnabled;
+      return next();
+    }
+    // Only explicit synthetic enforcement changes legacy behavior. With the
+    // flag absent/off/unreadable, even malformed legacy parameters continue
+    // through unchanged. Once enabled, deny before actor/resource/handler.
+    if (!resourceAllowlistedRequest(req)) return res.status(403).json({ message: "Access denied" });
+
+    if (!clinicId) return res.status(403).json({ message: "Access denied" });
+    try {
+      // Membership/staff linkage is deliberately resolved first. A stale
+      // session therefore cannot cause any patient/resource query.
+      const actorDecision = await resolveActor(req, clinicId);
+      if (actorDecision.decision !== "allow") return res.status(403).json({ message: "Access denied" });
+      const resourceClinicId = await resolveResourceClinic(req);
+      const legacyAllow = res.locals?.legacyAllow !== false;
+      const proposedAllow = actorDecision.decision === "allow" && resourceClinicId === clinicId;
+      const finalAllow = legacyAllow && proposedAllow;
+      if (finalAllow) return next();
+    } catch {
+      // Fail closed only while explicit synthetic enforcement is enabled.
+    }
+    return res.status(403).json({ message: "Access denied" });
+  };
+}
 
 type OrdinaryClinicAccessAllowlistEntry = (typeof ORDINARY_CLINIC_ACCESS_ALLOWLIST)[number];
 
