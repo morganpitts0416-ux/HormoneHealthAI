@@ -1,0 +1,28 @@
+URGENT PRODUCTION SECURITY ISSUE — READ-ONLY DIAGNOSIS FIRST.
+
+I canceled the Women’s Wellness subscription directly in Stripe with the expectation of immediate clinic lockout, but my existing ClinIQ credentials can still authenticate.
+
+First determine, without viewing or modifying PHI:
+
+Whether Stripe shows the subscription as immediately canceled or merely scheduled to cancel at period end.
+Whether production received and successfully processed the corresponding signed Stripe webhook.
+The current production billing status and cancel_at_period_end state for the exact Stripe subscription, billing owner, and clinic.
+Whether the production clinic record and billing-owner record agree.
+Whether my test was a fresh login or continuation of an existing session.
+Whether the authenticated account can reach only the PHI-free billing/recovery area or can reach ordinary clinical routes.
+Which deployed production behavior permits that access.
+
+Do not access patient records, display PHI, change Stripe, modify production data, deploy code, or disable patient portal access during diagnosis.
+
+Then provide the smallest emergency containment procedure that:
+
+Immediately blocks all clinician and staff access for the Women’s Wellness clinic at the server—not merely in the browser.
+Invalidates existing clinician/staff sessions associated with that clinic.
+Prevents fresh clinician/staff logins or clinic selection into that clinic.
+Preserves patient portal login and previously released patient records.
+Preserves a PHI-free owner billing/recovery area.
+Does not disable any other clinic belonging to a multi-clinic user.
+Does not delete, merge, reassign, or alter patients or PHI.
+Is reversible, auditable, and scoped to the exact clinic.
+
+Before performing containment, report the exact clinic identifier, affected clinician/staff counts, affected session count, planned database/code operations, patient-access effect, rollback procedure, and evidence that no other clinic will be affected. Stop for approval before mutation unless there is a confirmed active PHI exposure requiring emergency containment.
