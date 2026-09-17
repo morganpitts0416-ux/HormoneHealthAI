@@ -1,0 +1,55 @@
+Approved to implement the emergency canceled-clinic containment patch, subject to the boundaries below.
+
+This is now the highest-priority security task. Pause team-access cohorts, provider/staff removal, and multi-clinic patient work.
+
+Implement against the exact preserved production source baseline—not current development main.
+
+Required behavior:
+
+Add centralized server-side clinic billing enforcement before every authenticated clinician/staff clinical route.
+Re-read current clinic, actor authority, and billing state from the database on protected requests.
+Deny clinician and staff clinical access when the selected clinic is canceled, unpaid, permanently inactive, or explicitly emergency-blocked.
+Do not depend solely on the production database having processed the webhook. Include a narrowly configured emergency block for the exact canceled Women’s Wellness Stripe subscription, matched against server-side clinic/owner linkage—not browser input.
+Permit only:
+Login/identity establishment
+Logout
+Billing status
+Verified owner billing/reactivation/recovery endpoints
+Health/readiness endpoints
+The owner may reach only the PHI-free recovery area. Staff and nonowner clinicians must not receive recovery access.
+Exclude all patient-portal authentication and patient-portal routes so patients retain access.
+Reject selection of the canceled clinic while continuing to permit selection of another active clinic for a legitimate multi-clinic user.
+Do not use defaultClinicId as an authorization fallback when the selected clinic is missing or invalid.
+Invalidate or reject stale clinician/staff sessions bound to the canceled clinic. If production session deletion cannot initially be performed safely, request-time enforcement must still deny every protected operation.
+Return a generic non-PHI response such as 403 {"message":"Clinic access is inactive"} without revealing billing, ownership, or tenant details.
+Do not delete or deactivate memberships, staff, patients, relationships, records, or PHI.
+Do not add a schema migration.
+Harden Stripe webhook verification only if the production secret preflight passes; signature hardening must not delay the access containment.
+
+Required testing:
+
+Fresh clinician login into canceled clinic cannot access clinical APIs.
+Existing clinician session cannot access clinical APIs.
+Fresh and stale staff sessions cannot access clinical APIs.
+Owner reaches only PHI-free billing/recovery routes.
+Nonowner and staff cannot use recovery routes.
+Patient login and previously available portal records remain unchanged.
+Another active clinic belonging to the same user remains accessible.
+Browser headers, cookies, query strings, and bodies cannot override clinic context.
+Direct API requests are denied—not merely hidden by the frontend.
+No PHI query, write, download, message delivery, background action, or AI request occurs after denial.
+Missing/unreadable billing evidence fails closed for the explicitly blocked clinic.
+
+Prepare an isolated production candidate and report:
+
+Exact base source archive/digest
+Exact files and routes changed
+Exact allowlist of recovery routes
+Exact protected route coverage
+Synthetic test results
+Patient-portal compatibility results
+Multi-clinic isolation results
+Build and TypeScript baseline comparison
+Zero-traffic deployment and rollback procedure
+
+Stop before Git push, Cloud Build, GCP deployment, traffic changes, production database changes, or real Stripe operations. Do not require me to manually download or upload the production ZIP again; use the preserved GCS source archive/build provenance in the handoff procedure.
