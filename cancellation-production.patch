@@ -1,0 +1,2338 @@
+From c26e03ab1945643d7280126f6ec3d3d881725799 Mon Sep 17 00:00:00 2001
+From: Replit Agent <agent@replit.com>
+Date: Mon, 14 Sep 2026 17:14:56 +0000
+Subject: [PATCH 1/2] Secure owner subscription cancellation
+
+---
+ client/src/pages/billing.tsx            | 159 +++--
+ server/audit.ts                         |  41 +-
+ server/routes.ts                        | 893 +++++++++++++++++++-----
+ tests/billing-cancellation.test.ts      | 467 +++++++++++++
+ tests/unit/billing-cancellation.test.ts |   2 +
+ 5 files changed, 1323 insertions(+), 239 deletions(-)
+ create mode 100644 tests/billing-cancellation.test.ts
+ create mode 100644 tests/unit/billing-cancellation.test.ts
+
+diff --git a/client/src/pages/billing.tsx b/client/src/pages/billing.tsx
+index c468430..c4ce1d2 100644
+--- a/client/src/pages/billing.tsx
++++ b/client/src/pages/billing.tsx
+@@ -40,6 +40,8 @@ interface BillingStatus {
+   clinicMaxProviders: number;
+   clinicBaseProviderLimit: number;
+   clinicExtraSeats: number;
++  isClinicOwner: boolean;
++  canManageBilling: boolean;
+ }
+ 
+ interface BillingConfig {
+@@ -66,6 +68,7 @@ function daysUntil(iso: string | null): number | null {
+ function StatusBadge({ status }: { status: string }) {
+   const variants: Record<string, { label: string; className: string }> = {
+     trial: { label: "Free Trial", className: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300" },
++    trialing: { label: "Free Trial", className: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300" },
+     active: { label: "Active", className: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300" },
+     past_due: { label: "Past Due", className: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300" },
+     canceled: { label: "Canceled", className: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" },
+@@ -233,6 +236,8 @@ export default function BillingPage() {
+   const [stripePromise, setStripePromise] = useState<ReturnType<typeof loadStripe> | null>(null);
+   const [showCardForm, setShowCardForm] = useState(false);
+   const [showSuiteCardForm, setShowSuiteCardForm] = useState(false);
++  const [billingAction, setBillingAction] = useState<"cancel" | "undo" | null>(null);
++  const [billingPassword, setBillingPassword] = useState("");
+ 
+   const { data: billingConfig } = useQuery<BillingConfig & { configured?: boolean }>({
+     queryKey: ["/api/billing/config"],
+@@ -250,25 +255,28 @@ export default function BillingPage() {
+     }
+   }, [billingConfig?.publishableKey]);
+ 
+-  const cancelMutation = useMutation({
+-    mutationFn: () => apiRequest("POST", "/api/billing/cancel", {}),
+-    onSuccess: () => {
+-      qc.invalidateQueries({ queryKey: ["/api/billing/status"] });
+-      toast({ title: "Cancellation scheduled", description: "Your subscription will end at the current period end." });
+-    },
+-    onError: (err: any) => {
+-      toast({ title: "Error", description: err.message, variant: "destructive" });
++  const renewalMutation = useMutation({
++    mutationFn: async ({ action, password }: { action: "cancel" | "undo"; password: string }) => {
++      await apiRequest("POST", "/api/billing/reauth", { password });
++      const endpoint = action === "cancel" ? "/api/billing/cancel" : "/api/billing/reactivate";
++      const response = await apiRequest("POST", endpoint, {});
++      return { action, result: await response.json() as { currentPeriodEnd?: string | null } };
+     },
+-  });
+-
+-  const reactivateMutation = useMutation({
+-    mutationFn: () => apiRequest("POST", "/api/billing/reactivate", {}),
+-    onSuccess: () => {
++    onSuccess: ({ action, result }) => {
+       qc.invalidateQueries({ queryKey: ["/api/billing/status"] });
+-      toast({ title: "Subscription reactivated", description: "Your subscription will continue as normal." });
++      setBillingAction(null);
++      setBillingPassword("");
++      if (action === "cancel") {
++        toast({
++          title: "Cancellation scheduled",
++          description: `Your subscription remains active through ${formatDate(result.currentPeriodEnd ?? status?.stripeCurrentPeriodEnd ?? null)}.`,
++        });
++      } else {
++        toast({ title: "Scheduled cancellation undone", description: "Your subscription will continue renewing." });
++      }
+     },
+     onError: (err: any) => {
+-      toast({ title: "Error", description: err.message, variant: "destructive" });
++      toast({ title: "Billing change blocked", description: err.message, variant: "destructive" });
+     },
+   });
+ 
+@@ -289,11 +297,12 @@ export default function BillingPage() {
+ 
+   const isFreeAccount = status?.freeAccount === true;
+   const hasSubscription = !!(status?.stripeSubscriptionId);
+-  const isTrial = status?.subscriptionStatus === "trial";
++  const isTrial = status?.subscriptionStatus === "trial" || status?.subscriptionStatus === "trialing";
+   const isActive = status?.subscriptionStatus === "active";
+   const isPastDue = status?.subscriptionStatus === "past_due";
+   const isCanceled = status?.subscriptionStatus === "canceled";
+   const cancelAtEnd = status?.stripeCancelAtPeriodEnd;
++  const canManageBilling = status?.canManageBilling === true;
+   const daysLeft = daysUntil(status?.stripeCurrentPeriodEnd ?? null);
+ 
+   const clinicPlan = status?.clinicPlan ?? "solo";
+@@ -459,50 +468,28 @@ export default function BillingPage() {
+                   )}
+ 
+                   {/* Reactivate if scheduled to cancel */}
+-                  {hasSubscription && cancelAtEnd && !isCanceled && (
++                  {canManageBilling && hasSubscription && cancelAtEnd && !isCanceled && (
+                     <Button
+                       variant="outline"
+                       className="w-full"
+-                      onClick={() => reactivateMutation.mutate()}
+-                      disabled={reactivateMutation.isPending}
++                      onClick={() => setBillingAction("undo")}
++                      disabled={renewalMutation.isPending}
+                       data-testid="button-reactivate"
+                     >
+-                      {reactivateMutation.isPending ? "Reactivating…" : "Keep Subscription"}
++                      Undo Scheduled Cancellation
+                     </Button>
+                   )}
+ 
+                   {/* Cancel if active/trial and not already canceling */}
+-                  {hasSubscription && (isActive || isTrial) && !cancelAtEnd && (
+-                    <AlertDialog>
+-                      <AlertDialogTrigger asChild>
+-                        <Button
+-                          variant="ghost"
+-                          className="w-full text-muted-foreground"
+-                          data-testid="button-cancel-subscription"
+-                        >
+-                          Cancel Subscription
+-                        </Button>
+-                      </AlertDialogTrigger>
+-                      <AlertDialogContent>
+-                        <AlertDialogHeader>
+-                          <AlertDialogTitle>Cancel your subscription?</AlertDialogTitle>
+-                          <AlertDialogDescription>
+-                            Your access will continue until{" "}
+-                            <strong>{formatDate(status?.stripeCurrentPeriodEnd ?? null)}</strong>.
+-                            After that date, you will lose access to ClinIQ. You can reactivate at any time before then.
+-                          </AlertDialogDescription>
+-                        </AlertDialogHeader>
+-                        <AlertDialogFooter>
+-                          <AlertDialogCancel>Keep Subscription</AlertDialogCancel>
+-                          <AlertDialogAction
+-                            onClick={() => cancelMutation.mutate()}
+-                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+-                          >
+-                            Yes, Cancel
+-                          </AlertDialogAction>
+-                        </AlertDialogFooter>
+-                      </AlertDialogContent>
+-                    </AlertDialog>
++                  {canManageBilling && hasSubscription && (isActive || isTrial) && !cancelAtEnd && (
++                    <Button
++                      variant="ghost"
++                      className="w-full text-muted-foreground"
++                      onClick={() => setBillingAction("cancel")}
++                      data-testid="button-cancel-subscription"
++                    >
++                      Cancel Subscription
++                    </Button>
+                   )}
+                 </div>
+               </>
+@@ -510,6 +497,76 @@ export default function BillingPage() {
+           </CardContent>
+         </Card>
+ 
++        <AlertDialog
++          open={billingAction !== null}
++          onOpenChange={(open) => {
++            if (!open && !renewalMutation.isPending) {
++              setBillingAction(null);
++              setBillingPassword("");
++            }
++          }}
++        >
++          <AlertDialogContent>
++            <AlertDialogHeader>
++              <AlertDialogTitle>
++                {billingAction === "undo"
++                  ? "Undo scheduled cancellation?"
++                  : "Schedule subscription cancellation?"}
++              </AlertDialogTitle>
++              <AlertDialogDescription asChild>
++                <div className="space-y-3">
++                  {billingAction === "cancel" ? (
++                    <p>
++                      Your subscription will remain active through{" "}
++                      <strong>{formatDate(status?.stripeCurrentPeriodEnd ?? null)}</strong>.
++                      Scheduling cancellation does not immediately remove access.
++                    </p>
++                  ) : (
++                    <p>
++                      Automatic renewal will resume. Your current paid-through date is{" "}
++                      <strong>{formatDate(status?.stripeCurrentPeriodEnd ?? null)}</strong>.
++                    </p>
++                  )}
++                  <div className="space-y-1.5">
++                    <label htmlFor="billing-password" className="text-sm font-medium text-foreground">
++                      Confirm your password
++                    </label>
++                    <input
++                      id="billing-password"
++                      type="password"
++                      autoComplete="current-password"
++                      value={billingPassword}
++                      onChange={(event) => setBillingPassword(event.target.value)}
++                      className="w-full rounded-md border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
++                      data-testid="input-billing-reauth-password"
++                    />
++                  </div>
++                </div>
++              </AlertDialogDescription>
++            </AlertDialogHeader>
++            <AlertDialogFooter>
++              <AlertDialogCancel disabled={renewalMutation.isPending}>Back</AlertDialogCancel>
++              <AlertDialogAction
++                disabled={!billingPassword || renewalMutation.isPending || !billingAction}
++                onClick={(event) => {
++                  event.preventDefault();
++                  if (billingAction) {
++                    renewalMutation.mutate({ action: billingAction, password: billingPassword });
++                  }
++                }}
++                className={billingAction === "cancel" ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : ""}
++                data-testid="button-confirm-billing-change"
++              >
++                {renewalMutation.isPending
++                  ? "Confirming…"
++                  : billingAction === "undo"
++                    ? "Undo Cancellation"
++                    : "Schedule Cancellation"}
++              </AlertDialogAction>
++            </AlertDialogFooter>
++          </AlertDialogContent>
++        </AlertDialog>
++
+         {/* ── ClinIQ Suite upgrade / subscribe card ── */}
+         {!isFreeAccount && !isOnSuite && (
+           <Card>
+diff --git a/server/audit.ts b/server/audit.ts
+index fd4b56a..6d023fa 100644
+--- a/server/audit.ts
++++ b/server/audit.ts
+@@ -27,9 +27,13 @@ export type AuditAction =
+   | "EXTERNAL_REVIEWER_INVITE_CREATED"
+   | "EXTERNAL_REVIEWER_INVITE_ACCEPTED"
+   | "EXTERNAL_REVIEWER_INVITE_CANCELLED"
+-  | "EXTERNAL_REVIEWER_UPGRADED";
++  | "EXTERNAL_REVIEWER_UPGRADED"
++  | "BILLING_CANCELLATION_REQUESTED"
++  | "BILLING_CANCELLATION_COMPLETED"
++  | "BILLING_CANCELLATION_FAILED"
++  | "BILLING_CANCELLATION_UNDONE";
+ 
+-interface AuditOptions {
++export interface AuditOptions {
+   action: AuditAction;
+   resourceType?: string;
+   resourceId?: number;
+@@ -39,7 +43,7 @@ interface AuditOptions {
+   details?: Record<string, unknown>;
+ }
+ 
+-export function logAudit(req: Request, opts: AuditOptions): void {
++function buildAuditValues(req: Request, opts: AuditOptions) {
+   const sess = req.session as any;
+ 
+   const clinicianId: number | null =
+@@ -56,18 +60,25 @@ export function logAudit(req: Request, opts: AuditOptions): void {
+     null;
+   const userAgent = req.headers["user-agent"] || null;
+ 
+-  db.insert(schema.auditLogs)
+-    .values({
+-      clinicianId,
+-      staffId,
+-      action: opts.action,
+-      resourceType: opts.resourceType ?? null,
+-      resourceId: opts.resourceId ?? null,
+-      patientId: opts.patientId ?? null,
+-      ipAddress,
+-      userAgent,
+-      details: opts.details ?? null,
+-    } as any)
++  return {
++    clinicianId,
++    staffId,
++    action: opts.action,
++    resourceType: opts.resourceType ?? null,
++    resourceId: opts.resourceId ?? null,
++    patientId: opts.patientId ?? null,
++    ipAddress,
++    userAgent,
++    details: opts.details ?? null,
++  } as any;
++}
++
++export async function logAuditRequired(req: Request, opts: AuditOptions): Promise<void> {
++  await db.insert(schema.auditLogs).values(buildAuditValues(req, opts));
++}
++
++export function logAudit(req: Request, opts: AuditOptions): void {
++  logAuditRequired(req, opts)
+     .catch((err) => {
+       console.error("[AUDIT] Failed to write audit log:", err);
+     });
+diff --git a/server/routes.ts b/server/routes.ts
+index df9e04f..067c26e 100644
+--- a/server/routes.ts
++++ b/server/routes.ts
+@@ -292,7 +292,7 @@ function extractFamilyHistoryEntries(field: any, value: Record<string, any>): st
+ }
+ import { getClinicPlanState, getActiveProviderCount, calculateRequiredSeatQuantity, SUITE_BASE_PROVIDER_LIMIT, EXTRA_SEAT_MONTHLY_PRICE } from "./clinic-plan";
+ import { passport, hashPassword } from "./auth";
+-import { logAudit } from "./audit";
++import { logAudit, logAuditRequired, type AuditAction } from "./audit";
+ import { validatePasswordStrength } from "@shared/password-policy";
+ import { LAB_MARKER_DEFAULTS, SYMPTOM_KEYS, SUPPLEMENT_CATEGORIES, LAB_MARKER_KEYS } from "./lab-marker-defaults";
+ import { sendInviteEmail, sendPasswordResetEmail, sendPatientPortalInviteEmail, sendProtocolPublishedEmail, sendNewPortalMessageEmail, sendStaffInviteEmail, sendPortalPasswordResetEmail, sendProviderInviteEmail, sendExternalCollaboratorInviteEmail, sendEmail } from "./email-service";
+@@ -306,6 +306,381 @@ import { observePatientPortalIdentityLogin, shadowRequestId } from "./patient-po
+ 
+ // ── Helpers ────────────────────────────────────────────────────────────────────
+ 
++export type BillingOwnerSnapshot = {
++  actorUserId: number;
++  actorDefaultClinicId: number | null;
++  clinicId: number | null;
++  clinicOwnerUserId: number | null;
++  activeOwnerMembershipUserIds: number[];
++  userStripeCustomerId: string | null;
++  userStripeSubscriptionId: string | null;
++  clinicStripeCustomerId: string | null;
++  clinicStripeSubscriptionId: string | null;
++};
++
++export type BillingOwnerAssessment = {
++  isClinicOwner: boolean;
++  stripeLinkageVerified: boolean;
++  canManageBilling: boolean;
++  reason:
++    | "verified"
++    | "clinic_missing"
++    | "clinic_mismatch"
++    | "owner_ambiguous"
++    | "owner_mismatch"
++    | "stripe_linkage_missing"
++    | "stripe_linkage_mismatch";
++};
++
++/**
++ * Billing authority is intentionally strict: the active clinic, clinic owner,
++ * and the single active owner membership must all identify the same user.
++ * When a subscription exists, both clinic and user Stripe links must also
++ * exist and match. No fallback is authoritative on its own.
++ */
++export function assessBillingOwner(snapshot: BillingOwnerSnapshot): BillingOwnerAssessment {
++  if (!snapshot.clinicId || !snapshot.actorDefaultClinicId) {
++    return { isClinicOwner: false, stripeLinkageVerified: false, canManageBilling: false, reason: "clinic_missing" };
++  }
++  if (snapshot.clinicId !== snapshot.actorDefaultClinicId) {
++    return { isClinicOwner: false, stripeLinkageVerified: false, canManageBilling: false, reason: "clinic_mismatch" };
++  }
++  if (
++    snapshot.activeOwnerMembershipUserIds.length !== 1 ||
++    snapshot.activeOwnerMembershipUserIds[0] !== snapshot.clinicOwnerUserId
++  ) {
++    return { isClinicOwner: false, stripeLinkageVerified: false, canManageBilling: false, reason: "owner_ambiguous" };
++  }
++  if (snapshot.clinicOwnerUserId !== snapshot.actorUserId) {
++    return { isClinicOwner: false, stripeLinkageVerified: false, canManageBilling: false, reason: "owner_mismatch" };
++  }
++
++  const hasSubscriptionLink =
++    !!snapshot.userStripeSubscriptionId || !!snapshot.clinicStripeSubscriptionId;
++  const hasCustomerLink =
++    !!snapshot.userStripeCustomerId || !!snapshot.clinicStripeCustomerId;
++  const customerLinkVerified =
++    !!snapshot.userStripeCustomerId &&
++    (!snapshot.clinicStripeCustomerId ||
++      snapshot.clinicStripeCustomerId === snapshot.userStripeCustomerId);
++  const subscriptionLinkVerified =
++    !!snapshot.userStripeSubscriptionId &&
++    snapshot.userStripeSubscriptionId === snapshot.clinicStripeSubscriptionId;
++  const stripeLinkageVerified =
++    !hasSubscriptionLink && !hasCustomerLink
++      ? true
++      : customerLinkVerified && subscriptionLinkVerified;
++
++  if (!stripeLinkageVerified) {
++    const missing =
++      !snapshot.userStripeCustomerId ||
++      !snapshot.userStripeSubscriptionId ||
++      !snapshot.clinicStripeCustomerId ||
++      !snapshot.clinicStripeSubscriptionId;
++    return {
++      isClinicOwner: true,
++      stripeLinkageVerified: false,
++      canManageBilling: false,
++      reason: missing ? "stripe_linkage_missing" : "stripe_linkage_mismatch",
++    };
++  }
++
++  return { isClinicOwner: true, stripeLinkageVerified: true, canManageBilling: true, reason: "verified" };
++}
++
++export function canActorManageClinicBilling(input: {
++  isStaffSession: boolean;
++  actorUserId: number;
++  clinicOwnerUserId: number | null;
++  assessment: BillingOwnerAssessment | null;
++}): boolean {
++  return (
++    !input.isStaffSession &&
++    input.assessment?.canManageBilling === true &&
++    input.assessment.isClinicOwner === true &&
++    input.clinicOwnerUserId === input.actorUserId
++  );
++}
++
++export function isVerifiedWebhookOwnerCandidate(input: {
++  assessment: BillingOwnerAssessment | null;
++  resolvedOwnerUserId: number | null;
++  expectedOwnerUserId: number;
++  clinicStripeCustomerId: string | null;
++  eventCustomerId: string;
++  clinicStripeSubscriptionId: string | null;
++  eventSubscriptionId: string;
++}): boolean {
++  return (
++    input.assessment?.canManageBilling === true &&
++    input.resolvedOwnerUserId === input.expectedOwnerUserId &&
++    (!input.clinicStripeCustomerId ||
++      input.clinicStripeCustomerId === input.eventCustomerId) &&
++    input.clinicStripeSubscriptionId === input.eventSubscriptionId
++  );
++}
++
++export function isRecentBillingReauthProof(
++  proof: unknown,
++  expected: { userId: number; clinicId: number },
++  now = Date.now(),
++  ttlMs = 10 * 60 * 1000,
++): boolean {
++  const candidate = proof as any;
++  return (
++    candidate?.userId === expected.userId &&
++    candidate?.clinicId === expected.clinicId &&
++    typeof candidate?.authenticatedAt === "number" &&
++    now - candidate.authenticatedAt >= 0 &&
++    now - candidate.authenticatedAt <= ttlMs
++  );
++}
++
++export class BillingRenewalError extends Error {
++  constructor(
++    public readonly code:
++      | "subscription_not_found"
++      | "customer_mismatch"
++      | "subscription_not_mutable"
++      | "cancellation_not_scheduled",
++    message: string,
++  ) {
++    super(message);
++    this.name = "BillingRenewalError";
++  }
++}
++
++type RenewalAuditStage = "requested" | "completed" | "failed" | "undone";
++
++export type ScheduledCancellationDeps = {
++  retrieveSubscription: (subscriptionId: string) => Promise<any>;
++  updateSubscription: (
++    subscriptionId: string,
++    params: { cancel_at_period_end: boolean },
++  ) => Promise<any>;
++  persistLocalState: (state: {
++    cancelAtPeriodEnd: boolean;
++    currentPeriodEnd: Date | null;
++    status: string;
++  }) => Promise<void>;
++  audit: (
++    stage: RenewalAuditStage,
++    details: Record<string, string | number | boolean | null>,
++  ) => Promise<void>;
++};
++
++function stripeObjectId(value: unknown): string | null {
++  if (typeof value === "string") return value;
++  if (value && typeof value === "object" && typeof (value as any).id === "string") {
++    return (value as any).id;
++  }
++  return null;
++}
++
++export function normalizeStripeSubscriptionStatus(status: unknown): string {
++  switch (status) {
++    case "trialing":
++      return "trial";
++    case "active":
++    case "past_due":
++    case "incomplete":
++    case "paused":
++      return status;
++    case "canceled":
++    case "unpaid":
++    case "incomplete_expired":
++      return "canceled";
++    default:
++      return "incomplete";
++  }
++}
++
++/**
++ * The only authorized subscription mutation in this emergency patch.
++ * The required audit happens before Stripe. The current Stripe subscription is
++ * retrieved and customer-verified before cancel_at_period_end is changed.
++ */
++export async function applyScheduledCancellation(
++  input: {
++    subscriptionId: string;
++    expectedCustomerId: string;
++    cancelAtPeriodEnd: boolean;
++  },
++  deps: ScheduledCancellationDeps,
++): Promise<{ cancelAtPeriodEnd: boolean; currentPeriodEnd: Date | null; status: string }> {
++  const operation = input.cancelAtPeriodEnd ? "schedule" : "undo";
++  await deps.audit("requested", { operation });
++
++  try {
++    const current = await deps.retrieveSubscription(input.subscriptionId);
++    if (!current || current.id !== input.subscriptionId || current.deleted === true) {
++      throw new BillingRenewalError("subscription_not_found", "Subscription could not be verified");
++    }
++    if (stripeObjectId(current.customer) !== input.expectedCustomerId) {
++      throw new BillingRenewalError("customer_mismatch", "Subscription ownership could not be verified");
++    }
++    if (!["active", "trialing"].includes(current.status)) {
++      throw new BillingRenewalError("subscription_not_mutable", "Subscription cannot be changed in its current state");
++    }
++    if (!input.cancelAtPeriodEnd && current.cancel_at_period_end !== true) {
++      throw new BillingRenewalError("cancellation_not_scheduled", "No scheduled cancellation was found");
++    }
++
++    const changed =
++      current.cancel_at_period_end === input.cancelAtPeriodEnd
++        ? current
++        : await deps.updateSubscription(input.subscriptionId, {
++            cancel_at_period_end: input.cancelAtPeriodEnd,
++          });
++
++    if (!changed || changed.id !== input.subscriptionId) {
++      throw new BillingRenewalError("subscription_not_found", "Subscription update could not be verified");
++    }
++    if (stripeObjectId(changed.customer) !== input.expectedCustomerId) {
++      throw new BillingRenewalError("customer_mismatch", "Updated subscription ownership could not be verified");
++    }
++
++    const currentPeriodEnd =
++      stripeTsForBilling(changed.current_period_end) ??
++      stripeTsForBilling(changed.trial_end);
++    const status = normalizeStripeSubscriptionStatus(changed.status);
++    await deps.persistLocalState({
++      cancelAtPeriodEnd: input.cancelAtPeriodEnd,
++      currentPeriodEnd,
++      status,
++    });
++    await deps.audit(input.cancelAtPeriodEnd ? "completed" : "undone", {
++      operation,
++      cancelAtPeriodEnd: input.cancelAtPeriodEnd,
++      effectiveAt: currentPeriodEnd?.toISOString() ?? null,
++      status,
++    });
++
++    return { cancelAtPeriodEnd: input.cancelAtPeriodEnd, currentPeriodEnd, status };
++  } catch (error) {
++    const code = error instanceof BillingRenewalError ? error.code : "internal_error";
++    try {
++      await deps.audit("failed", { operation, errorCode: code });
++    } catch {
++      // The requested audit was already awaited before Stripe. Never expose or
++      // log the original Stripe/database error while handling audit failure.
++    }
++    throw error;
++  }
++}
++
++function stripeTsForBilling(unixSeconds: number | null | undefined): Date | null {
++  if (unixSeconds == null || unixSeconds === 0) return null;
++  const value = new Date(unixSeconds * 1000);
++  return Number.isNaN(value.getTime()) ? null : value;
++}
++
++export type StripeWebhookReconcileDeps = {
++  resolveOwner: (
++    customerId: string,
++    eventSubscriptionId: string,
++  ) => Promise<{ userId: number; clinicId: number; subscriptionId: string } | null>;
++  retrieveSubscription: (subscriptionId: string) => Promise<any>;
++  persistCurrentState: (input: {
++    userId: number;
++    clinicId: number;
++    customerId: string;
++    subscriptionId: string;
++    currentPeriodEnd: Date | null;
++    cancelAtPeriodEnd: boolean;
++    status: string;
++    subscription: any;
++  }) => Promise<void>;
++};
++
++export class StripeWebhookVerificationError extends Error {
++  constructor() {
++    super("Invalid webhook request");
++    this.name = "StripeWebhookVerificationError";
++  }
++}
++
++export function constructVerifiedStripeEvent(input: {
++  webhookSecret: string | undefined;
++  signature: string | undefined;
++  rawBody: unknown;
++  constructEvent: (rawBody: Buffer, signature: string, secret: string) => any;
++}): any {
++  if (
++    !input.webhookSecret ||
++    !input.signature ||
++    !Buffer.isBuffer(input.rawBody)
++  ) {
++    throw new StripeWebhookVerificationError();
++  }
++  try {
++    return input.constructEvent(
++      input.rawBody,
++      input.signature,
++      input.webhookSecret,
++    );
++  } catch {
++    throw new StripeWebhookVerificationError();
++  }
++}
++
++/**
++ * A verified Stripe event is only a trigger. Status, period, plan items, and
++ * cancellation state are always taken from a fresh Stripe retrieval.
++ */
++export async function reconcileStripeWebhookEvent(
++  event: any,
++  deps: StripeWebhookReconcileDeps,
++): Promise<boolean> {
++  const supported = new Set([
++    "customer.subscription.updated",
++    "customer.subscription.deleted",
++    "invoice.payment_failed",
++    "invoice.payment_succeeded",
++  ]);
++  if (!supported.has(event?.type)) return false;
++
++  const object = event?.data?.object;
++  const customerId = stripeObjectId(object?.customer);
++  const eventSubscriptionId =
++    event.type.startsWith("customer.subscription.")
++      ? stripeObjectId(object)
++      : stripeObjectId(object?.parent?.subscription_details?.subscription) ??
++        stripeObjectId(object?.subscription);
++  if (!customerId || !eventSubscriptionId) {
++    throw new BillingRenewalError("subscription_not_found", "Webhook subscription could not be identified");
++  }
++
++  const owner = await deps.resolveOwner(customerId, eventSubscriptionId);
++  if (!owner || owner.subscriptionId !== eventSubscriptionId) {
++    throw new BillingRenewalError("customer_mismatch", "Webhook billing owner could not be verified");
++  }
++
++  const current = await deps.retrieveSubscription(owner.subscriptionId);
++  if (
++    !current ||
++    current.id !== owner.subscriptionId ||
++    stripeObjectId(current.customer) !== customerId
++  ) {
++    throw new BillingRenewalError("customer_mismatch", "Current subscription ownership could not be verified");
++  }
++
++  const currentPeriodEnd =
++    stripeTsForBilling(current.current_period_end) ??
++    stripeTsForBilling(current.trial_end);
++  await deps.persistCurrentState({
++    userId: owner.userId,
++    clinicId: owner.clinicId,
++    customerId,
++    subscriptionId: owner.subscriptionId,
++    currentPeriodEnd,
++    cancelAtPeriodEnd: current.cancel_at_period_end === true,
++    status: normalizeStripeSubscriptionStatus(current.status),
++    subscription: current,
++  });
++  return true;
++}
++
+ /**
+  * Generates a human-readable public token for a form publication.
+  * Format: <url-safe-form-name>-<6-hex-chars>
+@@ -14819,6 +15194,66 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
+     return new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2025-03-31.basil" });
+   }
+ 
++  async function loadStrictClinicBillingContext(actor: any) {
++    if (!actor?.id || !actor?.defaultClinicId) return null;
++
++    const [clinic] = await storageDb
++      .select({
++        id: clinics.id,
++        ownerUserId: clinics.ownerUserId,
++        subscriptionPlan: clinics.subscriptionPlan,
++        maxProviders: clinics.maxProviders,
++        baseProviderLimit: clinics.baseProviderLimit,
++        extraProviderSeats: clinics.extraProviderSeats,
++        stripeCustomerId: clinics.stripeCustomerId,
++        stripeSubscriptionId: clinics.stripeSubscriptionId,
++      })
++      .from(clinics)
++      .where(eq(clinics.id, actor.defaultClinicId))
++      .limit(1);
++    if (!clinic) return null;
++
++    const ownerMemberships = await storageDb
++      .select({ userId: clinicMemberships.userId })
++      .from(clinicMemberships)
++      .where(
++        and(
++          eq(clinicMemberships.clinicId, clinic.id),
++          eq(clinicMemberships.adminRole, "owner" as any),
++          eq(clinicMemberships.isActive, true),
++        ),
++      );
++
++    const strictOwnerUserId =
++      ownerMemberships.length === 1 &&
++      ownerMemberships[0].userId === clinic.ownerUserId
++        ? ownerMemberships[0].userId
++        : null;
++    const ownerUser = strictOwnerUserId
++      ? (await storageDb
++          .select()
++          .from(usersTable)
++          .where(eq(usersTable.id, strictOwnerUserId))
++          .limit(1))[0] ?? null
++      : null;
++
++    const ownerAssessment = ownerUser
++      ? assessBillingOwner({
++          actorUserId: ownerUser.id,
++          actorDefaultClinicId: ownerUser.defaultClinicId,
++          clinicId: clinic.id,
++          clinicOwnerUserId: clinic.ownerUserId,
++          activeOwnerMembershipUserIds: ownerMemberships.map((row) => row.userId),
++          userStripeCustomerId: ownerUser.stripeCustomerId,
++          userStripeSubscriptionId: ownerUser.stripeSubscriptionId,
++          clinicStripeCustomerId: clinic.stripeCustomerId,
++          clinicStripeSubscriptionId: clinic.stripeSubscriptionId,
++        })
++      : null;
++
++    return { clinic, ownerMemberships, ownerUser, ownerAssessment };
++  }
++
+   /**
+    * Safely convert a Stripe Unix-seconds timestamp to a Date.
+    * Returns null if the value is missing, zero, or would produce an invalid Date.
+@@ -14864,25 +15299,20 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
+       let clinicMaxProviders: number = 1;
+       let clinicBaseProviderLimit: number = 1;
+       let clinicExtraSeats: number = 0;
+-      let isClinicOwner = true;
++      let isClinicOwner = false;
++      let canManageBilling = false;
+       let ownerName: string | null = null;
+ 
+       let effectiveSubStatus = user.subscriptionStatus;
+       let effectiveSubId = user.stripeSubscriptionId;
++      let effectiveCustomerId = user.stripeCustomerId;
+       let effectivePeriodEnd = user.stripeCurrentPeriodEnd;
+       let effectiveCancelAtPeriodEnd = user.stripeCancelAtPeriodEnd ?? false;
+       let effectiveFreeAccount = user.freeAccount ?? false;
+ 
+       if (user.defaultClinicId) {
+-        const [clinic] = await storageDb
+-          .select({
+-            subscriptionPlan: clinics.subscriptionPlan,
+-            maxProviders: clinics.maxProviders,
+-            baseProviderLimit: clinics.baseProviderLimit,
+-            extraProviderSeats: clinics.extraProviderSeats,
+-          })
+-          .from(clinics)
+-          .where(eq(clinics.id, user.defaultClinicId));
++        const context = await loadStrictClinicBillingContext(user);
++        const clinic = context?.clinic;
+ 
+         if (clinic) {
+           clinicPlan = clinic.subscriptionPlan ?? "solo";
+@@ -14891,46 +15321,23 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
+           clinicExtraSeats = clinic.extraProviderSeats ?? 0;
+         }
+ 
+-        const membership = await storageDb
+-          .select({ adminRole: clinicMemberships.adminRole })
+-          .from(clinicMemberships)
+-          .where(and(eq(clinicMemberships.clinicId, user.defaultClinicId), eq(clinicMemberships.userId, user.id)))
+-          .limit(1);
+-        const myRole = membership[0]?.adminRole;
+-
+-        const [clinicRecord] = await storageDb
+-          .select({ ownerUserId: clinics.ownerUserId })
+-          .from(clinics)
+-          .where(eq(clinics.id, user.defaultClinicId))
+-          .limit(1);
+-
+-        isClinicOwner = !isStaffSession && (myRole === "owner" || (clinicRecord?.ownerUserId === user.id));
++        isClinicOwner =
++          !isStaffSession &&
++          context?.ownerAssessment?.isClinicOwner === true &&
++          context.ownerUser?.id === user.id;
++        canManageBilling =
++          isClinicOwner && context?.ownerAssessment?.canManageBilling === true;
+ 
+         if (!isClinicOwner) {
+-          let ownerUserId: number | null = null;
+-
+-          const ownerMembership = await storageDb
+-            .select({ userId: clinicMemberships.userId })
+-            .from(clinicMemberships)
+-            .where(and(eq(clinicMemberships.clinicId, user.defaultClinicId), eq(clinicMemberships.adminRole, "owner" as any)))
+-            .limit(1);
+-
+-          if (ownerMembership.length) {
+-            ownerUserId = ownerMembership[0].userId;
+-          } else if (clinicRecord?.ownerUserId) {
+-            ownerUserId = clinicRecord.ownerUserId;
+-          }
+-
+-          if (ownerUserId) {
+-            const [ownerUser] = await storageDb.select().from(usersTable).where(eq(usersTable.id, ownerUserId)).limit(1);
+-            if (ownerUser) {
+-              effectiveSubStatus = ownerUser.subscriptionStatus;
+-              effectiveSubId = ownerUser.stripeSubscriptionId;
+-              effectivePeriodEnd = ownerUser.stripeCurrentPeriodEnd;
+-              effectiveCancelAtPeriodEnd = ownerUser.stripeCancelAtPeriodEnd ?? false;
+-              effectiveFreeAccount = ownerUser.freeAccount ?? false;
+-              ownerName = `${ownerUser.firstName ?? ""} ${ownerUser.lastName ?? ""}`.trim() || ownerUser.email;
+-            }
++          const ownerUser = context?.ownerUser;
++          if (ownerUser && context?.ownerAssessment?.isClinicOwner) {
++            effectiveSubStatus = ownerUser.subscriptionStatus;
++            effectiveSubId = ownerUser.stripeSubscriptionId;
++            effectiveCustomerId = ownerUser.stripeCustomerId;
++            effectivePeriodEnd = ownerUser.stripeCurrentPeriodEnd;
++            effectiveCancelAtPeriodEnd = ownerUser.stripeCancelAtPeriodEnd ?? false;
++            effectiveFreeAccount = ownerUser.freeAccount ?? false;
++            ownerName = `${ownerUser.firstName ?? ""} ${ownerUser.lastName ?? ""}`.trim() || ownerUser.email;
+           }
+         }
+       }
+@@ -14944,7 +15351,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
+       res.json({
+         subscriptionStatus: effectiveSubStatus,
+         freeAccount: effectiveFreeAccount,
+-        stripeCustomerId: user.stripeCustomerId,
++        stripeCustomerId: effectiveCustomerId,
+         stripeSubscriptionId: effectiveSubId,
+         stripeCurrentPeriodEnd: effectivePeriodEnd,
+         stripeCancelAtPeriodEnd: effectiveCancelAtPeriodEnd,
+@@ -14953,6 +15360,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
+         clinicBaseProviderLimit,
+         clinicExtraSeats,
+         isClinicOwner,
++        canManageBilling,
+         ownerName,
+         billingValid,
+       });
+@@ -15078,6 +15486,22 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
+ 
+       // Refresh session user
+       if (updated) (req as any).user = updated;
++      if (updated?.defaultClinicId) {
++        const context = await loadStrictClinicBillingContext(updated);
++        if (
++          context?.ownerAssessment?.isClinicOwner &&
++          context.ownerUser?.id === updated.id
++        ) {
++          await storageDb
++            .update(clinics)
++            .set({
++              stripeCustomerId: customerId,
++              stripeSubscriptionId: subscription.id,
++              updatedAt: new Date(),
++            })
++            .where(eq(clinics.id, context.clinic.id));
++        }
++      }
+ 
+       res.json({
+         subscriptionId: subscription.id,
+@@ -15156,6 +15580,22 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
+         subscriptionStatus: subStatus,
+       });
+       if (updated) (req as any).user = updated;
++      if (updated?.defaultClinicId) {
++        const context = await loadStrictClinicBillingContext(updated);
++        if (
++          context?.ownerAssessment?.isClinicOwner &&
++          context.ownerUser?.id === updated.id
++        ) {
++          await storageDb
++            .update(clinics)
++            .set({
++              stripeCustomerId: customerId,
++              stripeSubscriptionId: subscription.id,
++              updatedAt: new Date(),
++            })
++            .where(eq(clinics.id, context.clinic.id));
++        }
++      }
+ 
+       // Stamp clinic plan immediately — webhook will confirm/resync async
+       if (user.defaultClinicId) {
+@@ -15263,155 +15703,262 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
+     }
+   });
+ 
+-  // POST /api/billing/cancel — cancel at end of current period
+-  app.post("/api/billing/cancel", requireAuth, async (req, res) => {
+-    try {
+-      const stripe = getStripe();
+-      const user = req.user as any;
+-      if (!user.stripeSubscriptionId) return res.status(400).json({ message: "No active subscription found" });
++  const BILLING_REAUTH_TTL_MS = 10 * 60 * 1000;
+ 
+-      const subscription = await stripe.subscriptions.update(user.stripeSubscriptionId, {
+-        cancel_at_period_end: true,
+-      });
++  function saveSession(req: Request): Promise<void> {
++    return new Promise((resolve, reject) => {
++      req.session.save((error) => (error ? reject(error) : resolve()));
++    });
++  }
+ 
+-      const updated = await storage.updateUserStripe(user.id, { stripeCancelAtPeriodEnd: true });
+-      if (updated) (req as any).user = updated;
++  function hasRecentBillingReauth(req: Request, userId: number, clinicId: number): boolean {
++    return isRecentBillingReauthProof(
++      (req.session as any).billingReauth,
++      { userId, clinicId },
++      Date.now(),
++      BILLING_REAUTH_TTL_MS,
++    );
++  }
+ 
+-      res.json({ cancelAtPeriodEnd: true, currentPeriodEnd: (subscription as any).current_period_end });
+-    } catch (err: any) {
+-      console.error("[Billing] Cancel error:", err);
+-      res.status(500).json({ message: err.message || "Failed to cancel subscription" });
+-    }
+-  });
++  // POST /api/billing/reauth — password confirmation for owner billing changes.
++  app.post(
++    "/api/billing/reauth",
++    clinicianPasswordLimiter,
++    requireClinicianOnly,
++    async (req, res) => {
++      try {
++        const user = req.user as any;
++        const parsed = z.object({ password: z.string().min(1).max(200) }).safeParse(req.body);
++        if (!parsed.success) {
++          return res.status(400).json({ message: "Password is required" });
++        }
+ 
+-  // POST /api/billing/reactivate — undo cancellation
+-  app.post("/api/billing/reactivate", requireAuth, async (req, res) => {
++        const context = await loadStrictClinicBillingContext(user);
++        if (!context || !canActorManageClinicBilling({
++          isStaffSession: false,
++          actorUserId: user.id,
++          clinicOwnerUserId: context.clinic.ownerUserId,
++          assessment: context.ownerAssessment,
++        })) {
++          return res.status(403).json({ message: "Billing owner verification failed" });
++        }
++
++        const valid = await bcrypt.compare(parsed.data.password, user.passwordHash);
++        if (!valid) {
++          return res.status(403).json({ message: "Password confirmation failed" });
++        }
++
++        const authenticatedAt = Date.now();
++        (req.session as any).billingReauth = {
++          userId: user.id,
++          clinicId: context.clinic.id,
++          authenticatedAt,
++        };
++        await saveSession(req);
++        res.json({
++          reauthenticated: true,
++          expiresAt: new Date(authenticatedAt + BILLING_REAUTH_TTL_MS).toISOString(),
++        });
++      } catch {
++        res.status(500).json({ message: "Unable to confirm billing authorization" });
++      }
++    },
++  );
++
++  async function handleScheduledCancellation(
++    req: Request,
++    res: Response,
++    cancelAtPeriodEnd: boolean,
++  ) {
+     try {
+-      const stripe = getStripe();
+       const user = req.user as any;
+-      if (!user.stripeSubscriptionId) return res.status(400).json({ message: "No active subscription found" });
++      const context = await loadStrictClinicBillingContext(user);
++      if (!context || !canActorManageClinicBilling({
++        isStaffSession: false,
++        actorUserId: user.id,
++        clinicOwnerUserId: context.clinic.ownerUserId,
++        assessment: context.ownerAssessment,
++      })) {
++        return res.status(403).json({ message: "Billing owner verification failed" });
++      }
++      if (
++        !context.ownerAssessment.stripeLinkageVerified ||
++        !context.ownerUser.stripeCustomerId ||
++        !context.ownerUser.stripeSubscriptionId
++      ) {
++        return res.status(409).json({ message: "Billing linkage could not be verified" });
++      }
++      if (!hasRecentBillingReauth(req, user.id, context.clinic.id)) {
++        return res.status(403).json({
++          message: "Recent password confirmation is required",
++          reauthenticationRequired: true,
++        });
++      }
+ 
+-      await stripe.subscriptions.update(user.stripeSubscriptionId, {
+-        cancel_at_period_end: false,
+-      });
++      const stripe = getStripe();
++      const requestId = crypto.randomUUID();
++      const auditAction = (stage: RenewalAuditStage): AuditAction => {
++        if (stage === "requested") return "BILLING_CANCELLATION_REQUESTED";
++        if (stage === "completed") return "BILLING_CANCELLATION_COMPLETED";
++        if (stage === "undone") return "BILLING_CANCELLATION_UNDONE";
++        return "BILLING_CANCELLATION_FAILED";
++      };
+ 
+-      const updated = await storage.updateUserStripe(user.id, { stripeCancelAtPeriodEnd: false });
+-      if (updated) (req as any).user = updated;
++      const result = await applyScheduledCancellation(
++        {
++          subscriptionId: context.ownerUser.stripeSubscriptionId,
++          expectedCustomerId: context.ownerUser.stripeCustomerId,
++          cancelAtPeriodEnd,
++        },
++        {
++          retrieveSubscription: (subscriptionId) =>
++            stripe.subscriptions.retrieve(subscriptionId),
++          updateSubscription: (subscriptionId, params) =>
++            stripe.subscriptions.update(subscriptionId, params),
++          persistLocalState: async (state) => {
++            const updated = await storage.updateUserStripe(user.id, {
++              stripeCancelAtPeriodEnd: state.cancelAtPeriodEnd,
++              stripeCurrentPeriodEnd: state.currentPeriodEnd,
++              subscriptionStatus: state.status,
++            });
++            if (!updated) throw new Error("billing_state_not_persisted");
++            (req as any).user = updated;
++          },
++          audit: (stage, details) =>
++            logAuditRequired(req, {
++              action: auditAction(stage),
++              clinicianId: user.id,
++              staffId: null,
++              resourceType: "clinic_subscription",
++              resourceId: context.clinic.id,
++              details: { requestId, ...details },
++            }),
++        },
++      );
+ 
+-      res.json({ cancelAtPeriodEnd: false });
+-    } catch (err: any) {
+-      console.error("[Billing] Reactivate error:", err);
+-      res.status(500).json({ message: err.message || "Failed to reactivate subscription" });
++      res.json({
++        cancelAtPeriodEnd: result.cancelAtPeriodEnd,
++        currentPeriodEnd: result.currentPeriodEnd?.toISOString() ?? null,
++        status: result.status,
++      });
++    } catch (error) {
++      const errorCode =
++        error instanceof BillingRenewalError ? error.code : "internal_error";
++      console.warn("[Billing] Renewal update rejected", errorCode);
++      const status =
++        error instanceof BillingRenewalError &&
++        ["subscription_not_found", "customer_mismatch"].includes(error.code)
++          ? 409
++          : error instanceof BillingRenewalError
++            ? 400
++            : 500;
++      res.status(status).json({ message: "Subscription renewal setting could not be changed" });
+     }
++  }
++
++  // Scheduling only: this route never immediately deletes a subscription.
++  app.post("/api/billing/cancel", requireClinicianOnly, async (req, res) => {
++    await handleScheduledCancellation(req, res, true);
++  });
++
++  // Undo a not-yet-effective scheduled cancellation.
++  app.post("/api/billing/reactivate", requireClinicianOnly, async (req, res) => {
++    await handleScheduledCancellation(req, res, false);
+   });
+ 
+   // POST /api/stripe/webhook — handle Stripe events
+   app.post("/api/stripe/webhook", async (req, res) => {
+     const sig = req.headers["stripe-signature"] as string;
+     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+-    let event: any;
++    const rawBody = (req as any).rawBody;
++    let event: Stripe.Event;
+ 
+     try {
+-      if (webhookSecret && sig) {
+-        const stripe = getStripe();
+-        event = stripe.webhooks.constructEvent((req as any).rawBody || req.body, sig, webhookSecret);
+-      } else {
+-        event = req.body;
+-      }
+-    } catch (err: any) {
+-      console.error("[Stripe Webhook] Signature verification failed:", err.message);
+-      return res.status(400).json({ message: `Webhook error: ${err.message}` });
++      const stripe = getStripe();
++      event = constructVerifiedStripeEvent({
++        webhookSecret,
++        signature: sig,
++        rawBody,
++        constructEvent: (body, signature, secret) =>
++          stripe.webhooks.constructEvent(body, signature, secret),
++      });
++    } catch {
++      console.warn("[Stripe Webhook] Rejected unverified request");
++      return res.status(400).json({ message: "Invalid webhook request" });
+     }
+ 
+     try {
+-      const subscription = event.data?.object;
+-
+-      // Price IDs for plan detection (read at webhook time to pick up env changes)
++      const stripe = getStripe();
+       const SUITE_PRICE_ID = process.env.STRIPE_SUITE_PRICE_ID;
++      const SEAT_PRICE_ID = process.env.STRIPE_PROVIDER_SEAT_PRICE_ID;
+ 
+-      switch (event.type) {
+-        case "customer.subscription.updated":
+-        case "customer.subscription.deleted": {
+-          const customerId = subscription.customer as string;
+-          const allUsers = await storage.getAllUsers();
+-          const user = allUsers.find(u => u.stripeCustomerId === customerId);
+-          if (!user) break;
+-
+-          let status = subscription.status;
+-          if (status === "trialing") status = "trial";
+-          else if (status === "active") status = "active";
+-          else if (status === "past_due") status = "past_due";
+-          else if (status === "canceled" || status === "unpaid") status = "canceled";
+-
+-          await storage.updateUserStripe(user.id, {
+-            stripeSubscriptionId: subscription.id,
+-            stripeCurrentPeriodEnd: subPeriodEnd(subscription),
+-            stripeCancelAtPeriodEnd: subscription.cancel_at_period_end ?? false,
+-            subscriptionStatus: status,
+-          });
+-
+-          // Detect plan type from subscription items and stamp the clinic
+-          if (user.defaultClinicId) {
+-            const items: any[] = subscription.items?.data ?? [];
+-            const isSuite = SUITE_PRICE_ID
+-              ? items.some((item: any) => item.price?.id === SUITE_PRICE_ID)
+-              : false;
+-
+-            // Count purchased extra seat items from provider-seat price
+-            const SEAT_PRICE_ID = process.env.STRIPE_PROVIDER_SEAT_PRICE_ID;
+-            const seatItem = SEAT_PRICE_ID
+-              ? items.find((item: any) => item.price?.id === SEAT_PRICE_ID)
+-              : undefined;
+-            const extraSeatsFromStripe = seatItem?.quantity ?? 0;
+-
+-            if (isSuite) {
+-              await updateClinicPlanFromStripe({
+-                clinicId: user.defaultClinicId,
+-                subscriptionPlan: "suite",
+-                baseProviderLimit: SUITE_BASE_PROVIDER_LIMIT, // 2
+-                extraProviderSeats: extraSeatsFromStripe,
+-                subscriptionStatus: status,
+-                stripeSubscriptionId: subscription.id,
+-              });
+-            } else {
+-              // Solo or unrecognized plan — enforce solo limits
+-              await updateClinicPlanFromStripe({
+-                clinicId: user.defaultClinicId,
+-                subscriptionPlan: "solo",
+-                baseProviderLimit: 1,
+-                extraProviderSeats: 0,
+-                subscriptionStatus: status,
+-                stripeSubscriptionId: subscription.id,
+-              });
+-            }
+-          }
+-          break;
+-        }
+-
+-        case "invoice.payment_failed": {
+-          const customerId = subscription.customer as string;
+-          const allUsers = await storage.getAllUsers();
+-          const user = allUsers.find(u => u.stripeCustomerId === customerId);
+-          if (user) {
+-            await storage.updateUserStripe(user.id, { subscriptionStatus: "past_due" });
+-          }
+-          break;
+-        }
+-
+-        case "invoice.payment_succeeded": {
+-          const customerId = subscription.customer as string;
+-          const allUsers = await storage.getAllUsers();
+-          const user = allUsers.find(u => u.stripeCustomerId === customerId);
+-          if (user && user.subscriptionStatus === "past_due") {
+-            await storage.updateUserStripe(user.id, { subscriptionStatus: "active" });
++      await reconcileStripeWebhookEvent(event, {
++        resolveOwner: async (customerId, eventSubscriptionId) => {
++          const matchingUsers = (await storage.getAllUsers()).filter(
++            (candidate) => candidate.stripeCustomerId === customerId,
++          );
++          if (matchingUsers.length !== 1) return null;
++          const ownerUser = matchingUsers[0] as any;
++          if (ownerUser.stripeSubscriptionId !== eventSubscriptionId) return null;
++
++          const context = await loadStrictClinicBillingContext(ownerUser);
++          if (!context || !isVerifiedWebhookOwnerCandidate({
++            assessment: context.ownerAssessment,
++            resolvedOwnerUserId: context.ownerUser?.id ?? null,
++            expectedOwnerUserId: ownerUser.id,
++            clinicStripeCustomerId: context.clinic.stripeCustomerId,
++            eventCustomerId: customerId,
++            clinicStripeSubscriptionId: context.clinic.stripeSubscriptionId,
++            eventSubscriptionId,
++          })) {
++            return null;
+           }
+-          break;
+-        }
+-      }
++          return {
++            userId: ownerUser.id,
++            clinicId: context.clinic.id,
++            subscriptionId: eventSubscriptionId,
++          };
++        },
++        retrieveSubscription: (subscriptionId) =>
++          stripe.subscriptions.retrieve(subscriptionId),
++        persistCurrentState: async (state) => {
++          const updated = await storage.updateUserStripe(state.userId, {
++            stripeSubscriptionId: state.subscriptionId,
++            stripeCurrentPeriodEnd: state.currentPeriodEnd,
++            stripeCancelAtPeriodEnd: state.cancelAtPeriodEnd,
++            subscriptionStatus: state.status,
++          });
++          if (!updated) throw new Error("billing_state_not_persisted");
++          await storageDb
++            .update(clinics)
++            .set({
++              stripeCustomerId: state.customerId,
++              stripeSubscriptionId: state.subscriptionId,
++              updatedAt: new Date(),
++            })
++            .where(eq(clinics.id, state.clinicId));
++
++          const items: any[] = state.subscription.items?.data ?? [];
++          const isSuite = SUITE_PRICE_ID
++            ? items.some((item) => item.price?.id === SUITE_PRICE_ID)
++            : false;
++          const seatItem = SEAT_PRICE_ID
++            ? items.find((item) => item.price?.id === SEAT_PRICE_ID)
++            : undefined;
++          await updateClinicPlanFromStripe({
++            clinicId: state.clinicId,
++            subscriptionPlan: isSuite ? "suite" : "solo",
++            baseProviderLimit: isSuite ? SUITE_BASE_PROVIDER_LIMIT : 1,
++            extraProviderSeats: isSuite ? seatItem?.quantity ?? 0 : 0,
++            subscriptionStatus: state.status,
++            stripeSubscriptionId: state.subscriptionId,
++          });
++        },
++      });
+ 
+       res.json({ received: true });
+-    } catch (err: any) {
+-      console.error("[Stripe Webhook] Handler error:", err);
++    } catch {
++      console.warn("[Stripe Webhook] Verified event could not be reconciled");
+       res.status(500).json({ message: "Webhook handler error" });
+     }
+   });
+diff --git a/tests/billing-cancellation.test.ts b/tests/billing-cancellation.test.ts
+new file mode 100644
+index 0000000..18d9679
+--- /dev/null
++++ b/tests/billing-cancellation.test.ts
+@@ -0,0 +1,467 @@
++import { describe, expect, it, vi } from "vitest";
++import {
++  BillingRenewalError,
++  applyScheduledCancellation,
++  assessBillingOwner,
++  canActorManageClinicBilling,
++  constructVerifiedStripeEvent,
++  isRecentBillingReauthProof,
++  isVerifiedWebhookOwnerCandidate,
++  normalizeStripeSubscriptionStatus,
++  reconcileStripeWebhookEvent,
++  type BillingOwnerSnapshot,
++} from "../server/routes";
++
++const ownerSnapshot: BillingOwnerSnapshot = {
++  actorUserId: 10,
++  actorDefaultClinicId: 20,
++  clinicId: 20,
++  clinicOwnerUserId: 10,
++  activeOwnerMembershipUserIds: [10],
++  userStripeCustomerId: "cus_synthetic",
++  userStripeSubscriptionId: "sub_synthetic",
++  clinicStripeCustomerId: "cus_synthetic",
++  clinicStripeSubscriptionId: "sub_synthetic",
++};
++
++function syntheticSubscription(overrides: Record<string, unknown> = {}) {
++  return {
++    id: "sub_synthetic",
++    customer: "cus_synthetic",
++    status: "active",
++    cancel_at_period_end: false,
++    current_period_end: 1_800_000_000,
++    items: { data: [] },
++    ...overrides,
++  };
++}
++
++describe("strict billing owner assessment", () => {
++  it("accepts only a single active owner matching clinic and actor", () => {
++    expect(assessBillingOwner(ownerSnapshot)).toEqual({
++      isClinicOwner: true,
++      stripeLinkageVerified: true,
++      canManageBilling: true,
++      reason: "verified",
++    });
++  });
++
++  it.each([
++    [{ activeOwnerMembershipUserIds: [] }, "owner_ambiguous"],
++    [{ activeOwnerMembershipUserIds: [10, 11] }, "owner_ambiguous"],
++    [{ clinicOwnerUserId: 11 }, "owner_ambiguous"],
++    [{ actorUserId: 11 }, "owner_mismatch"],
++    [{ actorDefaultClinicId: 21 }, "clinic_mismatch"],
++  ])("fails closed for ambiguous or nonowner authority", (change, reason) => {
++    const result = assessBillingOwner({ ...ownerSnapshot, ...change });
++    expect(result.canManageBilling).toBe(false);
++    expect(result.reason).toBe(reason);
++  });
++
++  it.each([
++    { clinicStripeCustomerId: "cus_browser_substitution" },
++    { clinicStripeSubscriptionId: "sub_browser_substitution" },
++    { clinicStripeSubscriptionId: null },
++  ])("fails closed when user and clinic Stripe linkage differs", (change) => {
++    const result = assessBillingOwner({ ...ownerSnapshot, ...change });
++    expect(result.isClinicOwner).toBe(true);
++    expect(result.stripeLinkageVerified).toBe(false);
++    expect(result.canManageBilling).toBe(false);
++  });
++
++  it("accepts a legacy null clinic customer only when clinic subscription and owner customer are verified", () => {
++    const result = assessBillingOwner({
++      ...ownerSnapshot,
++      clinicStripeCustomerId: null,
++    });
++    expect(result.canManageBilling).toBe(true);
++    expect(result.stripeLinkageVerified).toBe(true);
++  });
++
++  it("allows legacy-null webhook customer recovery only after exact owner and subscription agreement", () => {
++    const assessment = assessBillingOwner({
++      ...ownerSnapshot,
++      clinicStripeCustomerId: null,
++    });
++    expect(
++      isVerifiedWebhookOwnerCandidate({
++        assessment,
++        resolvedOwnerUserId: 10,
++        expectedOwnerUserId: 10,
++        clinicStripeCustomerId: null,
++        eventCustomerId: "cus_synthetic",
++        clinicStripeSubscriptionId: "sub_synthetic",
++        eventSubscriptionId: "sub_synthetic",
++      }),
++    ).toBe(true);
++    expect(
++      isVerifiedWebhookOwnerCandidate({
++        assessment,
++        resolvedOwnerUserId: 10,
++        expectedOwnerUserId: 10,
++        clinicStripeCustomerId: null,
++        eventCustomerId: "cus_synthetic",
++        clinicStripeSubscriptionId: "sub_synthetic",
++        eventSubscriptionId: "sub_substituted",
++      }),
++    ).toBe(false);
++  });
++
++  it("rejects staff even when they act for an otherwise valid owner", () => {
++    expect(
++      canActorManageClinicBilling({
++        isStaffSession: true,
++        actorUserId: 10,
++        clinicOwnerUserId: 10,
++        assessment: assessBillingOwner(ownerSnapshot),
++      }),
++    ).toBe(false);
++  });
++
++  it("rejects a nonowner clinician even with a verified clinic owner", () => {
++    expect(
++      canActorManageClinicBilling({
++        isStaffSession: false,
++        actorUserId: 11,
++        clinicOwnerUserId: 10,
++        assessment: assessBillingOwner(ownerSnapshot),
++      }),
++    ).toBe(false);
++  });
++});
++
++describe("recent billing reauthentication", () => {
++  const now = 2_000_000;
++
++  it("accepts proof bound to the exact user and clinic for at most ten minutes", () => {
++    expect(
++      isRecentBillingReauthProof(
++        { userId: 10, clinicId: 20, authenticatedAt: now - 10 * 60 * 1000 },
++        { userId: 10, clinicId: 20 },
++        now,
++      ),
++    ).toBe(true);
++  });
++
++  it.each([
++    { userId: 11, clinicId: 20, authenticatedAt: now },
++    { userId: 10, clinicId: 21, authenticatedAt: now },
++    { userId: 10, clinicId: 20, authenticatedAt: now - 10 * 60 * 1000 - 1 },
++    { userId: 10, clinicId: 20, authenticatedAt: now + 1 },
++    null,
++  ])("rejects wrong, stale, future, or missing proof", (proof) => {
++    expect(
++      isRecentBillingReauthProof(proof, { userId: 10, clinicId: 20 }, now),
++    ).toBe(false);
++  });
++});
++
++describe("scheduled cancellation with fully mocked Stripe", () => {
++  it("schedules only cancel_at_period_end=true after requested audit", async () => {
++    const calls: string[] = [];
++    const retrieve = vi.fn(async () => {
++      calls.push("stripe.retrieve");
++      return syntheticSubscription();
++    });
++    const update = vi.fn(async (_id, params) => {
++      calls.push("stripe.update");
++      return syntheticSubscription({ cancel_at_period_end: params.cancel_at_period_end });
++    });
++    const persist = vi.fn(async () => {
++      calls.push("local.persist");
++    });
++    const audit = vi.fn(async (stage) => {
++      calls.push(`audit.${stage}`);
++    });
++
++    const result = await applyScheduledCancellation(
++      {
++        subscriptionId: "sub_synthetic",
++        expectedCustomerId: "cus_synthetic",
++        cancelAtPeriodEnd: true,
++      },
++      {
++        retrieveSubscription: retrieve,
++        updateSubscription: update,
++        persistLocalState: persist,
++        audit,
++      },
++    );
++
++    expect(result.cancelAtPeriodEnd).toBe(true);
++    expect(update).toHaveBeenCalledWith("sub_synthetic", {
++      cancel_at_period_end: true,
++    });
++    expect(calls).toEqual([
++      "audit.requested",
++      "stripe.retrieve",
++      "stripe.update",
++      "local.persist",
++      "audit.completed",
++    ]);
++    expect("delete" in (update as any)).toBe(false);
++  });
++
++  it("undoes only a scheduled cancellation with cancel_at_period_end=false", async () => {
++    const update = vi.fn(async (_id, params) =>
++      syntheticSubscription({ cancel_at_period_end: params.cancel_at_period_end }),
++    );
++    const audit = vi.fn(async () => undefined);
++
++    const result = await applyScheduledCancellation(
++      {
++        subscriptionId: "sub_synthetic",
++        expectedCustomerId: "cus_synthetic",
++        cancelAtPeriodEnd: false,
++      },
++      {
++        retrieveSubscription: async () =>
++          syntheticSubscription({ cancel_at_period_end: true }),
++        updateSubscription: update,
++        persistLocalState: async () => undefined,
++        audit,
++      },
++    );
++
++    expect(result.cancelAtPeriodEnd).toBe(false);
++    expect(update).toHaveBeenCalledWith("sub_synthetic", {
++      cancel_at_period_end: false,
++    });
++    expect(audit.mock.calls.map(([stage]) => stage)).toEqual([
++      "requested",
++      "undone",
++    ]);
++  });
++
++  it("prevents every Stripe call when the required audit fails first", async () => {
++    const retrieve = vi.fn();
++    const update = vi.fn();
++    await expect(
++      applyScheduledCancellation(
++        {
++          subscriptionId: "sub_synthetic",
++          expectedCustomerId: "cus_synthetic",
++          cancelAtPeriodEnd: true,
++        },
++        {
++          retrieveSubscription: retrieve,
++          updateSubscription: update,
++          persistLocalState: vi.fn(),
++          audit: vi.fn(async () => {
++            throw new Error("synthetic audit outage");
++          }),
++        },
++      ),
++    ).rejects.toThrow("synthetic audit outage");
++    expect(retrieve).not.toHaveBeenCalled();
++    expect(update).not.toHaveBeenCalled();
++  });
++
++  it("rejects a customer mismatch without mutating Stripe", async () => {
++    const update = vi.fn();
++    const audit = vi.fn(async () => undefined);
++    await expect(
++      applyScheduledCancellation(
++        {
++          subscriptionId: "sub_synthetic",
++          expectedCustomerId: "cus_synthetic",
++          cancelAtPeriodEnd: true,
++        },
++        {
++          retrieveSubscription: async () =>
++            syntheticSubscription({ customer: "cus_wrong" }),
++          updateSubscription: update,
++          persistLocalState: vi.fn(),
++          audit,
++        },
++      ),
++    ).rejects.toMatchObject<Partial<BillingRenewalError>>({
++      code: "customer_mismatch",
++    });
++    expect(update).not.toHaveBeenCalled();
++    expect(audit.mock.calls.map(([stage]) => stage)).toEqual([
++      "requested",
++      "failed",
++    ]);
++  });
++
++  it("does not undo a cancellation that is not scheduled", async () => {
++    const update = vi.fn();
++    await expect(
++      applyScheduledCancellation(
++        {
++          subscriptionId: "sub_synthetic",
++          expectedCustomerId: "cus_synthetic",
++          cancelAtPeriodEnd: false,
++        },
++        {
++          retrieveSubscription: async () => syntheticSubscription(),
++          updateSubscription: update,
++          persistLocalState: vi.fn(),
++          audit: vi.fn(async () => undefined),
++        },
++      ),
++    ).rejects.toMatchObject({ code: "cancellation_not_scheduled" });
++    expect(update).not.toHaveBeenCalled();
++  });
++});
++
++describe("Stripe webhook verification and current-state reconciliation", () => {
++  it.each([
++    { webhookSecret: undefined, signature: "sig", rawBody: Buffer.from("{}") },
++    { webhookSecret: "whsec_test", signature: undefined, rawBody: Buffer.from("{}") },
++    { webhookSecret: "whsec_test", signature: "sig", rawBody: {} },
++  ])("rejects missing secret, signature, or raw body", (input) => {
++    expect(() =>
++      constructVerifiedStripeEvent({
++        ...input,
++        constructEvent: vi.fn(),
++      }),
++    ).toThrow("Invalid webhook request");
++  });
++
++  it("returns only an event produced by signature construction", () => {
++    const verified = { id: "evt_synthetic", type: "invoice.payment_succeeded" };
++    const constructEvent = vi.fn(() => verified);
++    expect(
++      constructVerifiedStripeEvent({
++        webhookSecret: "whsec_test",
++        signature: "sig_test",
++        rawBody: Buffer.from("{}"),
++        constructEvent,
++      }),
++    ).toBe(verified);
++    expect(constructEvent).toHaveBeenCalledOnce();
++  });
++
++  it("rejects invalid signatures with a generic error", () => {
++    expect(() =>
++      constructVerifiedStripeEvent({
++        webhookSecret: "whsec_test",
++        signature: "sig_bad",
++        rawBody: Buffer.from("{}"),
++        constructEvent: () => {
++          throw new Error("sensitive provider detail");
++        },
++      }),
++    ).toThrow("Invalid webhook request");
++  });
++
++  it("uses a fresh Stripe retrieval instead of event-embedded status", async () => {
++    const persist = vi.fn(async () => undefined);
++    const retrieve = vi.fn(async () =>
++      syntheticSubscription({ status: "active", cancel_at_period_end: false }),
++    );
++    const event = {
++      type: "customer.subscription.updated",
++      data: {
++        object: syntheticSubscription({
++          status: "canceled",
++          cancel_at_period_end: true,
++        }),
++      },
++    };
++
++    await expect(
++      reconcileStripeWebhookEvent(event, {
++        resolveOwner: async () => ({
++          userId: 10,
++          clinicId: 20,
++          subscriptionId: "sub_synthetic",
++        }),
++        retrieveSubscription: retrieve,
++        persistCurrentState: persist,
++      }),
++    ).resolves.toBe(true);
++
++    expect(retrieve).toHaveBeenCalledWith("sub_synthetic");
++    expect(persist).toHaveBeenCalledWith(
++      expect.objectContaining({
++        status: "active",
++        cancelAtPeriodEnd: false,
++      }),
++    );
++  });
++
++  it("resolves Basil invoice subscriptions through parent.subscription_details", async () => {
++    const resolveOwner = vi.fn(async () => ({
++      userId: 10,
++      clinicId: 20,
++      subscriptionId: "sub_synthetic",
++    }));
++    const persist = vi.fn(async () => undefined);
++    await expect(
++      reconcileStripeWebhookEvent(
++        {
++          type: "invoice.payment_succeeded",
++          data: {
++            object: {
++              customer: "cus_synthetic",
++              parent: {
++                subscription_details: {
++                  subscription: "sub_synthetic",
++                },
++              },
++              status: "paid",
++            },
++          },
++        },
++        {
++          resolveOwner,
++          retrieveSubscription: async () =>
++            syntheticSubscription({ status: "active" }),
++          persistCurrentState: persist,
++        },
++      ),
++    ).resolves.toBe(true);
++    expect(resolveOwner).toHaveBeenCalledWith(
++      "cus_synthetic",
++      "sub_synthetic",
++    );
++    expect(persist).toHaveBeenCalledWith(
++      expect.objectContaining({
++        customerId: "cus_synthetic",
++        subscriptionId: "sub_synthetic",
++        status: "active",
++      }),
++    );
++  });
++
++  it("fails closed when webhook customer ownership is ambiguous", async () => {
++    const retrieve = vi.fn();
++    const persist = vi.fn();
++    await expect(
++      reconcileStripeWebhookEvent(
++        {
++          type: "invoice.payment_failed",
++          data: {
++            object: {
++              customer: "cus_synthetic",
++              subscription: "sub_synthetic",
++              status: "paid",
++            },
++          },
++        },
++        {
++          resolveOwner: async () => null,
++          retrieveSubscription: retrieve,
++          persistCurrentState: persist,
++        },
++      ),
++    ).rejects.toMatchObject({ code: "customer_mismatch" });
++    expect(retrieve).not.toHaveBeenCalled();
++    expect(persist).not.toHaveBeenCalled();
++  });
++
++  it("documents safe normalization for every Stripe subscription state", () => {
++    expect(normalizeStripeSubscriptionStatus("trialing")).toBe("trial");
++    expect(normalizeStripeSubscriptionStatus("active")).toBe("active");
++    expect(normalizeStripeSubscriptionStatus("past_due")).toBe("past_due");
++    expect(normalizeStripeSubscriptionStatus("incomplete")).toBe("incomplete");
++    expect(normalizeStripeSubscriptionStatus("paused")).toBe("paused");
++    expect(normalizeStripeSubscriptionStatus("canceled")).toBe("canceled");
++    expect(normalizeStripeSubscriptionStatus("unpaid")).toBe("canceled");
++    expect(normalizeStripeSubscriptionStatus("incomplete_expired")).toBe("canceled");
++    expect(normalizeStripeSubscriptionStatus("future_status")).toBe("incomplete");
++  });
++});
+\ No newline at end of file
+diff --git a/tests/unit/billing-cancellation.test.ts b/tests/unit/billing-cancellation.test.ts
+new file mode 100644
+index 0000000..d32dd13
+--- /dev/null
++++ b/tests/unit/billing-cancellation.test.ts
+@@ -0,0 +1,2 @@
++// @vitest-environment node
++import "../billing-cancellation.test";
+\ No newline at end of file
+
+From 1aeef94f8ff85c0ec2b7a211980c12db934b1287 Mon Sep 17 00:00:00 2001
+From: Replit Agent <agent@replit.com>
+Date: Mon, 14 Sep 2026 19:35:22 +0000
+Subject: [PATCH 2/2] Reconcile confirmed Stripe cancellation outcomes
+
+---
+ client/src/pages/billing.tsx       |  19 ++-
+ server/routes.ts                   | 192 ++++++++++++++++++++++------
+ tests/billing-cancellation.test.ts | 199 +++++++++++++++++++++++++++--
+ 3 files changed, 357 insertions(+), 53 deletions(-)
+
+diff --git a/client/src/pages/billing.tsx b/client/src/pages/billing.tsx
+index c4ce1d2..a1b41a0 100644
+--- a/client/src/pages/billing.tsx
++++ b/client/src/pages/billing.tsx
+@@ -260,7 +260,13 @@ export default function BillingPage() {
+       await apiRequest("POST", "/api/billing/reauth", { password });
+       const endpoint = action === "cancel" ? "/api/billing/cancel" : "/api/billing/reactivate";
+       const response = await apiRequest("POST", endpoint, {});
+-      return { action, result: await response.json() as { currentPeriodEnd?: string | null } };
++      return {
++        action,
++        result: await response.json() as {
++          currentPeriodEnd?: string | null;
++          reconciliationPending?: boolean;
++        },
++      };
+     },
+     onSuccess: ({ action, result }) => {
+       qc.invalidateQueries({ queryKey: ["/api/billing/status"] });
+@@ -269,10 +275,17 @@ export default function BillingPage() {
+       if (action === "cancel") {
+         toast({
+           title: "Cancellation scheduled",
+-          description: `Your subscription remains active through ${formatDate(result.currentPeriodEnd ?? status?.stripeCurrentPeriodEnd ?? null)}.`,
++          description: result.reconciliationPending
++            ? `Stripe confirmed cancellation through ${formatDate(result.currentPeriodEnd ?? status?.stripeCurrentPeriodEnd ?? null)}. Your billing display may take a moment to update.`
++            : `Your subscription remains active through ${formatDate(result.currentPeriodEnd ?? status?.stripeCurrentPeriodEnd ?? null)}.`,
+         });
+       } else {
+-        toast({ title: "Scheduled cancellation undone", description: "Your subscription will continue renewing." });
++        toast({
++          title: "Scheduled cancellation undone",
++          description: result.reconciliationPending
++            ? "Stripe confirmed renewal. Your billing display may take a moment to update."
++            : "Your subscription will continue renewing.",
++        });
+       }
+     },
+     onError: (err: any) => {
+diff --git a/server/routes.ts b/server/routes.ts
+index 067c26e..b7d8b77 100644
+--- a/server/routes.ts
++++ b/server/routes.ts
+@@ -442,7 +442,8 @@ export class BillingRenewalError extends Error {
+       | "subscription_not_found"
+       | "customer_mismatch"
+       | "subscription_not_mutable"
+-      | "cancellation_not_scheduled",
++      | "cancellation_not_scheduled"
++      | "stripe_outcome_unconfirmed",
+     message: string,
+   ) {
+     super(message);
+@@ -507,10 +508,18 @@ export async function applyScheduledCancellation(
+     cancelAtPeriodEnd: boolean;
+   },
+   deps: ScheduledCancellationDeps,
+-): Promise<{ cancelAtPeriodEnd: boolean; currentPeriodEnd: Date | null; status: string }> {
++): Promise<{
++  cancelAtPeriodEnd: boolean;
++  currentPeriodEnd: Date | null;
++  status: string;
++  stripeConfirmed: true;
++  localStatePending: boolean;
++  auditPending: boolean;
++}> {
+   const operation = input.cancelAtPeriodEnd ? "schedule" : "undo";
+   await deps.audit("requested", { operation });
+ 
++  let changed: any;
+   try {
+     const current = await deps.retrieveSubscription(input.subscriptionId);
+     if (!current || current.id !== input.subscriptionId || current.deleted === true) {
+@@ -522,41 +531,53 @@ export async function applyScheduledCancellation(
+     if (!["active", "trialing"].includes(current.status)) {
+       throw new BillingRenewalError("subscription_not_mutable", "Subscription cannot be changed in its current state");
+     }
+-    if (!input.cancelAtPeriodEnd && current.cancel_at_period_end !== true) {
+-      throw new BillingRenewalError("cancellation_not_scheduled", "No scheduled cancellation was found");
++    if (current.cancel_at_period_end === input.cancelAtPeriodEnd) {
++      changed = current;
++    } else {
++      try {
++        changed = await deps.updateSubscription(input.subscriptionId, {
++          cancel_at_period_end: input.cancelAtPeriodEnd,
++        });
++      } catch {
++        // Stripe may commit an update even when the client loses the response.
++        // Resolve that ambiguity from a fresh retrieval before reporting it.
++        const reconciled = await deps.retrieveSubscription(input.subscriptionId);
++        if (
++          !reconciled ||
++          reconciled.id !== input.subscriptionId ||
++          stripeObjectId(reconciled.customer) !== input.expectedCustomerId ||
++          reconciled.cancel_at_period_end !== input.cancelAtPeriodEnd
++        ) {
++          throw new BillingRenewalError(
++            "stripe_outcome_unconfirmed",
++            "Stripe update outcome could not be confirmed",
++          );
++        }
++        changed = reconciled;
++      }
+     }
+ 
+-    const changed =
+-      current.cancel_at_period_end === input.cancelAtPeriodEnd
+-        ? current
+-        : await deps.updateSubscription(input.subscriptionId, {
+-            cancel_at_period_end: input.cancelAtPeriodEnd,
+-          });
+-
+     if (!changed || changed.id !== input.subscriptionId) {
+       throw new BillingRenewalError("subscription_not_found", "Subscription update could not be verified");
+     }
+     if (stripeObjectId(changed.customer) !== input.expectedCustomerId) {
+       throw new BillingRenewalError("customer_mismatch", "Updated subscription ownership could not be verified");
+     }
+-
+-    const currentPeriodEnd =
+-      stripeTsForBilling(changed.current_period_end) ??
+-      stripeTsForBilling(changed.trial_end);
+-    const status = normalizeStripeSubscriptionStatus(changed.status);
+-    await deps.persistLocalState({
+-      cancelAtPeriodEnd: input.cancelAtPeriodEnd,
+-      currentPeriodEnd,
+-      status,
+-    });
+-    await deps.audit(input.cancelAtPeriodEnd ? "completed" : "undone", {
+-      operation,
+-      cancelAtPeriodEnd: input.cancelAtPeriodEnd,
+-      effectiveAt: currentPeriodEnd?.toISOString() ?? null,
+-      status,
+-    });
+-
+-    return { cancelAtPeriodEnd: input.cancelAtPeriodEnd, currentPeriodEnd, status };
++    if (changed.cancel_at_period_end !== input.cancelAtPeriodEnd) {
++      const reconciled = await deps.retrieveSubscription(input.subscriptionId);
++      if (
++        !reconciled ||
++        reconciled.id !== input.subscriptionId ||
++        stripeObjectId(reconciled.customer) !== input.expectedCustomerId ||
++        reconciled.cancel_at_period_end !== input.cancelAtPeriodEnd
++      ) {
++        throw new BillingRenewalError(
++          "stripe_outcome_unconfirmed",
++          "Stripe update outcome could not be confirmed",
++        );
++      }
++      changed = reconciled;
++    }
+   } catch (error) {
+     const code = error instanceof BillingRenewalError ? error.code : "internal_error";
+     try {
+@@ -567,6 +588,81 @@ export async function applyScheduledCancellation(
+     }
+     throw error;
+   }
++
++  // Stripe has returned and verified the requested state. From this point on,
++  // local/audit failures must not be reported as a failed cancellation. Retry
++  // against a fresh Stripe retrieval and return the confirmed remote outcome.
++  let authoritative = changed;
++  let localStatePending = false;
++  let auditPending = false;
++  let freshRetrieved = false;
++
++  const stateFrom = (subscription: any) => ({
++    cancelAtPeriodEnd: input.cancelAtPeriodEnd,
++    currentPeriodEnd:
++      stripeTsForBilling(subscription.current_period_end) ??
++      stripeTsForBilling(subscription.trial_end),
++    status: normalizeStripeSubscriptionStatus(subscription.status),
++  });
++  const retrieveConfirmedCurrent = async () => {
++    const fresh = await deps.retrieveSubscription(input.subscriptionId);
++    if (
++      !fresh ||
++      fresh.id !== input.subscriptionId ||
++      stripeObjectId(fresh.customer) !== input.expectedCustomerId ||
++      fresh.cancel_at_period_end !== input.cancelAtPeriodEnd
++    ) {
++      throw new Error("stripe_reconciliation_not_confirmed");
++    }
++    authoritative = fresh;
++    freshRetrieved = true;
++  };
++
++  try {
++    await deps.persistLocalState(stateFrom(authoritative));
++  } catch {
++    localStatePending = true;
++    try {
++      await retrieveConfirmedCurrent();
++      await deps.persistLocalState(stateFrom(authoritative));
++      localStatePending = false;
++    } catch {
++      // A verified Stripe response remains authoritative. The requested audit
++      // record exists and a later webhook/retry can repair local display state.
++    }
++  }
++
++  const writeOutcomeAudit = async () => {
++    const state = stateFrom(authoritative);
++    await deps.audit(input.cancelAtPeriodEnd ? "completed" : "undone", {
++      operation,
++      cancelAtPeriodEnd: input.cancelAtPeriodEnd,
++      effectiveAt: state.currentPeriodEnd?.toISOString() ?? null,
++      status: state.status,
++      localStatePending,
++    });
++  };
++
++  try {
++    await writeOutcomeAudit();
++  } catch {
++    auditPending = true;
++    try {
++      if (!freshRetrieved) await retrieveConfirmedCurrent();
++      await writeOutcomeAudit();
++      auditPending = false;
++    } catch {
++      // The pre-Stripe requested record remains durable. Do not misreport the
++      // already-confirmed Stripe result because the outcome audit is pending.
++    }
++  }
++
++  return {
++    ...stateFrom(authoritative),
++    stripeConfirmed: true,
++    localStatePending,
++    auditPending,
++  };
+ }
+ 
+ function stripeTsForBilling(unixSeconds: number | null | undefined): Date | null {
+@@ -15773,18 +15869,25 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
+     try {
+       const user = req.user as any;
+       const context = await loadStrictClinicBillingContext(user);
+-      if (!context || !canActorManageClinicBilling({
+-        isStaffSession: false,
+-        actorUserId: user.id,
+-        clinicOwnerUserId: context.clinic.ownerUserId,
+-        assessment: context.ownerAssessment,
+-      })) {
++      const ownerAssessment = context?.ownerAssessment ?? null;
++      const ownerUser = context?.ownerUser ?? null;
++      if (
++        !context ||
++        !ownerAssessment ||
++        !ownerUser ||
++        !canActorManageClinicBilling({
++          isStaffSession: false,
++          actorUserId: user.id,
++          clinicOwnerUserId: context.clinic.ownerUserId,
++          assessment: ownerAssessment,
++        })
++      ) {
+         return res.status(403).json({ message: "Billing owner verification failed" });
+       }
+       if (
+-        !context.ownerAssessment.stripeLinkageVerified ||
+-        !context.ownerUser.stripeCustomerId ||
+-        !context.ownerUser.stripeSubscriptionId
++        !ownerAssessment.stripeLinkageVerified ||
++        !ownerUser.stripeCustomerId ||
++        !ownerUser.stripeSubscriptionId
+       ) {
+         return res.status(409).json({ message: "Billing linkage could not be verified" });
+       }
+@@ -15806,8 +15909,8 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
+ 
+       const result = await applyScheduledCancellation(
+         {
+-          subscriptionId: context.ownerUser.stripeSubscriptionId,
+-          expectedCustomerId: context.ownerUser.stripeCustomerId,
++          subscriptionId: ownerUser.stripeSubscriptionId,
++          expectedCustomerId: ownerUser.stripeCustomerId,
+           cancelAtPeriodEnd,
+         },
+         {
+@@ -15836,10 +15939,15 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
+         },
+       );
+ 
+-      res.json({
++      const reconciliationPending = result.localStatePending || result.auditPending;
++      res.status(reconciliationPending ? 202 : 200).json({
+         cancelAtPeriodEnd: result.cancelAtPeriodEnd,
+         currentPeriodEnd: result.currentPeriodEnd?.toISOString() ?? null,
+         status: result.status,
++        stripeConfirmed: result.stripeConfirmed,
++        reconciliationPending,
++        localStatePending: result.localStatePending,
++        auditPending: result.auditPending,
+       });
+     } catch (error) {
+       const errorCode =
+@@ -15852,7 +15960,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
+           : error instanceof BillingRenewalError
+             ? 400
+             : 500;
+-      res.status(status).json({ message: "Subscription renewal setting could not be changed" });
++      res.status(status).json({ message: "Subscription renewal setting could not be confirmed" });
+     }
+   }
+ 
+diff --git a/tests/billing-cancellation.test.ts b/tests/billing-cancellation.test.ts
+index 18d9679..79cfde5 100644
+--- a/tests/billing-cancellation.test.ts
++++ b/tests/billing-cancellation.test.ts
+@@ -285,24 +285,207 @@ describe("scheduled cancellation with fully mocked Stripe", () => {
+     ]);
+   });
+ 
+-  it("does not undo a cancellation that is not scheduled", async () => {
++  it("makes an undo retry idempotent after Stripe already restored renewal", async () => {
+     const update = vi.fn();
++    const result = await applyScheduledCancellation(
++      {
++        subscriptionId: "sub_synthetic",
++        expectedCustomerId: "cus_synthetic",
++        cancelAtPeriodEnd: false,
++      },
++      {
++        retrieveSubscription: async () => syntheticSubscription(),
++        updateSubscription: update,
++        persistLocalState: vi.fn(),
++        audit: vi.fn(async () => undefined),
++      },
++    );
++    expect(result.stripeConfirmed).toBe(true);
++    expect(result.cancelAtPeriodEnd).toBe(false);
++    expect(update).not.toHaveBeenCalled();
++  });
++
++  it("reports Stripe-confirmed cancellation when completed audit remains unavailable", async () => {
++    const audit = vi.fn(async (stage: string) => {
++      if (stage === "completed") throw new Error("synthetic audit outage");
++    });
++    const retrieve = vi.fn(async () =>
++      syntheticSubscription({ cancel_at_period_end: true }),
++    );
++
++    const result = await applyScheduledCancellation(
++      {
++        subscriptionId: "sub_synthetic",
++        expectedCustomerId: "cus_synthetic",
++        cancelAtPeriodEnd: true,
++      },
++      {
++        retrieveSubscription: retrieve,
++        updateSubscription: async () =>
++          syntheticSubscription({ cancel_at_period_end: true }),
++        persistLocalState: async () => undefined,
++        audit,
++      },
++    );
++
++    expect(result).toMatchObject({
++      stripeConfirmed: true,
++      cancelAtPeriodEnd: true,
++      localStatePending: false,
++      auditPending: true,
++    });
++    expect(retrieve).toHaveBeenCalledTimes(2);
++    expect(audit.mock.calls.filter(([stage]) => stage === "completed")).toHaveLength(2);
++    expect(audit.mock.calls.some(([stage]) => stage === "failed")).toBe(false);
++  });
++
++  it("reports Stripe-confirmed cancellation when local state remains unavailable", async () => {
++    const persist = vi.fn(async () => {
++      throw new Error("synthetic local outage");
++    });
++    const audit = vi.fn(async () => undefined);
++    const retrieve = vi.fn()
++      .mockResolvedValueOnce(syntheticSubscription())
++      .mockResolvedValueOnce(syntheticSubscription({ cancel_at_period_end: true }));
++
++    const result = await applyScheduledCancellation(
++      {
++        subscriptionId: "sub_synthetic",
++        expectedCustomerId: "cus_synthetic",
++        cancelAtPeriodEnd: true,
++      },
++      {
++        retrieveSubscription: retrieve,
++        updateSubscription: async () =>
++          syntheticSubscription({ cancel_at_period_end: true }),
++        persistLocalState: persist,
++        audit,
++      },
++    );
++
++    expect(result).toMatchObject({
++      stripeConfirmed: true,
++      cancelAtPeriodEnd: true,
++      localStatePending: true,
++      auditPending: false,
++    });
++    expect(persist).toHaveBeenCalledTimes(2);
++    expect(audit).toHaveBeenLastCalledWith(
++      "completed",
++      expect.objectContaining({ localStatePending: true }),
++    );
++  });
++
++  it("makes a client retry idempotent after Stripe already scheduled cancellation", async () => {
++    const update = vi.fn();
++    const result = await applyScheduledCancellation(
++      {
++        subscriptionId: "sub_synthetic",
++        expectedCustomerId: "cus_synthetic",
++        cancelAtPeriodEnd: true,
++      },
++      {
++        retrieveSubscription: async () =>
++          syntheticSubscription({ cancel_at_period_end: true }),
++        updateSubscription: update,
++        persistLocalState: async () => undefined,
++        audit: async () => undefined,
++      },
++    );
++    expect(result.stripeConfirmed).toBe(true);
++    expect(update).not.toHaveBeenCalled();
++  });
++
++  it("does not confirm an update response with the wrong cancellation flag", async () => {
++    const persist = vi.fn();
+     await expect(
+       applyScheduledCancellation(
+         {
+           subscriptionId: "sub_synthetic",
+           expectedCustomerId: "cus_synthetic",
+-          cancelAtPeriodEnd: false,
++          cancelAtPeriodEnd: true,
+         },
+         {
+-          retrieveSubscription: async () => syntheticSubscription(),
+-          updateSubscription: update,
+-          persistLocalState: vi.fn(),
+-          audit: vi.fn(async () => undefined),
++          retrieveSubscription: vi.fn()
++            .mockResolvedValueOnce(syntheticSubscription())
++            .mockResolvedValueOnce(syntheticSubscription()),
++          updateSubscription: async () => syntheticSubscription(),
++          persistLocalState: persist,
++          audit: async () => undefined,
+         },
+       ),
+-    ).rejects.toMatchObject({ code: "cancellation_not_scheduled" });
+-    expect(update).not.toHaveBeenCalled();
++    ).rejects.toMatchObject({ code: "stripe_outcome_unconfirmed" });
++    expect(persist).not.toHaveBeenCalled();
++  });
++
++  it("reconciles a remote Stripe commit followed by a transport error", async () => {
++    const retrieve = vi.fn()
++      .mockResolvedValueOnce(syntheticSubscription())
++      .mockResolvedValueOnce(syntheticSubscription({ cancel_at_period_end: true }));
++    const audit = vi.fn(async () => undefined);
++
++    const result = await applyScheduledCancellation(
++      {
++        subscriptionId: "sub_synthetic",
++        expectedCustomerId: "cus_synthetic",
++        cancelAtPeriodEnd: true,
++      },
++      {
++        retrieveSubscription: retrieve,
++        updateSubscription: async () => {
++          throw new Error("synthetic response timeout after remote commit");
++        },
++        persistLocalState: async () => undefined,
++        audit,
++      },
++    );
++
++    expect(result).toMatchObject({
++      stripeConfirmed: true,
++      cancelAtPeriodEnd: true,
++      localStatePending: false,
++      auditPending: false,
++    });
++    expect(retrieve).toHaveBeenCalledTimes(2);
++    expect(audit.mock.calls.map(([stage]) => stage)).toEqual([
++      "requested",
++      "completed",
++    ]);
++  });
++
++  it("reports Stripe-confirmed undo when local state and outcome audit remain unavailable", async () => {
++    const audit = vi.fn(async (stage: string) => {
++      if (stage === "undone") throw new Error("synthetic audit outage");
++    });
++    const persist = vi.fn(async () => {
++      throw new Error("synthetic local outage");
++    });
++    const retrieve = vi.fn()
++      .mockResolvedValueOnce(syntheticSubscription({ cancel_at_period_end: true }))
++      .mockResolvedValue(syntheticSubscription({ cancel_at_period_end: false }));
++
++    const result = await applyScheduledCancellation(
++      {
++        subscriptionId: "sub_synthetic",
++        expectedCustomerId: "cus_synthetic",
++        cancelAtPeriodEnd: false,
++      },
++      {
++        retrieveSubscription: retrieve,
++        updateSubscription: async () =>
++          syntheticSubscription({ cancel_at_period_end: false }),
++        persistLocalState: persist,
++        audit,
++      },
++    );
++
++    expect(result).toMatchObject({
++      stripeConfirmed: true,
++      cancelAtPeriodEnd: false,
++      localStatePending: true,
++      auditPending: true,
++    });
++    expect(audit.mock.calls.some(([stage]) => stage === "failed")).toBe(false);
+   });
+ });
+ 

@@ -14,3 +14,17 @@ mtime_ms = 1789583013764
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e875d9ae-9408-41c6-b604-1dd6c96355f6/a29ad7f3-76f8-4a8e-bff7-89d3d8955097/beee6944-7c27-4f45-bb14-5e5f2a23183e"
 storage_version_token = "1789583021620898"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "xKDJJ798VesQB8GTf3iDK"
+uri = "file://cancellation-production.patch"
+type = "unspecified"
+title = "Cancellation production patch"
+description = "Deterministic Git format-patch export of the two preserved cancellation implementation commits, restricted to the five authorized files."
+logical_id = "b8a5fca4-e2a9-4ac9-9a77-2e37e7b42044"
+content_hash = "sha256:3ec267b1d68f72e8bbb1f9c2bda737b048208df2eea42d2cf934226ad790b853"
+size = 90474
+mtime_ms = 1789683839000
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:e875d9ae-9408-41c6-b604-1dd6c96355f6/b8a5fca4-e2a9-4ac9-9a77-2e37e7b42044/082e1341-bea3-4bad-adfc-fdc2eaa4d020"
+storage_version_token = "1789683847227397"
+content_type = "application/octet-stream"
