@@ -7155,7 +7155,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
 
       if (method === "email" && patient.email) {
         try {
-          const clinician = await storage.getUser(clinicianId);
+          const clinician = await storage.getUserById(clinicianId);
           const clinicName = clinician?.clinicName || "Your Healthcare Provider";
           const sendingDomain = process.env.RESEND_FROM_EMAIL || "noreply@cliniqapp.ai";
           const apiKey = process.env.RESEND_API_KEY;
@@ -7230,7 +7230,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
 
       const formUrl = `${req.protocol}://${req.get("host")}/f/${pub.publicToken}`;
 
-      const clinician = await storage.getUser(clinicianId);
+      const clinician = await storage.getUserById(clinicianId);
       const clinicName = clinician?.clinicName || "Your Healthcare Provider";
       const sendingDomain = process.env.RESEND_FROM_EMAIL || "noreply@cliniqapp.ai";
       const apiKey = process.env.RESEND_API_KEY;
