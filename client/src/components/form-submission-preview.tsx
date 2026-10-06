@@ -974,6 +974,39 @@ async function generateSubmissionPdf(detail: SubmissionDetail, clinic: ClinicInf
     y += 5;
   }
 
+  function renderInitialsField(field: SubmissionField) {
+    const value = getResponseValue(data, field);
+    checkPage(24);
+    y += 4;
+    doc.setFontSize(7);
+    doc.setTextColor(ACCENT);
+    doc.setFont("helvetica", "bold");
+    doc.text(sanitizeForPdf(field.label || "INITIALS").toUpperCase(), M, y + 2);
+    y += 4;
+
+    if (typeof value === "string" && value.startsWith("data:image")) {
+      try {
+        const fmt = /png/i.test(value.slice(0, 30)) ? "PNG" : "JPEG";
+        doc.addImage(value, fmt, M, y, 30, 16);
+        y += 18;
+      } catch {
+        doc.setFont("helvetica", "italic");
+        doc.setTextColor(GRAY);
+        doc.text("[Initials on file]", M, y + 4);
+        y += 8;
+      }
+    } else {
+      doc.setFont("helvetica", "italic");
+      doc.setTextColor(GRAY);
+      doc.text("No initials provided", M, y + 4);
+      y += 8;
+    }
+
+    doc.setDrawColor("#cccccc");
+    doc.line(M, y, M + 40, y);
+    y += 5;
+  }
+
   function renderFieldGroup(fields: SubmissionField[]) {
     let pending: SubmissionField[] = [];
     const flushPending = () => {
@@ -1007,6 +1040,11 @@ async function generateSubmissionPdf(detail: SubmissionDetail, clinic: ClinicInf
       if (field.fieldType === "signature") {
         flushPending();
         renderSignatureField(field);
+        continue;
+      }
+      if (field.fieldType === "initials") {
+        flushPending();
+        renderInitialsField(field);
         continue;
       }
       if (field.fieldType === "matrix") {
@@ -1154,6 +1192,32 @@ function PreviewSignature({ field, value }: { field: SubmissionField; value: any
         />
       ) : (
         <p className="text-sm mt-0.5 italic text-muted-foreground">No signature provided</p>
+      )}
+    </div>
+  );
+}
+
+function PreviewInitials({ field, value }: { field: SubmissionField; value: any }) {
+  const isImg = typeof value === "string" && value.startsWith("data:image");
+  return (
+    <div
+      className="rounded-md px-2.5 py-1.5 mb-1.5"
+      style={{ backgroundColor: "#f8f7f4", border: "1px solid #eee" }}
+      data-testid={`field-preview-${field.fieldKey}`}
+    >
+      <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#5a7040" }}>
+        {field.label}
+      </p>
+      {isImg ? (
+        <img
+          src={value}
+          alt="Initials"
+          className="mt-1 max-h-16 w-auto bg-white rounded border"
+          style={{ borderColor: "#e0ddd6" }}
+          data-testid={`img-initials-${field.fieldKey}`}
+        />
+      ) : (
+        <p className="text-sm mt-0.5 italic text-muted-foreground">No initials provided</p>
       )}
     </div>
   );
@@ -1370,6 +1434,12 @@ function PreviewFieldGroup({ fields, data, signatureFallback }: { fields: Submis
           ? signatureFallback
           : findSignatureDataUrl(data);
       elements.push(<PreviewSignature key={`sig-${field.id}`} field={field} value={sigVal} />);
+      return;
+    }
+    if (field.fieldType === "initials") {
+      flushPending(`pre-${idx}`);
+      const initialsVal = getResponseValue(data, field);
+      elements.push(<PreviewInitials key={`initials-${field.id}`} field={field} value={initialsVal} />);
       return;
     }
     if (hasFieldValue(data, field)) {
