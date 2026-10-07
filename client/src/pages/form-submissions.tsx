@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useClinicBranding } from "@/hooks/use-clinic-branding";
 import { FormSubmissionPreviewDialog } from "@/components/form-submission-preview";
 
 interface SubmissionRow {
@@ -62,6 +63,7 @@ export default function FormSubmissionsPage() {
   const [previewSubId, setPreviewSubId] = useState<number | null>(null);
 
   const { data: user } = useQuery<any>({ queryKey: ["/api/user"] });
+  const { data: clinicBrandingFull } = useClinicBranding();
 
   const { data: submissions = [], isLoading } = useQuery<SubmissionRow[]>({
     queryKey: ["/api/intake-forms/submissions/all"],
@@ -513,11 +515,13 @@ export default function FormSubmissionsPage() {
         submissionId={previewSubId}
         onClose={() => setPreviewSubId(null)}
         clinic={{
-          clinicName: user?.clinicName ?? "ClinIQ",
-          clinicLogo: user?.clinicLogo ?? null,
-          phone: user?.phone ?? null,
-          address: user?.address ?? null,
-          email: user?.email ?? null,
+          clinicName: clinicBrandingFull?.clinicName ?? "Clinic",
+          clinicLogo: clinicBrandingFull?.clinicLogo ?? null,
+          phone: clinicBrandingFull?.clinicPhone ?? null,
+          address: clinicBrandingFull?.clinicAddress ?? null,
+          // No clinic-level public email field exists yet. Do not substitute
+          // an individual user's login email as the clinic contact email.
+          email: null,
         }}
       />
     </div>

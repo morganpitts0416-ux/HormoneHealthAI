@@ -959,9 +959,9 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
         const hiddenSections = overrides.hiddenSections || [];
         const hiddenInterpCats = overrides.hiddenInterpretationCategories || [];
         if (isFemale) {
-          await generatePatientWellnessPDF(vals as FemaleLabValues, interp, wellnessPlan, patientName, patientLabs, pdfSupps, user?.clinicName, clinicBranding, clinicLogo, hiddenSections, hiddenInterpCats, overrides.hiddenHormonePatternCategories || [], footerText, communicationSummary);
+          await generatePatientWellnessPDF(vals as FemaleLabValues, interp, wellnessPlan, patientName, patientLabs, pdfSupps, clinicBrandingFull?.clinicName ?? "Clinic", clinicBranding, clinicLogo, hiddenSections, hiddenInterpCats, overrides.hiddenHormonePatternCategories || [], footerText, communicationSummary);
         } else {
-          await generateMalePatientWellnessPDF(vals as LabValues, interp, wellnessPlan as MaleWellnessPlan, patientName, patientLabs, pdfSupps, user?.clinicName, clinicBranding, clinicLogo, hiddenSections, hiddenInterpCats, footerText, communicationSummary);
+          await generateMalePatientWellnessPDF(vals as LabValues, interp, wellnessPlan as MaleWellnessPlan, patientName, patientLabs, pdfSupps, clinicBrandingFull?.clinicName ?? "Clinic", clinicBranding, clinicLogo, hiddenSections, hiddenInterpCats, footerText, communicationSummary);
         }
         toast({ title: "Patient Report Generated", description: "The personalized wellness report has been downloaded." });
       }
@@ -974,7 +974,7 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
   const handleProviderPDF = () => {
     if (interp) {
       const historyForPdf = allLabs.length >= 2 ? allLabs : undefined;
-      generateLabReportPDF(vals as LabValues, interp, patientName, user?.clinicName, historyForPdf, clinicBranding, clinicBrandingFull?.clinicLogo ?? null, communicationSummary);
+      generateLabReportPDF(vals as LabValues, interp, patientName, clinicBrandingFull?.clinicName ?? "Clinic", historyForPdf, clinicBranding, clinicBrandingFull?.clinicLogo ?? null, communicationSummary);
       toast({ title: "Provider Report Generated", description: "The provider report has been downloaded." });
     }
   };
@@ -3587,6 +3587,14 @@ export default function PatientProfiles() {
     lockedAt?: string | Date | null;
     evidenceSuggestions?: EvidenceOverlay | null;
     diarizedTranscript?: any[] | null;
+    renderingProvider?: {
+      id: number;
+      firstName: string;
+      lastName: string;
+      title: string | null;
+      npi: string | null;
+      signatureImage: string | null;
+    } | null;
   };
 
   const { data: patientEncounters = [] } = useQuery<EncounterSummary[]>({
@@ -4645,10 +4653,10 @@ export default function PatientProfiles() {
                           providerName: (user as any)?.displayName ?? (user as any)?.name ?? undefined,
                           providerTitle: (user as any)?.title ?? undefined,
                           providerNpi: (user as any)?.npi ?? undefined,
-                          clinicName: (user as any)?.clinicName ?? "Clinic",
-                          clinicAddress: (user as any)?.clinicAddress ?? undefined,
-                          clinicPhone: (user as any)?.clinicPhone ?? undefined,
-                          clinicFax: (user as any)?.clinicFax ?? undefined,
+                          clinicName: clinicBrandingFull?.clinicName ?? "Clinic",
+                          clinicAddress: clinicBrandingFull?.clinicAddress ?? undefined,
+                          clinicPhone: clinicBrandingFull?.clinicPhone ?? undefined,
+                          clinicFax: clinicBrandingFull?.clinicFax ?? undefined,
                           clinicLogo: clinicBrandingFull?.clinicLogo ?? null,
                           footerText: clinicBrandingFull?.footerText ?? null,
                           branding: clinicBranding,
@@ -5553,16 +5561,20 @@ export default function PatientProfiles() {
                             soapText,
                             patientName: `${selectedPatient?.firstName ?? ''} ${selectedPatient?.lastName ?? ''}`.trim(),
                             visitDate: enc.visitDate as unknown as string,
-                            providerName: `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim(),
-                            providerTitle: (user as any)?.title ?? '',
-                            providerNpi: (user as any)?.npi ?? null,
-                            clinicName: (user as any)?.clinicName ?? 'Clinic',
-                            clinicAddress: (user as any)?.address ?? null,
-                            clinicPhone: (user as any)?.phone ?? null,
+                            providerName: enc.renderingProvider
+                              ? `${enc.renderingProvider.firstName} ${enc.renderingProvider.lastName}`.trim()
+                              : (enc.signedBy ?? ''),
+                            providerTitle: enc.renderingProvider?.title ?? '',
+                            providerNpi: enc.renderingProvider?.npi ?? null,
+                            clinicName: clinicBrandingFull?.clinicName ?? 'Clinic',
+                            clinicAddress: clinicBrandingFull?.clinicAddress ?? null,
+                            clinicPhone: clinicBrandingFull?.clinicPhone ?? null,
                             clinicLogo: clinicBrandingFull?.clinicLogo ?? null,
                             signedAt: isSigned ? (enc.signedAt as unknown as string) : null,
                             signedBy: enc.signedBy ?? null,
-                            signatureImage: isSigned ? ((user as any)?.signatureImage ?? null) : null,
+                            signatureImage: isSigned
+                              ? (enc.renderingProvider?.signatureImage ?? null)
+                              : null,
                             isAmended: !!enc.isAmended,
                             branding: clinicBranding,
                             footerText: clinicBrandingFull?.footerText ?? null,
@@ -6927,11 +6939,13 @@ export default function PatientProfiles() {
                 submissionId={previewSubId}
                 onClose={() => setPreviewSubId(null)}
                 clinic={{
-                  clinicName: (user as any)?.clinicName ?? "ClinIQ",
-                  clinicLogo: clinicBrandingFull?.clinicLogo ?? (user as any)?.clinicLogo ?? null,
-                  phone: (user as any)?.phone ?? null,
-                  address: (user as any)?.address ?? null,
-                  email: (user as any)?.email ?? null,
+                  clinicName: clinicBrandingFull?.clinicName ?? "Clinic",
+                  clinicLogo: clinicBrandingFull?.clinicLogo ?? null,
+                  phone: clinicBrandingFull?.clinicPhone ?? null,
+                  address: clinicBrandingFull?.clinicAddress ?? null,
+                  // No clinic-level public email field exists yet. Do not substitute
+                  // an individual user's login email as the clinic contact email.
+                  email: null,
                 }}
               />
 

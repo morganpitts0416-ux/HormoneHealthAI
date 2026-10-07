@@ -2322,3 +2322,11 @@ ALTER TABLE supplement_orders
 ALTER TABLE supplement_orders
   ADD COLUMN IF NOT EXISTS fulfillment_note TEXT;
 
+
+-- ── clinics: authoritative patient-facing contact information ────────────────
+-- Clinic-level identity used for PDFs, orders, forms, and other patient-facing
+-- documents. These values are intentionally separate from provider/user contact
+-- information so an individual clinician's personal phone/address is never
+-- substituted as the clinic's contact information.
+ALTER TABLE clinics ADD COLUMN IF NOT EXISTS phone VARCHAR(30);
+ALTER TABLE clinics ADD COLUMN IF NOT EXISTS address TEXT;

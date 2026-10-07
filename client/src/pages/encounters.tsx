@@ -44,6 +44,23 @@ import { VitalsInsertDialog } from "@/components/vitals-insert-dialog";
 
 export type EncounterWithPatient = ClinicalEncounter & { patientName: string };
 
+type EncounterRenderingProvider = {
+  id: number;
+  firstName: string;
+  lastName: string;
+  title: string | null;
+  npi: string | null;
+  signatureImage: string | null;
+};
+
+type ClinicalEncounterDetail = ClinicalEncounter & {
+  renderingProvider: EncounterRenderingProvider | null;
+};
+
+type EncounterDetailWithPatient = ClinicalEncounterDetail & {
+  patientName: string;
+};
+
 // Error boundary to catch rendering crashes and show a message instead of a blank screen
 export class EncounterErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
   constructor(props: { children: ReactNode }) {
@@ -677,7 +694,7 @@ export function EncounterEditor({
   initialPatientId,
   initialTranscription,
 }: {
-  encounter: EncounterWithPatient | null;
+  encounter: EncounterDetailWithPatient | EncounterWithPatient | null;
   patients: Patient[];
   onClose: () => void;
   onDeleted: () => void;
@@ -689,6 +706,29 @@ export function EncounterEditor({
   const isStaff = !!(user as any)?.isStaff;
   const clinicBranding = useClinicBrandingPartial();
   const { data: clinicBrandingFull } = useClinicBranding();
+
+  // Provider identity for patient-facing clinical documents.
+  // For saved encounters, use the ORIGINAL encounter author returned by the server.
+  // For a brand-new unsaved encounter, fall back to the currently logged-in clinician.
+  const renderingProvider =
+    encounter && "renderingProvider" in encounter
+      ? encounter.renderingProvider
+      : null;
+
+  const isSavedEncounter = !!encounter?.id;
+
+  const pdfProviderName = renderingProvider
+    ? `${renderingProvider.firstName} ${renderingProvider.lastName}`.trim()
+    : isSavedEncounter
+      ? (encounter?.signedBy ?? "")
+      : `${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim();
+
+  const pdfProviderTitle = renderingProvider?.title
+    ?? (isSavedEncounter ? "" : (user?.title ?? ""));
+
+  const pdfProviderNpi = renderingProvider?.npi
+    ?? (isSavedEncounter ? null : ((user as any)?.npi ?? null));
+
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   const [isPdfExporting, setIsPdfExporting] = useState(false);
@@ -3156,16 +3196,16 @@ export function EncounterEditor({
                             soapText: soap.fullNote ?? legacySoapToText(soap),
                             patientName,
                             visitDate,
-                            providerName: `${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim(),
-                            providerTitle: user?.title ?? "",
-                            providerNpi: (user as any)?.npi ?? null,
-                            clinicName: user?.clinicName ?? "Clinic",
-                            clinicAddress: (user as any)?.address ?? null,
-                            clinicPhone: (user as any)?.phone ?? null,
+                            providerName: pdfProviderName,
+                            providerTitle: pdfProviderTitle,
+                            providerNpi: pdfProviderNpi,
+                            clinicName: clinicBrandingFull?.clinicName ?? "Clinic",
+                            clinicAddress: clinicBrandingFull?.clinicAddress ?? null,
+                            clinicPhone: clinicBrandingFull?.clinicPhone ?? null,
                             clinicLogo: clinicBrandingFull?.clinicLogo ?? null,
                             signedAt: signedAtLocal as string,
                             signedBy: signedByLocal,
-                            signatureImage: (user as any)?.signatureImage ?? null,
+                            signatureImage: renderingProvider?.signatureImage ?? null,
                             isAmended: isAmendedLocal,
                             branding: clinicBranding,
                             footerText: clinicBrandingFull?.footerText ?? null,
@@ -3805,12 +3845,12 @@ export function EncounterEditor({
                             soapText: soap.fullNote ?? legacySoapToText(soap),
                             patientName,
                             visitDate,
-                            providerName: `${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim(),
-                            providerTitle: user?.title ?? "",
-                            providerNpi: (user as any)?.npi ?? null,
-                            clinicName: user?.clinicName ?? "Clinic",
-                            clinicAddress: (user as any)?.address ?? null,
-                            clinicPhone: (user as any)?.phone ?? null,
+                            providerName: pdfProviderName,
+                            providerTitle: pdfProviderTitle,
+                            providerNpi: pdfProviderNpi,
+                            clinicName: clinicBrandingFull?.clinicName ?? "Clinic",
+                            clinicAddress: clinicBrandingFull?.clinicAddress ?? null,
+                            clinicPhone: clinicBrandingFull?.clinicPhone ?? null,
                             clinicLogo: clinicBrandingFull?.clinicLogo ?? null,
                             signedAt: null,
                             signedBy: null,
@@ -4102,7 +4142,7 @@ export default function EncountersPage() {
 
   // Fetch full encounter detail (includes evidenceSuggestions, diarizedTranscript,
   // clinicalExtraction, patternMatch — stripped from the list query for performance)
-  const { data: selectedEncounterDetail } = useQuery<ClinicalEncounter>({
+  const { data: selectedEncounterDetail } = useQuery<ClinicalEncounterDetail>({
     queryKey: ["/api/encounters", selectedId],
     queryFn: async () => {
       const res = await fetch(`/api/encounters/${selectedId}`, { credentials: "include" });
@@ -4162,9 +4202,10 @@ export default function EncountersPage() {
 
   // Merge list entry (has patientName) with detail fetch (has JSONB columns: evidenceSuggestions, etc.)
   const selectedEncounterBase = selectedId ? encounters.find(e => e.id === selectedId) ?? null : null;
-  const selectedEncounter: EncounterWithPatient | null = selectedEncounterBase && selectedEncounterDetail
-    ? { ...selectedEncounterDetail, patientName: selectedEncounterBase.patientName } as EncounterWithPatient
-    : selectedEncounterBase;
+  const selectedEncounter: EncounterDetailWithPatient | EncounterWithPatient | null =
+    selectedEncounterBase && selectedEncounterDetail
+      ? { ...selectedEncounterDetail, patientName: selectedEncounterBase.patientName }
+      : selectedEncounterBase;
   const showEditor = isNew || selectedId !== null;
 
   const filtered = encounters.filter(e => {

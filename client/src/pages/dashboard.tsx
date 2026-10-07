@@ -1057,11 +1057,13 @@ export default function Dashboard() {
         submissionId={previewSubId}
         onClose={() => setPreviewSubId(null)}
         clinic={{
-          clinicName: (user as any)?.clinicName ?? "ClinIQ",
-          clinicLogo: clinicBrandingFull?.clinicLogo ?? (user as any)?.clinicLogo ?? null,
-          phone: (user as any)?.phone ?? null,
-          address: (user as any)?.address ?? null,
-          email: (user as any)?.email ?? null,
+          clinicName: clinicBrandingFull?.clinicName ?? "Clinic",
+          clinicLogo: clinicBrandingFull?.clinicLogo ?? null,
+          phone: clinicBrandingFull?.clinicPhone ?? null,
+          address: clinicBrandingFull?.clinicAddress ?? null,
+          // No clinic-level public email field exists yet. Do not substitute
+          // an individual user's login email as the clinic contact email.
+          email: null,
         }}
       />
 

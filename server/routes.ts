@@ -8272,7 +8272,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
     const clinicId = user?.defaultClinicId ?? null;
     try {
       if (!clinicId) {
-        return res.json({ primaryColor: null, accentColor: null, formBackgroundColor: null, clinicLogo: null, footerText: null, clinicFax: null });
+        return res.json({ clinicName: null, primaryColor: null, accentColor: null, formBackgroundColor: null, clinicLogo: null, footerText: null, clinicPhone: null, clinicAddress: null, clinicFax: null });
       }
       // Fetch all branding fields from clinics table. Fall back to the legacy
       // logo stored on the owner user record if clinics.clinicLogo is not yet
@@ -8281,11 +8281,14 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       const [clinicRows, legacyLogoRows] = await Promise.all([
         storageDb
           .select({
+            name: clinics.name,
             primaryColor: clinics.primaryColor,
             accentColor: clinics.accentColor,
             formBackgroundColor: clinics.formBackgroundColor,
             clinicLogo: clinics.clinicLogo,
             footerText: clinics.footerText,
+            phone: clinics.phone,
+            address: clinics.address,
             fax: clinics.fax,
           })
           .from(clinics)
@@ -8305,15 +8308,18 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
           )
           .limit(1),
       ]);
-      const c = clinicRows[0] ?? { primaryColor: null, accentColor: null, formBackgroundColor: null, clinicLogo: null, footerText: null, fax: null };
+      const c = clinicRows[0] ?? { name: null, primaryColor: null, accentColor: null, formBackgroundColor: null, clinicLogo: null, footerText: null, phone: null, address: null, fax: null };
       // Use clinic-level logo first; fall back to legacy user-level logo
       const clinicLogo = c.clinicLogo ?? legacyLogoRows[0]?.clinicLogo ?? null;
       res.json({
+        clinicName: c.name ?? null,
         primaryColor: c.primaryColor,
         accentColor: c.accentColor,
         formBackgroundColor: c.formBackgroundColor,
         clinicLogo,
         footerText: c.footerText ?? null,
+        clinicPhone: c.phone ?? null,
+        clinicAddress: c.address ?? null,
         clinicFax: c.fax ?? null,
       });
     } catch (err: any) {
@@ -8375,13 +8381,33 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
         }
       }
 
+      // Clinic phone — clinic-level contact number, not a provider's personal phone.
+      if ("phone" in incoming) {
+        const pv = incoming.phone;
+        if (pv === null || pv === undefined || pv === "") {
+          updates.phone = null;
+        } else if (typeof pv === "string") {
+          updates.phone = pv.trim().slice(0, 30);
+        }
+      }
+
+      // Clinic address — authoritative address used on patient-facing documents.
+      if ("address" in incoming) {
+        const av = incoming.address;
+        if (av === null || av === undefined || av === "") {
+          updates.address = null;
+        } else if (typeof av === "string") {
+          updates.address = av.trim().slice(0, 500);
+        }
+      }
+
       // Fax number — plain string, max 30 chars
       if ("fax" in incoming) {
         const fv = incoming.fax;
         if (fv === null || fv === undefined || fv === "") {
           updates.fax = null;
         } else if (typeof fv === "string") {
-          updates.fax = fv.slice(0, 30);
+          updates.fax = fv.trim().slice(0, 30);
         }
       }
 
@@ -8397,13 +8423,20 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
           formBackgroundColor: clinics.formBackgroundColor,
           clinicLogo: clinics.clinicLogo,
           footerText: clinics.footerText,
+          phone: clinics.phone,
+          address: clinics.address,
           fax: clinics.fax,
         })
         .from(clinics)
         .where(eq(clinics.id, clinicId))
         .limit(1);
       const r = rows[0] ?? {};
-      res.json({ ...r, clinicFax: (r as any).fax ?? null });
+      res.json({
+        ...r,
+        clinicPhone: (r as any).phone ?? null,
+        clinicAddress: (r as any).address ?? null,
+        clinicFax: (r as any).fax ?? null,
+      });
     } catch (err: any) {
       console.error('[branding PATCH] clinicId=%s error=%s stack=%s', (req.user as any)?.defaultClinicId, err?.message, err?.stack);
       res.status(500).json({ message: "Failed to update branding", detail: err?.message ?? String(err) });
@@ -9558,7 +9591,41 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       const clinicId = getEffectiveClinicId(req);
       const patientId = req.query.patientId ? parseInt(req.query.patientId as string) : undefined;
       const encounters = await storage.getEncountersByClinicianId(clinicianId, patientId, clinicId);
-      res.json(encounters);
+
+      // Attach the ORIGINAL encounter author to each encounter for clinical-document
+      // attribution. Provider IDs come only from already-authorized encounters.
+      const encounterClinicianIds = Array.from(
+        new Set(
+          encounters
+            .map((encounter: any) => encounter.clinicianId)
+            .filter((id: unknown): id is number => typeof id === "number")
+        )
+      );
+
+      const renderingProviders = encounterClinicianIds.length
+        ? await storageDb
+            .select({
+              id: usersTable.id,
+              firstName: usersTable.firstName,
+              lastName: usersTable.lastName,
+              title: usersTable.title,
+              npi: usersTable.npi,
+              signatureImage: usersTable.signatureImage,
+            })
+            .from(usersTable)
+            .where(inArray(usersTable.id, encounterClinicianIds))
+        : [];
+
+      const providerById = new Map(
+        renderingProviders.map((provider) => [provider.id, provider])
+      );
+
+      res.json(
+        encounters.map((encounter: any) => ({
+          ...encounter,
+          renderingProvider: providerById.get(encounter.clinicianId) ?? null,
+        }))
+      );
     } catch (err) {
       res.status(500).json({ message: "Failed to load encounters" });
     }
@@ -9794,8 +9861,29 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       const encounter = await storage.getEncounter(parseInt(req.params.id), clinicianId, clinicId);
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
       logPhiAccess({ actorType: "clinician", actorId: clinicianId, clinicId, action: "view_encounter", resourceId: req.params.id, ipAddress: ipFromReq(req), userAgent: uaFromReq(req) });
+      // Resolve the encounter's ORIGINAL author for clinical-document attribution.
+      // Important: this is derived from the already-authorized encounter, not from
+      // a provider ID supplied by the client and not from the currently logged-in user.
+      const [renderingProvider] = await storageDb
+        .select({
+          id: usersTable.id,
+          firstName: usersTable.firstName,
+          lastName: usersTable.lastName,
+          title: usersTable.title,
+          npi: usersTable.npi,
+          signatureImage: usersTable.signatureImage,
+        })
+        .from(usersTable)
+        .where(eq(usersTable.id, encounter.clinicianId))
+        .limit(1);
+
       const transcriptSource = await getAuthoritativeTranscriptSource(encounter);
-      res.json({ ...encounter, transcriptSource });
+
+      res.json({
+        ...encounter,
+        renderingProvider: renderingProvider ?? null,
+        transcriptSource,
+      });
     } catch (err) {
       res.status(500).json({ message: "Failed to load encounter" });
     }

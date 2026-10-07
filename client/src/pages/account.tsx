@@ -619,8 +619,10 @@ export default function Account() {
   const [accentColorInput, setAccentColorInput] = useState<string>("");
   const [formBgColorInput, setFormBgColorInput] = useState<string>("");
   const [footerTextInput, setFooterTextInput] = useState<string>("");
+  const [clinicPhoneInput, setClinicPhoneInput] = useState<string>("");
+  const [clinicAddressInput, setClinicAddressInput] = useState<string>("");
   const [clinicFaxInput, setClinicFaxInput] = useState<string>("");
-  const [clinicFaxSaved, setClinicFaxSaved] = useState(false);
+  const [clinicContactSaved, setClinicContactSaved] = useState(false);
   const [brandColorsSaved, setBrandColorsSaved] = useState(false);
   useEffect(() => {
     if (clinicBrandingData) {
@@ -628,6 +630,8 @@ export default function Account() {
       setAccentColorInput(clinicBrandingData.accentColor ?? "");
       setFormBgColorInput(clinicBrandingData.formBackgroundColor ?? "");
       setFooterTextInput(clinicBrandingData.footerText ?? "");
+      setClinicPhoneInput(clinicBrandingData.clinicPhone ?? "");
+      setClinicAddressInput(clinicBrandingData.clinicAddress ?? "");
       setClinicFaxInput(clinicBrandingData.clinicFax ?? "");
       // Prefer the clinic-level logo over the legacy user-level one. Only
       // update if not already showing a freshly-uploaded (unsaved) image.
@@ -657,18 +661,26 @@ export default function Account() {
     },
   });
 
-  const clinicFaxMutation = useMutation({
-    mutationFn: async (fax: string) => {
-      return apiRequest("PATCH", "/api/clinic/branding", { fax: fax.trim() || null });
+  const clinicContactMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("PATCH", "/api/clinic/branding", {
+        phone: clinicPhoneInput.trim() || null,
+        address: clinicAddressInput.trim() || null,
+        fax: clinicFaxInput.trim() || null,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/clinic/branding"] });
-      setClinicFaxSaved(true);
-      setTimeout(() => setClinicFaxSaved(false), 2500);
-      toast({ title: "Fax number saved" });
+      setClinicContactSaved(true);
+      setTimeout(() => setClinicContactSaved(false), 2500);
+      toast({ title: "Clinic contact information saved" });
     },
-    onError: () => {
-      toast({ title: "Could not save fax number", variant: "destructive" });
+    onError: (err: any) => {
+      toast({
+        title: "Could not save clinic contact information",
+        description: err?.message ?? "Please try again.",
+        variant: "destructive",
+      });
     },
   });
   const effectiveBrandPreview = resolveBranding(null, {
@@ -1144,29 +1156,73 @@ export default function Account() {
                           <FormMessage />
                         </FormItem>
                       )} />
-                      <div className="space-y-1.5">
-                        <label className="text-sm font-medium leading-none">Fax</label>
-                        <div className="flex gap-2">
+                      <div className="space-y-4 border-t pt-5">
+                        <div>
+                          <h4 className="text-sm font-semibold">Clinic Contact Information</h4>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Used as the clinic contact information on patient-facing documents and orders.
+                            These fields are separate from individual provider contact information.
+                          </p>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="space-y-1.5">
+                            <Label htmlFor="clinic-phone">Clinic Phone</Label>
+                            <Input
+                              id="clinic-phone"
+                              data-testid="input-clinic-phone"
+                              value={clinicPhoneInput}
+                              onChange={(e) => setClinicPhoneInput(e.target.value)}
+                              placeholder="(555) 000-0000"
+                            />
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <Label htmlFor="clinic-fax">Clinic Fax</Label>
+                            <Input
+                              id="clinic-fax"
+                              data-testid="input-clinic-fax"
+                              value={clinicFaxInput}
+                              onChange={(e) => setClinicFaxInput(e.target.value)}
+                              placeholder="(555) 000-0000"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label htmlFor="clinic-address">Clinic Address</Label>
                           <Input
-                            data-testid="input-fax"
-                            value={clinicFaxInput}
-                            onChange={(e) => setClinicFaxInput(e.target.value)}
-                            placeholder="(555) 000-0000"
-                            className="max-w-xs"
+                            id="clinic-address"
+                            data-testid="input-clinic-address"
+                            value={clinicAddressInput}
+                            onChange={(e) => setClinicAddressInput(e.target.value)}
+                            placeholder="123 Medical Dr, City, State ZIP"
                           />
+                        </div>
+
+                        <div className="flex items-center justify-between gap-3 flex-wrap">
+                          <p className="text-xs text-muted-foreground">
+                            This information will be used for clinic letterhead on PDFs.
+                          </p>
                           <Button
                             type="button"
                             variant="outline"
-                            disabled={clinicFaxMutation.isPending || clinicFaxInput.trim() === (clinicBrandingData?.clinicFax ?? "")}
-                            onClick={() => clinicFaxMutation.mutate(clinicFaxInput)}
-                            data-testid="button-save-fax"
+                            disabled={
+                              clinicContactMutation.isPending ||
+                              (
+                                clinicPhoneInput.trim() === (clinicBrandingData?.clinicPhone ?? "") &&
+                                clinicAddressInput.trim() === (clinicBrandingData?.clinicAddress ?? "") &&
+                                clinicFaxInput.trim() === (clinicBrandingData?.clinicFax ?? "")
+                              )
+                            }
+                            onClick={() => clinicContactMutation.mutate()}
+                            data-testid="button-save-clinic-contact"
                           >
-                            {clinicFaxSaved ? (
+                            {clinicContactSaved ? (
                               <><CheckCircle className="w-4 h-4 mr-2 text-green-600" />Saved</>
-                            ) : clinicFaxMutation.isPending ? "Saving…" : "Save Fax"}
+                            ) : clinicContactMutation.isPending ? "Saving…" : "Save Clinic Contact"}
                           </Button>
                         </div>
-                        <p className="text-xs text-muted-foreground">Printed on referral and imaging order PDFs.</p>
                       </div>
                     </div>
                     <div className="flex items-center justify-between pt-2 flex-wrap gap-3">

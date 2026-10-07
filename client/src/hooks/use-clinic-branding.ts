@@ -2,6 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import type { PartialBranding } from "@/lib/branding";
 
 export interface ClinicBrandingResponse {
+  /** Authoritative clinic name from the clinic record. */
+  clinicName: string | null;
   primaryColor: string | null;
   accentColor: string | null;
   formBackgroundColor: string | null;
@@ -9,6 +11,10 @@ export interface ClinicBrandingResponse {
   clinicLogo: string | null;
   /** Optional custom footer text for patient-facing PDFs. */
   footerText: string | null;
+  /** Clinic phone number used on patient-facing documents. */
+  clinicPhone: string | null;
+  /** Clinic address used on patient-facing documents. */
+  clinicAddress: string | null;
   /** Clinic fax number printed on all order PDFs so facilities can fax results back. */
   clinicFax: string | null;
 }
