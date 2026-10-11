@@ -244,3 +244,96 @@ Project approval/scope guidance was recorded in
 `.agents/memory/MEMORY.md`. The uploaded archive remains an attachment, not an
 application source edit. Build/test outputs and temporary comparison/extraction
 files were kept outside tracked application source.
+
+## Clinic-shared directory extension
+
+Account Settings now has a **Prescription Directory** for manually creating,
+editing, deactivating, and reactivating medication formulations, their shared
+SIG directions, and pharmacy contacts. The pharmacy directory reuses the existing
+`prescription_pharmacies` table. Search is tenant-filtered in SQL before the
+bounded result limit.
+
+Typing a medication searches exact stored name/strength/form entries. Choosing
+one fills those identity fields, not a presumed prescribed dose, quantity, or
+refill count. Saved SIG selection supplies only the directions and any explicitly
+saved structured dose/route/frequency. Editing the full directions clears old
+structured defaults to prevent conflicting instructions. Changing medication
+identity clears incompatible direction defaults.
+
+After a successful draft save/update, new directions are offered for optional
+clinic-shared saving. Declining does not save a SIG. SIG save failure offers
+retry/skip while preserving the already saved draft; the draft is not submitted
+again. Manually entered medications require explicit consent before catalog
+creation, with all three identity fields supplied. Existing catalog formulations
+are resolved only by exact normalized name + strength + form, never by name alone.
+Duplicate SIG retries return the existing active record.
+
+Shared SIGs are formulation-specific, not interchangeable across different
+strengths, salts, or release forms. Changing a catalog formulation's identity
+archives its SIGs atomically. Deactivation hides records from normal prescribing
+search without deleting historical prescription snapshots. Reactivation of a
+medication does not silently reactivate its old directions.
+
+Legacy full-prescription medication templates and their data/endpoints are
+retained, but the composer no longer uses a single favorite to fill medication,
+SIG, quantity, and refills together. No legacy templates were deleted or
+automatically migrated into shared directions.
+
+### Additional unapplied schema
+
+`server/prescription-directory-schema.sql` creates only:
+
+- `prescription_medications` (unique clinic + normalized formulation identity)
+- `prescription_sigs` (unique clinic + formulation + normalized SIG identity)
+
+It must be reviewed against the target schema and explicitly approved before
+execution. If the original prescription tables are absent, the original
+review-only `prescription-schema.sql` is also required. Neither script has been
+executed or incorporated into automatic startup migrations. Directories are not
+available against a real datastore until the schema is provisioned and the
+backend is safely restarted with approval.
+
+Adding a medication to this searchable catalog does **not** approve it for
+signing. The separate reviewed noncontrolled catalog and signing gate remain
+unchanged. No real medication classifications or pharmacies were seeded.
+
+### Extension files
+
+- `client/src/components/prescription-directory-section.tsx` — new directory UI.
+- `client/src/pages/account.tsx` — Settings navigation/integration.
+- `client/src/components/prescription-dialog.tsx` — independent medication/SIG
+  lookup, explicit post-save SIG prompts, snapshot-safe retry behavior.
+- `client/src/lib/prescription-directory.ts` — exact formulation matching.
+- `server/prescription-directory-routes.ts` — tenant-scoped directory CRUD,
+  deduplication, archival and shared SIG access.
+- `server/prescription-routes.ts` — directory registration, pharmacy handler
+  delegation, and shared-lock authorization reads.
+- `shared/schema.ts` and `server/prescription-directory-schema.sql` — two new
+  definitions and unapplied review SQL.
+- `tests/unit/prescription-directory.test.ts`,
+  `tests/unit/prescription-directory-matching.test.ts`, and
+  `tests/unit/prescription-memory-db.ts` — synthetic directory authorization,
+  exact identity, shared access, concurrent duplicates, lifecycle and rollback.
+- `.agents/memory/prescription-release-scope.md` — user's clinic-shared SIG choice.
+
+The extension's backend/helper checks passed as part of **90 prescription tests
+across six test files**. The production build passed. An isolated untouched HEAD
+type-check baseline and the candidate each reported the same 249 diagnostics by
+file/error code, with no new errors in the directory files. Real database/cloud
+integration remains approval-gated, as described above.
+
+The signed-in browser journey also passed with **every API request intercepted
+before navigation and fulfilled using synthetic in-memory fixtures**. It covered
+directory creation/edit forms, pharmacy and SIG deactivation/reactivation,
+keyboard medication selection, formulation and saved-SIG selection, pharmacy
+autofill, explicit post-draft SIG consent, formulation isolation, stale SIG editor
+clearing, failed SIG saves with safe skip, failed draft saves without a SIG prompt,
+and exact formulation resolution for an existing draft without creating a
+duplicate catalog entry. No real authentication, records, uploads, signing,
+printing, or database writes were used.
+
+Browser caveats: the newly created draft was verified through its response-driven
+prompt/toast, not a refreshed prescription list (that fixture initially returned
+an empty list). Existing-draft editing used a separate synthetic fixture. The SIG
+failure's skip path was exercised; its retry button was not exercised in-browser,
+although backend repeated SIG requests were covered by idempotency tests.

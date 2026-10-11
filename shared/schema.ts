@@ -4319,3 +4319,42 @@ export const prescriberCredentialAuditEvents = pgTable(
       .on(t.clinicId),
   })
 );
+
+// Searchable clinic formulations are independent of prescription directions.
+// Catalog membership is NOT evidence of noncontrolled signing eligibility.
+export const prescriptionMedications = pgTable("prescription_medications", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull(),
+  medicationName: varchar("medication_name", { length: 300 }).notNull(),
+  strength: varchar("strength", { length: 100 }).notNull(),
+  dosageForm: varchar("dosage_form", { length: 100 }).notNull(),
+  identityKey: varchar("identity_key", { length: 64 }).notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, t => ({
+  identityIdx: uniqueIndex("prescription_medications_identity_idx").on(t.clinicId, t.identityKey),
+  clinicIdx: index("prescription_medications_clinic_idx").on(t.clinicId),
+}));
+
+export const prescriptionSigs = pgTable("prescription_sigs", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull(),
+  medicationId: integer("medication_id").notNull().references(() => prescriptionMedications.id),
+  sig: text("sig").notNull(),
+  dose: varchar("dose", { length: 150 }),
+  route: varchar("route", { length: 100 }),
+  frequency: varchar("frequency", { length: 150 }),
+  identityKey: varchar("identity_key", { length: 64 }).notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdByUserId: integer("created_by_user_id").notNull(),
+  createdByStaffId: integer("created_by_staff_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, t => ({
+  identityIdx: uniqueIndex("prescription_sigs_identity_idx").on(t.clinicId, t.medicationId, t.identityKey),
+  clinicMedicationIdx: index("prescription_sigs_clinic_medication_idx").on(t.clinicId, t.medicationId),
+}));
+
+export type PrescriptionMedication = typeof prescriptionMedications.$inferSelect;
+export type PrescriptionSig = typeof prescriptionSigs.$inferSelect;

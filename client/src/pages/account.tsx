@@ -41,6 +41,7 @@ import { PLATFORM_DEFAULT_BRANDING, resolveBranding } from "@/lib/branding";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { PrescriberCredentialsSettings } from "@/components/prescriber-credentials-settings";
+import { PrescriptionDirectorySection } from "@/components/prescription-directory-section";
 
 interface StaffMember {
   id: number;
@@ -137,7 +138,7 @@ interface MessagingSettings {
   externalMessagingChannelId: string | null;
 }
 
-type SectionId = "clinic" | "provider" | "branding" | "messaging" | "team" | "preferences" | "diagnoses" | "forms" | "submissions" | "notes" | "blockDefaults" | "chartReview" | "juneSettings" | "encounterTemplates" | "formWorkflows" | "integrations" | "sprucePlaybook" | "baa" | "billing" | "dataImport";
+type SectionId = "clinic" | "provider" | "branding" | "messaging" | "team" | "preferences" | "diagnoses" | "forms" | "submissions" | "notes" | "blockDefaults" | "chartReview" | "juneSettings" | "encounterTemplates" | "formWorkflows" | "integrations" | "sprucePlaybook" | "baa" | "billing" | "dataImport" | "prescriptionDirectory";
 
 const SECTIONS: { id: SectionId; label: string; icon: React.ComponentType<{ className?: string }>; clinicianOnly?: boolean; providerVisible?: boolean; ownerOnly?: boolean; staffVisible?: boolean; badge?: string }[] = [
   { id: "clinic", label: "Clinic Information", icon: Building2, clinicianOnly: true, ownerOnly: true },
@@ -146,6 +147,7 @@ const SECTIONS: { id: SectionId; label: string; icon: React.ComponentType<{ clas
   { id: "team", label: "Staff & Team", icon: Users, clinicianOnly: true, ownerOnly: true },
   { id: "messaging", label: "Messaging Settings", icon: MessageSquare, clinicianOnly: true, ownerOnly: true },
   { id: "preferences", label: "Lab & Clinical Settings", icon: SlidersHorizontal, clinicianOnly: true, providerVisible: true, staffVisible: true },
+  { id: "prescriptionDirectory", label: "Prescription Directory", icon: ClipboardList, clinicianOnly: true, providerVisible: true, staffVisible: true },
   { id: "diagnoses", label: "Diagnosis Presets", icon: ClipboardList, clinicianOnly: true, providerVisible: true, staffVisible: true },
   { id: "notes", label: "Note Templates", icon: FileText, clinicianOnly: true, providerVisible: true, staffVisible: true },
   { id: "blockDefaults", label: "Clinical Block Defaults", icon: Stethoscope, clinicianOnly: true, providerVisible: true, staffVisible: true },
@@ -693,7 +695,7 @@ export default function Account() {
     // Suite providers (non-admin clinicians on a paid suite plan) can only see
     // the provider-visible sections. Keep this list in sync with
     // `providerVisible: true` entries in SECTIONS above.
-    const providerAllowed: SectionId[] = ["provider", "branding", "diagnoses", "notes", "blockDefaults", "chartReview", "juneSettings", "encounterTemplates", "preferences"];
+    const providerAllowed: SectionId[] = ["provider", "branding", "diagnoses", "notes", "blockDefaults", "chartReview", "juneSettings", "encounterTemplates", "preferences", "prescriptionDirectory"];
     const staffAllowed = SECTIONS.filter(s => s.staffVisible).map(s => s.id);
     if (isStaff && !staffAllowed.includes(activeSection)) {
       setActiveSection("provider");
@@ -1092,7 +1094,9 @@ export default function Account() {
       : isAdmin
         ? SECTIONS.filter(s => !s.ownerOnly)
         : SECTIONS;
+  const currentClinicalRole = String((user as any)?.clinicalRole || (user as any)?.staffRole || (user as any)?.role || "").toLowerCase();
   const filteredSections = visibleSections.filter(s => {
+    if (s.id === "prescriptionDirectory" && isStaff && !/nurse|rn|provider/.test(currentClinicalRole)) return false;
     if (!search) return true;
     return s.label.toLowerCase().includes(search.toLowerCase());
   });
@@ -2174,6 +2178,9 @@ export default function Account() {
 
       case "diagnoses":
         return <DiagnosisPresetsSection />;
+
+      case "prescriptionDirectory":
+        return <PrescriptionDirectorySection />;
 
       case "notes":
         return (

@@ -10,12 +10,13 @@ export function memoryPrescriptionDb() {
   let queue = Promise.resolve();
   const calls: { table: string; lock?: string }[] = [];
   let failAudit = false;
+  let failTable: string | undefined;
   function query(mode: string, projection?: any) {
-    let table: any, condition: any, values: any, lock: string | undefined;
+    let table: any, condition: any, values: any, lock: string | undefined, limit = Infinity;
     const builder: any = {
       from(t: any) { table = t; return builder; },
       where(c: any) { condition = c; return builder; },
-      limit() { return builder; }, orderBy() { return builder; },
+      limit(count: number) { limit = count; return builder; }, orderBy() { return builder; },
       for(type: string) { lock = type; return builder; },
       set(v: any) { values = v; return builder; },
       values(v: any) { values = v; return builder; },
@@ -28,16 +29,32 @@ export function memoryPrescriptionDb() {
           const property = (colName: string) => Object.keys(columns).find(key => columns[key].name === colName)!;
           const { sql, params } = condition ? dialect.sqlToQuery(condition) : { sql: "", params: [] };
           const checks = [...sql.matchAll(/"[^"]+"\."([^"]+)" = \$(\d+)/g)];
-          const matches = (row: any) => checks.every((check: any) => row[property(check[1])] === params[Number(check[2]) - 1]);
+          const searches = [...sql.matchAll(/"[^"]+"\."([^"]+)" ilike \$(\d+)/g)];
+          const like = (input: string) => {
+            let regex = "";
+            for (let i = 0; i < input.length; i++) {
+              const char = input[i];
+              if (char === "\\" && i + 1 < input.length) regex += input[++i].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+              else if (char === "%") regex += ".*";
+              else if (char === "_") regex += ".";
+              else regex += char.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            }
+            return new RegExp("^" + regex + "$", "i");
+          };
+          const matches = (row: any) => checks.every((check: any) => row[property(check[1])] === params[Number(check[2]) - 1]) &&
+            (!searches.length || searches.some((check: any) => like(String(params[Number(check[2]) - 1])).test(row[property(check[1])] ?? "")));
           let result: any[];
-          if (mode === "select") result = (tables[name] ?? []).filter(matches);
+          if (mode !== "select" && name === failTable) throw new Error("Synthetic write failure");
+          if (mode === "select") result = structuredClone((tables[name] ?? []).filter(matches).slice(0, limit));
           else if (mode === "update") {
             result = (tables[name] ?? []).filter(matches);
             result.forEach(row => Object.assign(row, values));
           } else {
             if (failAudit && name === "prescription_audit_events") throw new Error("Synthetic audit failure");
-            result = (Array.isArray(values) ? values : [values]).map(value => ({
-              id: (tables[name]?.length ?? 0) + 100, ...value,
+            const defaults = Object.fromEntries(Object.entries(columns).flatMap(([key, col]: [string, any]) =>
+              col.default !== undefined && (col.default === null || typeof col.default !== "object") ? [[key, col.default]] : []));
+            result = (Array.isArray(values) ? values : [values]).map((value, offset) => ({
+              ...defaults, id: (tables[name]?.length ?? 0) + 100 + offset, ...value,
             }));
             (tables[name] ??= []).push(...result);
           }
@@ -68,7 +85,8 @@ export function memoryPrescriptionDb() {
   };
   return {
     db, calls, get tables() { return tables; },
-    reset(data: Record<string, any[]>) { tables = structuredClone(data); calls.length = 0; failAudit = false; },
+    reset(data: Record<string, any[]>) { tables = structuredClone(data); calls.length = 0; failAudit = false; failTable = undefined; },
     failAudit(value: boolean) { failAudit = value; },
+    failWriteTable(name?: string) { failTable = name; },
   };
 }

@@ -7,6 +7,14 @@ The initial prescription workflow uses the provider's existing saved account
 signature and is limited to noncontrolled prescriptions. Automated
 controlled-substance verification remains out of scope.
 
+Saved SIG directions are shared within the clinic, not personal to each
+prescriber and not shared across clinics.
+
+**Why:** The user explicitly chose clinic-shared SIGs.
+
+**How to apply:** Medication-specific direction libraries and their management
+must remain clinic-scoped; signing authority remains individual.
+
 **Why:** The user explicitly set this initial-release scope.
 
 **How to apply:** Do not expand prescription eligibility or replace the saved

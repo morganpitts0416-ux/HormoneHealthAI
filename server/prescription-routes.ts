@@ -6,6 +6,7 @@ import { assertPrescriptionSigningEnabled } from "./prescription-signing-policy"
 import { finalizePrescription, prescriptionReviewHash, PrescriptionError, type SigningTransaction } from "./prescription-finalization";
 import { classifyPrescription } from "./prescription-medication-policy";
 import { prescriptionStorageKey } from "./prescription-storage";
+import { registerPrescriptionDirectoryRoutes } from "./prescription-directory-routes";
 
 import { generatePrescriptionPdf } from "./prescription-pdf";
 import {
@@ -107,7 +108,7 @@ export function registerPrescriptionRoutes(app: Express): void {
           eq(clinicianStaff.clinicId, clinicId),
           eq(clinicianStaff.isActive, true)
         ))
-        .limit(1);
+        .limit(1).for("share");
 
       if (!staff || !["nurse", "provider"].includes(staff.role)) {
         return null;
@@ -126,7 +127,7 @@ export function registerPrescriptionRoutes(app: Express): void {
           eq(clinicMemberships.acceptanceStatus, "active"),
           eq(clinicMemberships.accessScope, "full")
         ))
-        .limit(1);
+        .limit(1).for("share");
 
       if (
   !membership ||
@@ -167,7 +168,7 @@ export function registerPrescriptionRoutes(app: Express): void {
         eq(clinicMemberships.acceptanceStatus, "active"),
         eq(clinicMemberships.accessScope, "full")
       ))
-      .limit(1);
+      .limit(1).for("share");
 
     if (
       !membership ||
@@ -274,95 +275,7 @@ return { ...context, credential, prescriber };
     } catch { return res.status(503).json({ error: "Prescription service unavailable" }); }
   });
 
-  // Search pharmacies saved for the active clinic.
-  app.get("/api/prescription-pharmacies", async (req, res) => {
-    try {
-      const context = await getPrescriptionPreparationContext(req);
-
-      if (!context) {
-        return res.status(403).json({
-          error: "Clinic prescription access required"
-        });
-      }
-
-      const query = z.string().max(150).safeParse(req.query.search ?? "");
-
-      if (!query.success) {
-        return res.status(400).json({
-          error: "Invalid pharmacy search"
-        });
-      }
-
-      const search = query.data.trim().toLowerCase();
-
-      const pharmacies = await db.select()
-        .from(prescriptionPharmacies)
-        .where(and(
-          eq(prescriptionPharmacies.clinicId, context.clinicId),
-          eq(prescriptionPharmacies.isActive, true)
-        ))
-        .limit(200);
-
-      const matches = pharmacies.filter((pharmacy) =>
-        !search ||
-        pharmacy.name.toLowerCase().includes(search) ||
-        (pharmacy.address || "").toLowerCase().includes(search)
-      );
-
-      return res.json(matches);
-    } catch (error) {
-      console.error("[prescription pharmacies list] Operation failed");
-      return res.status(500).json({
-        error: "Unable to load saved pharmacies"
-      });
-    }
-  });
-
-  // Save a pharmacy to the active clinic's directory.
-  app.post("/api/prescription-pharmacies", async (req, res) => {
-    try {
-      const context = await getPrescriptionPreparationContext(req);
-
-      if (!context) {
-        return res.status(403).json({
-          error: "Clinic prescription access required"
-        });
-      }
-
-      const pharmacySchema = z.object({
-        name: z.string().trim().min(1).max(300),
-        address: z.string().trim().max(1000).optional().nullable(),
-        phone: z.string().trim().max(50).optional().nullable(),
-        fax: z.string().trim().max(50).optional().nullable()
-      }).strict();
-
-      const parsed = pharmacySchema.safeParse(req.body);
-
-      if (!parsed.success) {
-        return res.status(400).json({
-          error: "Invalid pharmacy details",
-          issues: parsed.error.flatten()
-        });
-      }
-
-      const [created] = await db.insert(prescriptionPharmacies)
-        .values({
-          clinicId: context.clinicId,
-          name: parsed.data.name,
-          address: parsed.data.address || null,
-          phone: parsed.data.phone || null,
-          fax: parsed.data.fax || null
-        })
-        .returning();
-
-      return res.status(201).json(created);
-    } catch (error) {
-      console.error("[prescription pharmacies save] Operation failed");
-      return res.status(500).json({
-        error: "Unable to save pharmacy"
-      });
-    }
-  });
+  registerPrescriptionDirectoryRoutes(app, getPrescriptionPreparationContext);
 
 
   // Search saved medication templates for the active clinic.

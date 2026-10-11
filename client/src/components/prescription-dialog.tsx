@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { findExactFormulation } from "@/lib/prescription-directory";
 
 interface PrescriptionDialogProps {
   open: boolean;
@@ -41,20 +42,9 @@ const emptyMedication = () => ({
 type Medication = ReturnType<typeof emptyMedication>;
 type MedicationField = Exclude<keyof Medication, "substitutionAllowed">;
 
-type MedicationFavorite = {
-  id: number;
-  medicationName: string;
-  strength: string | null;
-  dosageForm: string | null;
-  dose: string | null;
-  route: string | null;
-  frequency: string | null;
-  sig: string;
-  quantity: string | null;
-  daysSupply: number | null;
-  refills: number;
-  sharedWithClinic: boolean;
-};
+type CatalogMedication = { id: number; medicationName: string; strength: string; dosageForm: string; isActive: boolean };
+type SavedSig = { id: number; medicationId: number; sig: string; dose: string | null; route: string | null; frequency: string | null; isActive: boolean };
+type SigCandidate = { medicationIndex: number; medicationId: number | null; manual: boolean; medicationName: string; strength: string; dosageForm: string; sig: string; dose: string; route: string; frequency: string };
 
 type SavedPharmacy = {
   id: number;
@@ -89,9 +79,19 @@ const [loadingDraft, setLoadingDraft] = useState(false);
 const [loadedDraftId, setLoadedDraftId] = useState<number | null>(null);
 const [error, setError] = useState("");
 
-  const [favorites, setFavorites] = useState<MedicationFavorite[]>([]);
+  const [catalogResults, setCatalogResults] = useState<CatalogMedication[]>([]);
   const [favoriteSearchOpen, setFavoriteSearchOpen] = useState<number | null>(null);
   const [favoritesLoading, setFavoritesLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState("");
+  const [catalogSelections, setCatalogSelections] = useState<Record<number, CatalogMedication | null>>({});
+  const [sigOptions, setSigOptions] = useState<Record<number, SavedSig[]>>({});
+  const [sigLoading, setSigLoading] = useState<number | null>(null);
+  const [sigErrors, setSigErrors] = useState<Record<number, string>>({});
+  const [sigSearchOpen, setSigSearchOpen] = useState<number | null>(null);
+  const [sigSearchTerms, setSigSearchTerms] = useState<Record<number, string>>({});
+  const [sigCandidates, setSigCandidates] = useState<SigCandidate[]>([]);
+  const [savedDraftAwaitingSigs, setSavedDraftAwaitingSigs] = useState(false);
+  const [sigSaveError, setSigSaveError] = useState("");
 
   const [savedPharmacies, setSavedPharmacies] = useState<SavedPharmacy[]>([]);
   const [pharmacySearchOpen, setPharmacySearchOpen] = useState(false);
@@ -100,10 +100,14 @@ const [error, setError] = useState("");
 
   const medicationSearchController = useRef<AbortController | null>(null);
   const pharmacySearchController = useRef<AbortController | null>(null);
+  const sigSearchControllers = useRef<Record<number, AbortController>>({});
+  const contextGeneration = useRef(0);
 
   useEffect(() => {
     if (!open) {
       medicationSearchController.current?.abort();
+      Object.values(sigSearchControllers.current).forEach(controller => controller.abort());
+      sigSearchControllers.current = {};
       pharmacySearchController.current?.abort();
       setFavoriteSearchOpen(null);
       setPharmacySearchOpen(false);
@@ -111,10 +115,25 @@ const [error, setError] = useState("");
 
     return () => {
       medicationSearchController.current?.abort();
+      Object.values(sigSearchControllers.current).forEach(controller => controller.abort());
+      sigSearchControllers.current = {};
       pharmacySearchController.current?.abort();
     };
   }, [open]);
 useEffect(() => {
+  contextGeneration.current++;
+  setSaving(false);
+  medicationSearchController.current?.abort();
+  Object.values(sigSearchControllers.current).forEach(controller => controller.abort());
+  sigSearchControllers.current = {};
+  pharmacySearchController.current?.abort();
+  setCatalogSelections({});
+  setSigOptions({});
+  setSigErrors({});
+  setSigCandidates([]);
+  setSigSearchOpen(null);
+  setSavedDraftAwaitingSigs(false);
+  setSigSaveError("");
   if (!open) {
     setLoadingDraft(false);
     setLoadedDraftId(null);
@@ -188,6 +207,19 @@ setError("");
         pharmacyFax: draft.pharmacyFax ?? "",
       });
       setLoadedDraftId(editPrescriptionId);
+      if (draft.medicationName && draft.strength && draft.dosageForm) {
+        const catalog = await fetch(`/api/prescription-medications?search=${encodeURIComponent(draft.medicationName)}`, {
+          credentials: "include", signal: controller.signal,
+        });
+        if (catalog.ok) {
+          const exact = findExactFormulation(await catalog.json(), draft);
+          if (controller.signal.aborted) return;
+          if (exact) {
+            setCatalogSelections(previous => ({ ...previous, 0: exact }));
+            void loadMedicationSigs(0, exact.id);
+          }
+        }
+      }
     } catch (err) {
       if (controller.signal.aborted) return;
 
@@ -212,6 +244,36 @@ setError("");
     field: keyof Medication,
     value: string | boolean
   ) {
+    // Full directions are authoritative. Editing them invalidates structured
+    // defaults from a previously selected SIG (e.g. one tablet vs half a tablet).
+    // Selecting a saved SIG sets its own matching details immediately afterwards.
+    if (field === "sig" && medications[index]?.sig !== value) {
+      setMedications(previous => previous.map((medication, i) => i === index
+        ? { ...medication, sig: value as string, dose: "", route: "", frequency: "" }
+        : medication));
+      return;
+    }
+    if ((field === "medicationName" || field === "strength" || field === "dosageForm") &&
+      medications[index] && medications[index][field] !== value) {
+      medicationSearchController.current?.abort();
+      sigSearchControllers.current[index]?.abort();
+      setCatalogSelections(previous => ({ ...previous, [index]: null }));
+      setSigOptions(previous => ({ ...previous, [index]: [] }));
+      setSigSearchOpen(null);
+      setSigErrors(previous => ({ ...previous, [index]: "" }));
+      setMedications(previous => previous.map((medication, i) => i === index
+        ? {
+            ...medication,
+            [field]: value as string,
+            ...(field === "medicationName" ? { strength: "", dosageForm: "" } : {}),
+            sig: "",
+            dose: "",
+            route: "",
+            frequency: "",
+          }
+        : medication));
+      return;
+    }
     setMedications((previous) =>
       previous.map((medication, i) =>
         i === index ? { ...medication, [field]: value } : medication
@@ -227,7 +289,8 @@ setError("");
     medicationSearchController.current = controller;
 
     setFavoriteSearchOpen(index);
-    setFavorites([]);
+    setCatalogResults([]);
+    setCatalogError("");
 
     if (!search.trim()) {
       setFavoritesLoading(false);
@@ -238,7 +301,7 @@ setError("");
 
     try {
       const response = await fetch(
-        `/api/prescription-medication-templates?search=${encodeURIComponent(search)}`,
+        `/api/prescription-medications?search=${encodeURIComponent(search)}&includeInactive=false`,
         {
           credentials: "include",
           signal: controller.signal,
@@ -246,17 +309,18 @@ setError("");
       );
 
       if (!response.ok) {
-        throw new Error("Unable to search medication favorites");
+        throw new Error("Unable to search clinic medication directory");
       }
 
       const results = await response.json();
 
       if (!controller.signal.aborted) {
-        setFavorites(Array.isArray(results) ? results : []);
+        setCatalogResults(Array.isArray(results) ? results : []);
       }
     } catch (error) {
       if (!controller.signal.aborted) {
-        setFavorites([]);
+        setCatalogResults([]);
+        setCatalogError(error instanceof Error ? error.message : "Unable to search medications.");
       }
     } finally {
       if (!controller.signal.aborted) {
@@ -266,7 +330,7 @@ setError("");
   }
 
 
-  function selectMedicationFavorite(index: number, favorite: MedicationFavorite) {
+  function selectMedicationFavorite(index: number, favorite: CatalogMedication) {
     medicationSearchController.current?.abort();
     setMedications((previous) =>
       previous.map((medication, i) =>
@@ -274,98 +338,46 @@ setError("");
           ? {
               ...medication,
               medicationName: favorite.medicationName,
-              strength: favorite.strength || "",
-              dosageForm: favorite.dosageForm || "",
-              dose: favorite.dose || "",
-              route: favorite.route || "",
-              frequency: favorite.frequency || "",
-              sig: favorite.sig,
-              quantity: favorite.quantity || "",
-              daysSupply: favorite.daysSupply?.toString() || "",
-              refills: favorite.refills.toString(),
+              strength: favorite.strength,
+              dosageForm: favorite.dosageForm,
             }
           : medication
       )
     );
 
     setFavoriteSearchOpen(null);
-    setFavorites([]);
+    setCatalogResults([]);
+    setCatalogSelections(previous => ({ ...previous, [index]: favorite }));
+    setSigOptions(previous => ({ ...previous, [index]: [] }));
+    updateMedication(index, "sig", "");
+    updateMedication(index, "dose", "");
+    updateMedication(index, "route", "");
+    updateMedication(index, "frequency", "");
+    void loadMedicationSigs(index, favorite.id);
   }
 
-  async function saveMedicationFavorite(index: number) {
-    const medication = medications[index];
-
-    if (!medication.medicationName.trim() || !medication.sig.trim()) {
-      toast({
-        title: "Missing information",
-        description: "Enter a medication name and SIG before saving a favorite.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const refills = Number(medication.refills);
-    const daysSupply = medication.daysSupply.trim()
-      ? Number(medication.daysSupply)
-      : null;
-
-    if (
-      !Number.isInteger(refills) ||
-      refills < 0 ||
-      refills > 99 ||
-      (daysSupply !== null &&
-        (!Number.isInteger(daysSupply) ||
-          daysSupply < 1 ||
-          daysSupply > 365))
-    ) {
-      toast({
-        title: "Invalid prescription values",
-        description: "Check refills and days supply before saving.",
-        variant: "destructive",
-      });
-      return;
-    }
-
+  async function loadMedicationSigs(index: number, medicationId: number) {
+    sigSearchControllers.current[index]?.abort();
+    const controller = new AbortController();
+    sigSearchControllers.current[index] = controller;
+    setSigLoading(index);
+    setSigErrors(previous => ({ ...previous, [index]: "" }));
     try {
-      const response = await fetch(
-        "/api/prescription-medication-templates",
-        {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            medicationName: medication.medicationName.trim(),
-            strength: medication.strength.trim() || null,
-            dosageForm: medication.dosageForm.trim() || null,
-            dose: medication.dose.trim() || null,
-            route: medication.route.trim() || null,
-            frequency: medication.frequency.trim() || null,
-            sig: medication.sig.trim(),
-            quantity: medication.quantity.trim() || null,
-            daysSupply,
-            refills,
-            sharedWithClinic: false,
-          }),
-        }
-      );
+      const response = await fetch(`/api/prescription-medications/${medicationId}/sigs?includeInactive=false`, { credentials: "include", signal: controller.signal });
+      if (!response.ok) throw new Error("Unable to load saved directions.");
+      const results = await response.json();
+      if (!controller.signal.aborted) setSigOptions(previous => ({ ...previous, [index]: Array.isArray(results) ? results : [] }));
+    } catch (cause) {
+      if (!controller.signal.aborted) setSigErrors(previous => ({ ...previous, [index]: cause instanceof Error ? cause.message : "Unable to load saved directions." }));
+    } finally { if (!controller.signal.aborted) setSigLoading(null); }
+  }
 
-      if (!response.ok) {
-        const result = await response.json().catch(() => ({}));
-        throw new Error(result.error || "Unable to save favorite");
-      }
-
-      toast({
-        title: "Medication favorite saved",
-        description: "Saved to your personal medication favorites.",
-      });
-    } catch (error) {
-      toast({
-        title: "Unable to save favorite",
-        description:
-          error instanceof Error ? error.message : "Please try again.",
-        variant: "destructive",
-      });
-    }
+  function selectSavedSig(index: number, saved: SavedSig) {
+    updateMedication(index, "sig", saved.sig);
+    updateMedication(index, "dose", saved.dose || "");
+    updateMedication(index, "route", saved.route || "");
+    updateMedication(index, "frequency", saved.frequency || "");
+    setSigSearchOpen(null);
   }
 
   function addMedication() {
@@ -384,6 +396,12 @@ setError("");
     setMedications((previous) =>
       previous.filter((_, i) => i !== index)
     );
+    setCatalogSelections(previous => Object.fromEntries(Object.entries(previous)
+      .filter(([key]) => Number(key) !== index)
+      .map(([key, value]) => [Number(key) > index ? Number(key) - 1 : Number(key), value])));
+    setSigOptions(previous => Object.fromEntries(Object.entries(previous)
+      .filter(([key]) => Number(key) !== index)
+      .map(([key, value]) => [Number(key) > index ? Number(key) - 1 : Number(key), value])));
     setError("");
   }
 
@@ -522,9 +540,58 @@ setError("");
     setMedications([emptyMedication()]);
     setPharmacy(emptyPharmacy());
     setError("");
+    setCatalogSelections({});
+    setSigOptions({});
+    setSigCandidates([]);
+    setSavedDraftAwaitingSigs(false);
+  }
+
+  async function saveCandidate(candidate: SigCandidate, addMedicationFirst: boolean) {
+    const generation = contextGeneration.current;
+    setSigSaveError("");
+    try {
+      let medicationId = candidate.medicationId;
+      if (medicationId == null && addMedicationFirst) {
+        const medicationResponse = await fetch("/api/prescription-medications", {
+          method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ medicationName: candidate.medicationName, strength: candidate.strength, dosageForm: candidate.dosageForm }),
+        });
+        const medResult = await medicationResponse.json().catch(() => ({}));
+        if (generation !== contextGeneration.current) return;
+        if (medicationResponse.status === 409) {
+          const lookup = await fetch(`/api/prescription-medications?search=${encodeURIComponent(candidate.medicationName)}`, { credentials: "include" });
+          const exact = lookup.ok ? findExactFormulation(await lookup.json(), candidate) : null;
+          if (!exact) throw new Error(medResult.error || "Review this formulation in the directory before saving directions.");
+          medicationId = exact.id;
+        } else {
+          if (!medicationResponse.ok) throw new Error(medResult.error || "Unable to add this exact formulation to the clinic directory.");
+          medicationId = medResult.id;
+        }
+        if (generation !== contextGeneration.current) return;
+        setSigCandidates(previous => previous.map(item => item === candidate ? { ...item, medicationId } : item));
+      }
+      if (medicationId == null) return;
+      const response = await fetch(`/api/prescription-medications/${medicationId}/sigs`, {
+        method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sig: candidate.sig, dose: candidate.dose || null, route: candidate.route || null, frequency: candidate.frequency || null }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (generation !== contextGeneration.current) return;
+      if (!response.ok) throw new Error(result.error || "Unable to save these directions.");
+      setSigCandidates(previous => previous.filter(item => !(item.medicationIndex === candidate.medicationIndex && item.sig === candidate.sig)));
+    } catch (cause) {
+      if (generation === contextGeneration.current) setSigSaveError(cause instanceof Error ? cause.message : "Unable to save these directions.");
+    }
+  }
+
+  function skipCandidate(candidate: SigCandidate) {
+    setSigCandidates(previous => previous.filter(item => item !== candidate));
+    setSigSaveError("");
   }
 
   async function saveAllDrafts() {
+  const generation = contextGeneration.current;
+  if (savedDraftAwaitingSigs) return;
   if (saving || loadingDraft) return;
 if (editPrescriptionId && loadedDraftId !== editPrescriptionId) {
   setError("The prescription draft has not loaded successfully. Changes cannot be saved.");
@@ -582,10 +649,19 @@ if (editPrescriptionId && loadedDraftId !== editPrescriptionId) {
       }
 
       payloadMedications.push({
-        ...medication,
+        medicationName: medication.medicationName,
+        strength: medication.strength,
+        dosageForm: medication.dosageForm,
+        dose: medication.dose,
+        route: medication.route,
+        frequency: medication.frequency,
+        daysSupply,
+        sig: medication.sig,
+        quantity: medication.quantity,
         ...pharmacy,
         refills,
-        daysSupply,
+        indication: medication.indication,
+        substitutionAllowed: medication.substitutionAllowed,
       });
     }
 
@@ -614,6 +690,7 @@ if (editPrescriptionId && loadedDraftId !== editPrescriptionId) {
 );
 
       const result = await response.json().catch(() => ({}));
+      if (generation !== contextGeneration.current) return;
 
       if (!response.ok) {
         throw new Error(
@@ -621,10 +698,40 @@ if (editPrescriptionId && loadedDraftId !== editPrescriptionId) {
             `Unable to save prescriptions (${response.status})`
         );
       }
+      setSavedDraftAwaitingSigs(true);
 
       await queryClient.invalidateQueries({
         queryKey: ["/api/patients", patientId, "prescriptions"],
       });
+      if (generation !== contextGeneration.current) return;
+
+      const candidateKeys = new Set<string>();
+      const candidates = medications.flatMap((medication, index) => {
+        const selected = catalogSelections[index];
+        const normalize = (value: string) => value.trim().replace(/\s+/g, " ").toLowerCase();
+        const alreadySaved = selected && (sigOptions[index] || []).some(saved => saved.isActive && normalize(saved.sig) === normalize(medication.sig));
+        if (!medication.sig.trim() || alreadySaved) return [];
+        const identity = [selected?.id ?? medication.medicationName, medication.strength, medication.dosageForm, normalize(medication.sig)].join("|");
+        if (candidateKeys.has(identity)) return [];
+        candidateKeys.add(identity);
+        return [{
+          medicationIndex: index,
+          medicationId: selected?.id ?? null,
+          manual: !selected,
+          medicationName: medication.medicationName.trim(),
+          strength: medication.strength.trim(),
+          dosageForm: medication.dosageForm.trim(),
+          sig: medication.sig.trim(),
+          dose: medication.dose.trim(),
+          route: medication.route.trim(),
+          frequency: medication.frequency.trim(),
+        }];
+      });
+      if (candidates.length) {
+        setSigCandidates(candidates);
+        setSavedDraftAwaitingSigs(true);
+        return;
+      }
 
       toast({
   title: editPrescriptionId
@@ -638,13 +745,14 @@ if (editPrescriptionId && loadedDraftId !== editPrescriptionId) {
       resetForm();
       onClose();
     } catch (err) {
+      if (generation !== contextGeneration.current) return;
       setError(
         err instanceof Error
           ? err.message
           : "Unable to save prescription drafts."
       );
     } finally {
-      setSaving(false);
+      if (generation === contextGeneration.current) setSaving(false);
     }
   }
 
@@ -674,6 +782,7 @@ if (editPrescriptionId && loadedDraftId !== editPrescriptionId) {
   disabled={
     saving ||
     loadingDraft ||
+    savedDraftAwaitingSigs ||
     (!!editPrescriptionId && loadedDraftId !== editPrescriptionId)
   }
   className="space-y-6 min-w-0"
@@ -706,6 +815,10 @@ if (editPrescriptionId && loadedDraftId !== editPrescriptionId) {
                 <div className="col-span-2 space-y-1 relative">
                   <Label>Medication Name</Label>
                   <Input
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-expanded={favoriteSearchOpen === index}
+                    aria-controls={`medication-options-${index}`}
                     value={medication.medicationName}
                     placeholder="Start typing a medication name..."
                     disabled={saving}
@@ -717,35 +830,34 @@ if (editPrescriptionId && loadedDraftId !== editPrescriptionId) {
                   />
 
                   {favoriteSearchOpen === index && medication.medicationName.trim() && (
-                    <div className="rounded-md border bg-background shadow-sm max-h-48 overflow-y-auto">
+                    <div id={`medication-options-${index}`} role="listbox" aria-label="Clinic medication formulations" className="absolute z-20 top-full left-0 right-0 rounded-md border bg-background shadow-sm max-h-48 overflow-y-auto">
                       {favoritesLoading ? (
                         <p className="p-3 text-sm text-muted-foreground">
-                          Searching favorites...
+                          Searching clinic formulations…
                         </p>
-                      ) : favorites.length > 0 ? (
-                        favorites.map((favorite) => (
+                      ) : catalogError ? <p role="alert" className="p-3 text-sm text-destructive">{catalogError}</p> : catalogResults.length > 0 ? (
+                        catalogResults.map((favorite) => (
                           <button
                             key={favorite.id}
+                            role="option"
+                            aria-selected={catalogSelections[index]?.id === favorite.id}
                             type="button"
                             className="w-full text-left p-3 text-sm hover:bg-muted border-b last:border-b-0"
                             onClick={() => selectMedicationFavorite(index, favorite)}
                           >
                             <span className="font-medium">
-                              {favorite.medicationName}
-                            </span>
-                            {favorite.strength && ` — ${favorite.strength}`}
-                            <span className="block text-xs text-muted-foreground">
-                              {favorite.sig}
+                              {favorite.medicationName} · {favorite.strength} · {favorite.dosageForm}
                             </span>
                           </button>
                         ))
                       ) : (
                         <p className="p-3 text-sm text-muted-foreground">
-                          No saved favorites found.
+                          No exact clinic formulation found. Continue with manually entered details; cataloguing is always a separate explicit step.
                         </p>
                       )}
                     </div>
                   )}
+                  {catalogSelections[index] && <p className="text-xs text-muted-foreground">Selected exact formulation: {catalogSelections[index]?.medicationName} · {catalogSelections[index]?.strength} · {catalogSelections[index]?.dosageForm}</p>}
                 </div>
 
 
@@ -805,7 +917,19 @@ if (editPrescriptionId && loadedDraftId !== editPrescriptionId) {
                 </div>
 
                 <div className="col-span-2 space-y-1">
-                  <Label>Complete Prescription Directions (SIG)</Label>
+                  <div className="flex items-center justify-between gap-2">
+                    <Label>Complete Prescription Directions (SIG)</Label>
+                    {catalogSelections[index] && <Button type="button" size="sm" variant="outline" onClick={() => setSigSearchOpen(sigSearchOpen === index ? null : index)} aria-expanded={sigSearchOpen === index} aria-controls={`sig-options-${index}`}>Saved directions</Button>}
+                  </div>
+                  {sigSearchOpen === index && catalogSelections[index] && (
+                    <div id={`sig-options-${index}`} role="listbox" aria-label="Saved SIGs for selected formulation" className="rounded-md border bg-background max-h-40 overflow-y-auto">
+                      <Input aria-label="Search saved directions" placeholder="Search saved directions…" value={sigSearchTerms[index] || ""} onChange={event => setSigSearchTerms(previous => ({ ...previous, [index]: event.target.value }))} />
+                      {sigLoading === index ? <p className="p-3 text-sm text-muted-foreground">Loading saved directions…</p>
+                        : sigErrors[index] ? <p role="alert" className="p-3 text-sm text-destructive">{sigErrors[index]} <button type="button" className="underline" onClick={() => catalogSelections[index] && void loadMedicationSigs(index, catalogSelections[index]!.id)}>Retry</button></p>
+                        : (sigOptions[index] || []).filter(saved => `${saved.sig} ${saved.dose || ""} ${saved.route || ""} ${saved.frequency || ""}`.toLowerCase().includes((sigSearchTerms[index] || "").trim().toLowerCase())).length ? (sigOptions[index] || []).filter(saved => `${saved.sig} ${saved.dose || ""} ${saved.route || ""} ${saved.frequency || ""}`.toLowerCase().includes((sigSearchTerms[index] || "").trim().toLowerCase())).map(saved => <button type="button" role="option" key={saved.id} className="block w-full border-b p-3 text-left text-sm hover:bg-muted" onClick={() => selectSavedSig(index, saved)}><span>{saved.sig}</span>{(saved.dose || saved.route || saved.frequency) && <span className="block text-xs text-muted-foreground">{[saved.dose, saved.route, saved.frequency].filter(Boolean).join(" · ")}</span>}</button>)
+                        : <p className="p-3 text-sm text-muted-foreground">No saved directions for this formulation. Type directions below.</p>}
+                    </div>
+                  )}
 
                   <Textarea
                     rows={3}
@@ -866,18 +990,6 @@ if (editPrescriptionId && loadedDraftId !== editPrescriptionId) {
                   <Label>Generic substitution allowed</Label>
                 </div>
                 
-                <div className="col-span-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={saving}
-                    onClick={() => void saveMedicationFavorite(index)}
-                  >
-                    Save as Favorite
-                  </Button>
-                </div>
-
               </div>
             </div>
           ))}
@@ -1008,6 +1120,35 @@ if (editPrescriptionId && loadedDraftId !== editPrescriptionId) {
           </div>
         </fieldset>
 
+        {savedDraftAwaitingSigs && (
+          <section className="space-y-3 rounded-md border border-amber-300 bg-amber-50/60 p-4" aria-labelledby="save-sig-review-title">
+            <div>
+              <h3 id="save-sig-review-title" className="font-semibold">Prescription draft saved — review reusable directions</h3>
+              <p className="mt-1 text-sm text-muted-foreground">The draft is saved and remains unsigned. Saving a SIG is optional and does not submit or change the prescription.</p>
+            </div>
+            {sigCandidates.length ? sigCandidates.map(candidate => (
+              <div key={`${candidate.medicationIndex}-${candidate.medicationName}-${candidate.sig}`} className="rounded-md border bg-background p-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Save these directions for this medication?</p>
+                <p className="mt-1 text-sm font-medium">{candidate.medicationName} · {candidate.strength || "Strength not entered"} · {candidate.dosageForm || "Form not entered"}</p>
+                <p className="mt-1 text-sm">{candidate.sig}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{[candidate.dose, candidate.route, candidate.frequency].filter(Boolean).join(" · ")}</p>
+                {candidate.manual && candidate.medicationId == null
+                  ? <div className="mt-3 flex flex-wrap gap-2">
+                    <Button type="button" size="sm" onClick={() => void saveCandidate(candidate, true)} disabled={saving || !candidate.medicationName || !candidate.strength || !candidate.dosageForm}>Yes — add this exact formulation and save SIG</Button>
+                    <Button type="button" size="sm" variant="outline" onClick={() => skipCandidate(candidate)}>No — skip</Button>
+                    <a className="inline-flex h-9 items-center rounded-md border px-3 text-sm underline-offset-4 hover:underline" href="/account?section=prescriptionDirectory">Open Prescription Directory</a>
+                  </div>
+                  : <div className="mt-3 flex flex-wrap gap-2">
+                    <Button type="button" size="sm" onClick={() => void saveCandidate(candidate, false)} disabled={saving}>Yes — save directions</Button>
+                    <Button type="button" size="sm" variant="outline" onClick={() => skipCandidate(candidate)}>No — skip</Button>
+                  </div>}
+              </div>
+            )) : <p className="text-sm text-muted-foreground">Direction storage is complete. You may close this window.</p>}
+            {sigSaveError && <div role="alert" className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">{sigSaveError}<p className="mt-1 text-xs">The prescription draft is already saved. Retry saving these directions or choose No to skip; the prescription will not be submitted again.</p></div>}
+            {!sigCandidates.length && <Button type="button" onClick={() => { toast({ title: editPrescriptionId ? "Prescription draft updated" : "Prescription draft saved", description: "Unsigned draft only; nothing was transmitted." }); resetForm(); onClose(); }}>Done</Button>}
+          </section>
+        )}
+
         {error && (
           <p role="alert" className="text-sm text-destructive">
             {error}
@@ -1015,15 +1156,15 @@ if (editPrescriptionId && loadedDraftId !== editPrescriptionId) {
         )}
 
         <DialogFooter>
-          <Button
+          {!savedDraftAwaitingSigs && <Button
   variant="outline"
   disabled={saving || loadingDraft}
   onClick={onClose}
 >
   Close
-</Button>
+          </Button>}
 
-          <Button
+          {!savedDraftAwaitingSigs && <Button
   disabled={
     saving ||
     loadingDraft ||
@@ -1038,7 +1179,7 @@ if (editPrescriptionId && loadedDraftId !== editPrescriptionId) {
       : editPrescriptionId
         ? "Save Changes"
         : `Save All Drafts (${medications.length})`}
-</Button>
+          </Button>}
         </DialogFooter>
       </DialogContent>
     </Dialog>
