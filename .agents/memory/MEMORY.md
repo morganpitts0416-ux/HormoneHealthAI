@@ -24,3 +24,4 @@
 - [Access rollout compatibility gate](access-rollout-compatibility-gate.md) — shadow-only until reviewed evidence is approved; never auto-link identities or let migration completion activate enforcement
 - [Patient portal identity transition](patient-portal-identity-transition.md) — legacy login stays authoritative per account; identity rollout requires durable provenance and explicit enablement
 - [Team-access enforcement boundary](team-access-enforcement-boundary.md) — runtime denial remains unauthorized; combined policy is synthetic/pure-only until a separately approved family rollout
+- [Prescription release scope](prescription-release-scope.md) — saved account signatures, noncontrolled-only initial workflow, and explicit approval before schema/deployment/signing activation

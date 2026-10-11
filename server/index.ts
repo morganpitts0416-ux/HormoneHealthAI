@@ -430,7 +430,10 @@ app.use((req, res, next) => {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       // Intake responses may contain one-time bearer material. Never serialize
       // any response body from this boundary into workflow logs.
-      if (path.startsWith("/api/patient-intake")) {
+      if (path.startsWith("/api/patient-intake") ||
+          path.startsWith("/api/prescription") ||
+          path.startsWith("/api/prescriber-credentials") ||
+          /^\/api\/patients\/[^/]+\/prescriptions(?:\/|$)/.test(path)) {
         logLine += " :: [redacted]";
       } else if (capturedJsonResponse) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;

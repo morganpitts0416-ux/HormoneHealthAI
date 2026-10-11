@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { Search, Printer } from "lucide-react";
+import { Search, Printer, Download, Eye, ShieldCheck } from "lucide-react";
 import {
   ClipboardList, Plus, X, Clock, AlertCircle,
   Activity, Heart, FlaskConical, Loader2, Check,
@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useClinicBranding } from "@/hooks/use-clinic-branding";
 import { generateOrderPDF } from "@/lib/order-pdf-export";
+import { PrescriptionDialog } from "@/components/prescription-dialog";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface TaskCompletion {
@@ -94,6 +95,34 @@ interface TeamMember {
   id: string;
   label: string;
   kind: "provider" | "staff";
+}
+
+interface SavedPrescription {
+  id: number;
+  medicationName: string;
+  strength?: string | null;
+  dosageForm?: string | null;
+  dose?: string | null;
+  route?: string | null;
+  frequency?: string | null;
+  sig: string;
+  quantity: string | null;
+  refills: number;
+  daysSupply?: number | null;
+  pharmacyName: string | null;
+  status: string;
+  signedAt?: string | null;
+}
+
+interface PrescriptionDetail extends SavedPrescription {
+  patientId: number;
+  reviewHash: string;
+  indication?: string | null;
+  substitutionAllowed?: boolean;
+  pharmacyAddress?: string | null;
+  pharmacyPhone?: string | null;
+  prescriberName?: string | null;
+  [key: string]: unknown;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -1406,8 +1435,50 @@ function OrderRow({ order, patientName, onClick }: { order: ClinicalOrderData; p
 // ── Patient Orders Tab ─────────────────────────────────────────────────────────
 export function PatientOrdersTab({ patientId, patientName }: { patientId: number; patientName: string }) {
   const [showNew, setShowNew] = useState(false);
+  const [showPrescription, setShowPrescription] = useState(false);
+  const [editPrescriptionId, setEditPrescriptionId] = useState<number | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<ClinicalOrderData | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
+  const [reviewDetail, setReviewDetail] = useState<PrescriptionDetail | null>(null);
+  const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
+  const [reviewLoadingId, setReviewLoadingId] = useState<number | null>(null);
+  const [reviewError, setReviewError] = useState("");
+  const [confirmSignOpen, setConfirmSignOpen] = useState(false);
+  const [signing, setSigning] = useState(false);
+  const [documentBusyId, setDocumentBusyId] = useState<number | null>(null);
+  const [documentError, setDocumentError] = useState("");
+  const activePatientId = useRef(patientId);
+  activePatientId.current = patientId;
+  useEffect(() => {
+    setReviewDetail(null);
+    setReviewDialogOpen(false);
+    setConfirmSignOpen(false);
+    setShowPrescription(false);
+    setEditPrescriptionId(null);
+    setReviewError("");
+  }, [patientId]);
+  const { user } = useAuth();
+  const isStaff = !!(user as any)?.isStaff;
+  const {
+    data: signingStatus,
+    isLoading: signingStatusLoading,
+    isError: signingStatusError,
+    refetch: refetchSigningStatus,
+  } = useQuery<{ enabled: boolean }>({
+    queryKey: ["/api/prescriptions/signing-status"],
+  });
+  const { data: prescriberCredentials } = useQuery<any>({
+    queryKey: ["/api/prescriber-credentials/me"],
+    enabled: !isStaff,
+  });
+  const canSignPrescription = !isStaff &&
+    !!(user as any)?.signatureImage &&
+    prescriberCredentials?.userId === user?.id &&
+    !!prescriberCredentials?.prescribingAuthorized &&
+    !!prescriberCredentials?.verifiedAt &&
+    !!prescriberCredentials?.verifiedByUserId &&
+    !!prescriberCredentials?.licenseExpiresAt &&
+    prescriberCredentials.licenseExpiresAt >= new Date().toISOString().slice(0, 10);
 
   const { data: orders = [], refetch } = useQuery<ClinicalOrderData[]>({
     queryKey: ["/api/patients", patientId, "clinical-orders"],
@@ -1418,6 +1489,125 @@ export function PatientOrdersTab({ patientId, patientName }: { patientId: number
     },
     enabled: !!patientId,
   });
+
+  const {
+    data: savedPrescriptions = [],
+    isLoading: prescriptionsLoading,
+    isError: prescriptionsError,
+    refetch: refetchPrescriptions,
+  } = useQuery<SavedPrescription[]>({
+    queryKey: ["/api/patients", patientId, "prescriptions"],
+    queryFn: async () => {
+      const response = await fetch(`/api/patients/${patientId}/prescriptions`, { credentials: "include" });
+      if (!response.ok) throw new Error("Unable to load saved prescriptions");
+      return response.json();
+    },
+    enabled: !!patientId,
+  });
+
+  async function openPrescriptionReview(prescriptionId: number) {
+    setReviewLoadingId(prescriptionId);
+    setReviewError("");
+    setReviewDetail(null);
+    setConfirmSignOpen(false);
+    setReviewDialogOpen(true);
+    try {
+      const response = await fetch(`/api/prescriptions/${prescriptionId}`, { credentials: "include" });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Unable to load the current prescription for review.");
+      if (result.patientId !== activePatientId.current || result.status !== "draft" || typeof result.reviewHash !== "string") {
+        throw new Error("This prescription is no longer an unsigned draft for this patient. Refresh the chart and review the current version.");
+      }
+      setReviewDetail(result as PrescriptionDetail);
+    } catch (error) {
+      setReviewError(error instanceof Error ? error.message : "Unable to load prescription details.");
+    } finally {
+      setReviewLoadingId(null);
+    }
+  }
+
+  async function signReviewedPrescription() {
+    if (!reviewDetail || reviewDetail.patientId !== patientId || !canSignPrescription || !signingStatus?.enabled || signing) return;
+    setSigning(true);
+    setReviewError("");
+    try {
+      const response = await fetch(`/api/prescriptions/${reviewDetail.id}/sign`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmSign: true, reviewHash: reviewDetail.reviewHash }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Prescription signing failed. Review the current draft before trying again.");
+      if (result.status !== "signed") throw new Error("The signing service did not confirm a finalized prescription.");
+      setConfirmSignOpen(false);
+      setReviewDialogOpen(false);
+      setReviewDetail(null);
+      await refetchPrescriptions();
+    } catch (error) {
+      setReviewError(error instanceof Error ? error.message : "Prescription signing failed.");
+    } finally {
+      setSigning(false);
+    }
+  }
+
+  async function fetchPrescriptionPdf(prescriptionId: number, action: "download" | "print") {
+    setDocumentBusyId(prescriptionId);
+    setDocumentError("");
+    let objectUrl: string | null = null;
+    // Open synchronously with the user's click, not after an awaited fetch
+    // (browsers commonly block the latter as an unsolicited popup).
+    const printWindow = action === "print" ? window.open("about:blank", "_blank") : null;
+    try {
+      if (action === "print" && !printWindow) throw new Error("Allow pop-ups to print the finalized prescription PDF.");
+      const response = await fetch(`/api/prescriptions/${prescriptionId}/pdf`, { credentials: "include" });
+      if (!response.ok) {
+        const problem = await response.json().catch(() => ({}));
+        throw new Error(problem.error || "The finalized prescription PDF could not be verified or retrieved.");
+      }
+      const blob = await response.blob();
+      if (!blob.size || (blob.type && !blob.type.includes("pdf"))) {
+        throw new Error("The server did not return a valid finalized PDF.");
+      }
+      objectUrl = URL.createObjectURL(blob);
+      if (action === "download") {
+        const link = document.createElement("a");
+        link.href = objectUrl;
+        link.download = `prescription-${prescriptionId}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => objectUrl && URL.revokeObjectURL(objectUrl), 60_000);
+      } else {
+        if (!printWindow) throw new Error("Allow pop-ups to print the finalized prescription PDF.");
+        const urlToRelease = objectUrl;
+        let cleaned = false;
+        const cleanup = () => {
+          if (cleaned) return;
+          cleaned = true;
+          URL.revokeObjectURL(urlToRelease);
+        };
+        printWindow.addEventListener("load", () => {
+          printWindow.addEventListener("beforeunload", cleanup, { once: true });
+          try {
+            printWindow.focus();
+            printWindow.print();
+          } catch {
+            setDocumentError("The PDF opened, but printing could not be started. Use the PDF viewer's print control.");
+          }
+        }, { once: true });
+        printWindow.location.href = objectUrl;
+        window.setTimeout(cleanup, 120_000);
+        objectUrl = null;
+      }
+    } catch (error) {
+      printWindow?.close();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      setDocumentError(error instanceof Error ? error.message : "Unable to open prescription PDF.");
+    } finally {
+      setDocumentBusyId(null);
+    }
+  }
 
   const scheduled = orders.filter((o) => o.status === "scheduled");
   const active = orders.filter((o) => o.status === "active");
@@ -1443,10 +1633,161 @@ export function PatientOrdersTab({ patientId, patientName }: { patientId: number
           <h3 className="text-sm font-semibold">Orders & Referrals</h3>
           <p className="text-xs text-muted-foreground">{active.length} active</p>
         </div>
-        <Button size="sm" className="text-xs gap-1" onClick={() => setShowNew(true)} data-testid="button-new-clinical-order">
-          <Plus className="w-3.5 h-3.5" /> New Order
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" className="text-xs gap-1" onClick={() => setShowPrescription(true)} data-testid="button-prescribe-medication">
+            <Plus className="w-3.5 h-3.5" /> Prescribe Medication
+          </Button>
+          <Button size="sm" className="text-xs gap-1" onClick={() => setShowNew(true)} data-testid="button-new-clinical-order">
+            <Plus className="w-3.5 h-3.5" /> New Order
+          </Button>
+        </div>
       </div>
+
+      <PrescriptionDialog
+        open={showPrescription}
+        onClose={() => {
+          setShowPrescription(false);
+          setEditPrescriptionId(null);
+        }}
+        patientId={patientId}
+        patientName={patientName}
+        editPrescriptionId={editPrescriptionId}
+      />
+
+      <section aria-labelledby="prescriptions-title" className="space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <h3 id="prescriptions-title" className="text-sm font-semibold flex items-center gap-2">
+            <Pill className="w-4 h-4" /> Prescriptions
+          </h3>
+          <span className="text-xs text-muted-foreground">{savedPrescriptions.length} saved</span>
+        </div>
+        {signingStatusLoading ? (
+          <div className="h-10 rounded-md bg-muted animate-pulse" aria-label="Checking prescription signing availability" />
+        ) : signingStatusError ? (
+          <div role="alert" className="rounded-md border border-destructive/30 px-3 py-2 text-xs text-destructive">
+            <p>Unable to verify prescription signing availability. Signing remains unavailable until status can be confirmed.</p>
+            <Button size="sm" variant="outline" className="mt-2" onClick={() => void refetchSigningStatus()}>Retry status check</Button>
+          </div>
+        ) : signingStatus?.enabled !== true ? (
+          <p role="status" className="rounded-md border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs text-amber-900">
+            Prescription signing is unavailable until clinic approval and signing configuration are complete. Drafts can still be prepared; nothing is transmitted.
+          </p>
+        ) : (
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5" /> Signing is enabled. Every prescription requires a fresh review and explicit confirmation.
+            </p>
+            {!canSignPrescription && <p className="text-xs text-muted-foreground">Only a verified prescribing provider using their own saved account signature can sign. Staff and RN accounts cannot sign prescriptions.</p>}
+          </div>
+        )}
+        {documentError && <p role="alert" className="text-xs text-destructive">{documentError}</p>}
+        {prescriptionsLoading ? (
+          <div className="space-y-2" aria-label="Loading prescriptions">
+            <div className="h-20 rounded-md bg-muted animate-pulse" />
+            <div className="h-16 rounded-md bg-muted animate-pulse" />
+          </div>
+        ) : prescriptionsError ? (
+          <div className="rounded-md border border-destructive/30 p-3 text-xs text-destructive" role="alert">
+            <p>Unable to load prescriptions.</p>
+            <Button size="sm" variant="outline" className="mt-2" onClick={() => void refetchPrescriptions()}>Try again</Button>
+          </div>
+        ) : savedPrescriptions.length === 0 ? (
+          <Card><CardContent className="py-6 text-center">
+            <Pill className="w-7 h-7 mx-auto mb-2 text-muted-foreground/60" />
+            <p className="text-sm font-medium">No prescriptions on file</p>
+            <p className="text-xs text-muted-foreground mt-1">Create an unsigned draft to begin. Prescriptions are never sent automatically.</p>
+          </CardContent></Card>
+        ) : (
+          <Card><CardContent className="p-3 space-y-3">
+            {savedPrescriptions.map((prescription) => (
+              <article key={prescription.id} className="border-b last:border-b-0 pb-3 last:pb-0 space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1 min-w-0">
+                    <p className="text-sm font-semibold">{prescription.medicationName}{prescription.strength ? ` — ${prescription.strength}` : ""}</p>
+                    <p className="text-xs text-muted-foreground">{prescription.sig}</p>
+                    <p className="text-xs text-muted-foreground">Quantity: {prescription.quantity || "Not specified"} · Refills: {prescription.refills}</p>
+                    <p className="text-xs text-muted-foreground">Pharmacy: {prescription.pharmacyName || "Not selected"}</p>
+                    {prescription.status === "signed" && prescription.signedAt && <p className="text-xs text-muted-foreground">Signed {new Date(prescription.signedAt).toLocaleString()}</p>}
+                  </div>
+                  <Badge variant="outline">{prescription.status === "draft" ? "Unsigned draft" : prescription.status}</Badge>
+                </div>
+                <div className="flex flex-wrap justify-end gap-2">
+                  {prescription.status === "draft" && (
+                    <>
+                      <Button type="button" size="sm" variant="outline" disabled={reviewLoadingId !== null} onClick={() => void openPrescriptionReview(prescription.id)}>
+                        {reviewLoadingId === prescription.id ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Eye className="w-3.5 h-3.5 mr-1" />}
+                        Review
+                      </Button>
+                      <Button type="button" size="sm" variant="ghost" onClick={() => { setEditPrescriptionId(prescription.id); setShowPrescription(true); }}>Edit draft</Button>
+                    </>
+                  )}
+                  {prescription.status === "signed" && (
+                    <>
+                      <Button type="button" size="sm" variant="outline" disabled={documentBusyId !== null} onClick={() => void fetchPrescriptionPdf(prescription.id, "download")}>
+                        {documentBusyId === prescription.id ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Download className="w-3.5 h-3.5 mr-1" />} Download PDF
+                      </Button>
+                      <Button type="button" size="sm" variant="outline" disabled={documentBusyId !== null} onClick={() => void fetchPrescriptionPdf(prescription.id, "print")}>
+                        {documentBusyId === prescription.id ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Printer className="w-3.5 h-3.5 mr-1" />} Print
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </article>
+            ))}
+          </CardContent></Card>
+        )}
+      </section>
+
+      <Dialog open={reviewDialogOpen} onOpenChange={(open) => { if (!open && !signing) { setReviewDialogOpen(false); setReviewDetail(null); setConfirmSignOpen(false); setReviewError(""); } }}>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Review prescription</DialogTitle>
+            <p className="text-sm text-muted-foreground">Review the latest saved draft for {patientName}. Signing is a separate, explicit action.</p>
+          </DialogHeader>
+          {!reviewDetail && reviewLoadingId !== null && <div className="space-y-3" aria-label="Loading prescription details"><div className="h-5 w-1/2 rounded bg-muted animate-pulse" /><div className="h-24 rounded bg-muted animate-pulse" /></div>}
+          {reviewDetail && (
+            <div className="space-y-3 rounded-md border bg-muted/20 p-4 text-sm">
+              <div><p className="text-xs uppercase tracking-wide text-muted-foreground">Medication</p><p className="font-semibold">{reviewDetail.medicationName} {reviewDetail.strength ?? ""} {reviewDetail.dosageForm ?? ""}</p></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><p className="text-xs text-muted-foreground">Dose / route</p><p>{[reviewDetail.dose, reviewDetail.route].filter(Boolean).join(" · ") || "—"}</p></div>
+                <div><p className="text-xs text-muted-foreground">Frequency</p><p>{reviewDetail.frequency || "—"}</p></div>
+                <div><p className="text-xs text-muted-foreground">Quantity / refills</p><p>{reviewDetail.quantity || "—"} · {reviewDetail.refills}</p></div>
+                <div><p className="text-xs text-muted-foreground">Days supply</p><p>{reviewDetail.daysSupply ?? "—"}</p></div>
+              </div>
+              <div><p className="text-xs text-muted-foreground">Complete directions (SIG)</p><p className="whitespace-pre-wrap">{reviewDetail.sig}</p></div>
+              {reviewDetail.indication && <div><p className="text-xs text-muted-foreground">Indication</p><p>{reviewDetail.indication}</p></div>}
+              <div><p className="text-xs text-muted-foreground">Pharmacy</p><p>{reviewDetail.pharmacyName || "Not selected"}</p>{reviewDetail.pharmacyAddress && <p className="text-xs text-muted-foreground">{reviewDetail.pharmacyAddress}</p>}{reviewDetail.pharmacyPhone && <p className="text-xs text-muted-foreground">{reviewDetail.pharmacyPhone}</p>}</div>
+              <p className="border-t pt-3 text-xs text-muted-foreground">This prescription has not been transmitted. Check all medication and pharmacy details before proceeding.</p>
+            </div>
+          )}
+          {reviewError && <p role="alert" className="text-sm text-destructive">{reviewError}</p>}
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button type="button" variant="outline" onClick={() => { setReviewDialogOpen(false); setReviewDetail(null); setConfirmSignOpen(false); }} disabled={signing}>Close</Button>
+            {canSignPrescription && signingStatus?.enabled === true && (
+              <Button type="button" onClick={() => setConfirmSignOpen(true)} disabled={!reviewDetail || signing}>
+                Review complete — continue to sign
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmSignOpen} onOpenChange={(open) => { if (!signing) setConfirmSignOpen(open); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm prescription signature</DialogTitle>
+            <p className="text-sm text-muted-foreground">You are signing {reviewDetail?.medicationName ?? "this prescription"} for {patientName} using your saved account signature. This records your electronic signature and finalizes the reviewed version.</p>
+          </DialogHeader>
+          <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">Signing cannot be undone. No prescription is transmitted to a pharmacy from ClinIQ.</p>
+          {reviewError && <p role="alert" className="text-sm text-destructive">{reviewError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={signing} onClick={() => setConfirmSignOpen(false)}>Go back</Button>
+            <Button type="button" disabled={signing || !canSignPrescription || signingStatus?.enabled !== true} onClick={() => void signReviewedPrescription()}>
+              {signing && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}{signing ? "Signing…" : "Confirm & sign"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Scheduled (dormant) orders */}
       {scheduled.length > 0 && (

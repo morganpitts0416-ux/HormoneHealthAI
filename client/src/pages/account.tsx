@@ -40,6 +40,7 @@ import { useClinicBranding } from "@/hooks/use-clinic-branding";
 import { PLATFORM_DEFAULT_BRANDING, resolveBranding } from "@/lib/branding";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { PrescriberCredentialsSettings } from "@/components/prescriber-credentials-settings";
 
 interface StaffMember {
   id: number;
@@ -1383,6 +1384,7 @@ export default function Account() {
                 </Form>
               </CardContent>
             </Card>
+            {!isStaff && <PrescriberCredentialsSettings />}
           </div>
         );
 

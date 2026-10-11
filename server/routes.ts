@@ -1,5 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { registerOpsRoutes } from "./ops";
+import { registerPrescriptionRoutes } from "./prescription-routes";
 import { createServer, type Server } from "http";
 import crypto from "crypto";
 import { encryptSecret, decryptSecret, isEncrypted } from "./crypto-utils";
@@ -24355,6 +24356,7 @@ IMPORTANT:
 
   // ── Ops Portal (isolated — feature-flagged by OPS_PORTAL_ENABLED) ──────────
   registerOpsRoutes(app);
+  registerPrescriptionRoutes(app);
 
   const httpServer = createServer(app);
   return httpServer;

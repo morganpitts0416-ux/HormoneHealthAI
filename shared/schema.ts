@@ -4052,3 +4052,270 @@ export type PatientClinicRelationship = typeof patientClinicRelationships.$infer
 export type PatientPortalInvite = typeof patientPortalInvites.$inferSelect;
 export type PatientPortalInviteFlow = typeof patientPortalInviteFlows.$inferSelect;
 export type PatientPortalRelationshipEvent = typeof patientPortalRelationshipEvents.$inferSelect;
+
+// ============================================================================
+// PRESCRIPTION MODULE — Separate from clinical orders and medication reminders
+// ============================================================================
+
+// Prescriber credentials must be verified before prescription signing.
+// A database record alone does not establish legal prescribing authority.
+export const prescriberCredentials = pgTable("prescriber_credentials", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  clinicId: integer("clinic_id").notNull(),
+  licenseState: varchar("license_state", { length: 2 }).notNull(),
+  licenseNumber: varchar("license_number", { length: 100 }).notNull(),
+  licenseType: varchar("license_type", { length: 50 }).notNull(),
+  licenseExpiresAt: date("license_expires_at"),
+  // DEA registration details (optional for noncontrolled prescribing)
+  deaNumber: varchar("dea_number", { length: 20 }),
+  deaExpiresAt: date("dea_expires_at"),
+  deaState: varchar("dea_state", { length: 2 }),
+  prescribingAuthorized: boolean("prescribing_authorized").notNull().default(false),
+  verifiedAt: timestamp("verified_at"),
+  verifiedByUserId: integer("verified_by_user_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => ({
+  userClinicIdx: uniqueIndex("prescriber_credentials_user_clinic_idx").on(t.userId, t.clinicId),
+}));
+// ============================================================================
+// SAVED PHARMACIES — Searchable directory for each clinic
+// ============================================================================
+
+export const prescriptionPharmacies = pgTable("prescription_pharmacies", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull(),
+  name: varchar("name", { length: 300 }).notNull(),
+  address: text("address"),
+  phone: varchar("phone", { length: 50 }),
+  fax: varchar("fax", { length: 50 }),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => ({
+  clinicIdx: index("prescription_pharmacies_clinic_idx").on(t.clinicId),
+}));
+
+// ============================================================================
+// MEDICATION TEMPLATES — Saved medications and reusable SIGs
+// ============================================================================
+
+export const prescriptionMedicationTemplates = pgTable("prescription_medication_templates", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull(),
+  ownerUserId: integer("owner_user_id").notNull(),
+  sharedWithClinic: boolean("shared_with_clinic").notNull().default(false),
+
+  medicationName: varchar("medication_name", { length: 300 }).notNull(),
+  strength: varchar("strength", { length: 100 }),
+  dosageForm: varchar("dosage_form", { length: 100 }),
+  dose: varchar("dose", { length: 150 }),
+  route: varchar("route", { length: 100 }),
+  frequency: varchar("frequency", { length: 150 }),
+  sig: text("sig").notNull(),
+  quantity: varchar("quantity", { length: 100 }),
+  daysSupply: integer("days_supply"),
+  refills: integer("refills").notNull().default(0),
+
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => ({
+  clinicIdx: index("prescription_templates_clinic_idx").on(t.clinicId),
+  ownerIdx: index("prescription_templates_owner_idx").on(t.ownerUserId),
+}));
+// ============================================================================
+// PRESCRIPTION BATCHES — Groups medications entered in one session
+// ============================================================================
+
+export const prescriptionBatches = pgTable("prescription_batches", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull(),
+  patientId: integer("patient_id").notNull(),
+  createdByUserId: integer("created_by_user_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  patientClinicIdx: index("prescription_batches_patient_clinic_idx")
+    .on(t.patientId, t.clinicId),
+}));
+// Prescription records are independent of clinical_orders and patient_medications.
+// Drafts are editable; signed prescriptions must be immutable.
+export const prescriptions = pgTable("prescriptions", {
+  id: serial("id").primaryKey(),
+    batchId: integer("batch_id")
+    .references(() => prescriptionBatches.id),
+  clinicId: integer("clinic_id").notNull(),
+  patientId: integer("patient_id").notNull(),
+  createdByUserId: integer("created_by_user_id").notNull(),
+  createdByStaffId: integer("created_by_staff_id"),
+  prescriberUserId: integer("prescriber_user_id"),
+
+  // Medication and directions
+  medicationName: varchar("medication_name", { length: 300 }).notNull(),
+  strength: varchar("strength", { length: 100 }),
+  dosageForm: varchar("dosage_form", { length: 100 }),
+  dose: varchar("dose", { length: 150 }),
+  route: varchar("route", { length: 100 }),
+  frequency: varchar("frequency", { length: 150 }),
+  sig: text("sig").notNull(),
+  quantity: varchar("quantity", { length: 100 }).notNull(),
+  daysSupply: integer("days_supply"),
+  refills: integer("refills").notNull().default(0),
+  indication: text("indication"),
+  substitutionAllowed: boolean("substitution_allowed").notNull().default(true),
+
+  // Initial release: noncontrolled medications only
+  isControlledSubstance: boolean("is_controlled_substance").notNull().default(false),
+
+  // Pharmacy snapshot
+  pharmacyName: varchar("pharmacy_name", { length: 300 }),
+  pharmacyAddress: text("pharmacy_address"),
+  pharmacyPhone: varchar("pharmacy_phone", { length: 50 }),
+  pharmacyFax: varchar("pharmacy_fax", { length: 50 }),
+
+  // Draft -> signed -> transmission tracked separately
+  status: varchar("status", { length: 30 }).notNull().default("draft"),
+  signedAt: timestamp("signed_at"),
+  signedByUserId: integer("signed_by_user_id"),
+
+  // Prescriber snapshot captured at signing
+  prescriberNameSnapshot: varchar("prescriber_name_snapshot", { length: 200 }),
+  prescriberTitleSnapshot: varchar("prescriber_title_snapshot", { length: 100 }),
+  prescriberNpiSnapshot: varchar("prescriber_npi_snapshot", { length: 20 }),
+  prescriberLicenseSnapshot: varchar("prescriber_license_snapshot", { length: 100 }),
+  prescriberLicenseStateSnapshot: varchar("prescriber_license_state_snapshot", { length: 2 }),
+  prescriberDeaSnapshot: varchar("prescriber_dea_snapshot", { length: 20 }),
+  prescriberDeaExpiresSnapshot: date("prescriber_dea_expires_snapshot"),
+  prescriberDeaStateSnapshot: varchar("prescriber_dea_state_snapshot", { length: 2 }),
+
+  // Cancellation and audit metadata
+  cancelledAt: timestamp("cancelled_at"),
+  cancelledByUserId: integer("cancelled_by_user_id"),
+  cancellationReason: text("cancellation_reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => ({
+  patientClinicIdx: index("prescriptions_patient_clinic_idx").on(t.patientId, t.clinicId),
+  prescriberIdx: index("prescriptions_prescriber_idx").on(t.prescriberUserId),
+  statusIdx: index("prescriptions_status_idx").on(t.status),
+}));
+
+export type Prescription = typeof prescriptions.$inferSelect;
+export type InsertPrescription = typeof prescriptions.$inferInsert;
+
+// ============================================================================
+// PRESCRIPTION DOCUMENTS — Signed PDF records
+// ============================================================================
+
+export const prescriptionDocuments = pgTable("prescription_documents", {
+  id: serial("id").primaryKey(),
+  prescriptionId: integer("prescription_id").notNull()
+    .references(() => prescriptions.id),
+  clinicId: integer("clinic_id").notNull(),
+
+  // Secure server-side document reference; never a public URL
+  storageKey: text("storage_key").notNull(),
+  sha256Hash: varchar("sha256_hash", { length: 64 }).notNull(),
+  mimeType: varchar("mime_type", { length: 100 }).notNull().default("application/pdf"),
+
+  signedByUserId: integer("signed_by_user_id").notNull(),
+  signedAt: timestamp("signed_at").notNull(),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  prescriptionIdx: uniqueIndex("prescription_documents_prescription_idx")
+    .on(t.prescriptionId),
+  clinicIdx: index("prescription_documents_clinic_idx").on(t.clinicId),
+}));
+
+// ============================================================================
+// PRESCRIPTION TRANSMISSIONS — Pharmacy fax attempts
+// ============================================================================
+
+export const prescriptionTransmissions = pgTable("prescription_transmissions", {
+  id: serial("id").primaryKey(),
+  prescriptionId: integer("prescription_id").notNull()
+    .references(() => prescriptions.id),
+  documentId: integer("document_id").notNull()
+    .references(() => prescriptionDocuments.id),
+  clinicId: integer("clinic_id").notNull(),
+
+  destinationFax: varchar("destination_fax", { length: 50 }).notNull(),
+  destinationName: varchar("destination_name", { length: 300 }),
+
+  provider: varchar("provider", { length: 50 }).notNull().default("spruce"),
+  providerTransmissionId: varchar("provider_transmission_id", { length: 200 }),
+
+  // queued, submitted, delivered, failed, unknown
+  status: varchar("status", { length: 30 }).notNull().default("queued"),
+  idempotencyKey: varchar("idempotency_key", { length: 100 }).notNull(),
+
+  requestedByUserId: integer("requested_by_user_id").notNull(),
+  submittedAt: timestamp("submitted_at"),
+  deliveredAt: timestamp("delivered_at"),
+  failedAt: timestamp("failed_at"),
+  errorMessage: text("error_message"),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => ({
+  prescriptionIdx: index("prescription_transmissions_prescription_idx")
+    .on(t.prescriptionId),
+  clinicIdx: index("prescription_transmissions_clinic_idx").on(t.clinicId),
+  idempotencyIdx: uniqueIndex("prescription_transmissions_idempotency_idx")
+    .on(t.idempotencyKey),
+}));
+
+// ============================================================================
+// PRESCRIPTION AUDIT EVENTS — Append-only activity history
+// ============================================================================
+
+export const prescriptionAuditEvents = pgTable("prescription_audit_events", {
+  id: serial("id").primaryKey(),
+  prescriptionId: integer("prescription_id").notNull()
+    .references(() => prescriptions.id),
+  clinicId: integer("clinic_id").notNull(),
+
+  actorUserId: integer("actor_user_id"),
+  actorStaffId: integer("actor_staff_id"),
+
+  // created, updated, signed, cancelled, fax_requested,
+  // fax_submitted, fax_delivered, fax_failed, printed
+  action: varchar("action", { length: 60 }).notNull(),
+  details: jsonb("details"),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  prescriptionIdx: index("prescription_audit_events_prescription_idx")
+    .on(t.prescriptionId),
+  clinicIdx: index("prescription_audit_events_clinic_idx").on(t.clinicId),
+  createdAtIdx: index("prescription_audit_events_created_at_idx")
+    .on(t.createdAt),
+}));
+
+// Audit history for prescriber credential verification.
+// Separate from prescription_audit_events because verification
+// belongs to a provider, not an individual prescription.
+export const prescriberCredentialAuditEvents = pgTable(
+  "prescriber_credential_audit_events",
+  {
+    id: serial("id").primaryKey(),
+    credentialId: integer("credential_id")
+      .notNull()
+      .references(() => prescriberCredentials.id),
+    clinicId: integer("clinic_id").notNull(),
+    providerUserId: integer("provider_user_id").notNull(),
+    verifierUserId: integer("verifier_user_id").notNull(),
+    action: varchar("action", { length: 40 }).notNull(),
+    verificationSource: varchar("verification_source", { length: 300 }),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => ({
+    credentialIdx: index("prescriber_credential_audit_credential_idx")
+      .on(t.credentialId),
+    clinicIdx: index("prescriber_credential_audit_clinic_idx")
+      .on(t.clinicId),
+  })
+);

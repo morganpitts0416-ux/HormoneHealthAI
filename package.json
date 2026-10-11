@@ -27,6 +27,7 @@
     "@fullcalendar/resource": "^6.1.20",
     "@fullcalendar/resource-timegrid": "^6.1.20",
     "@fullcalendar/timegrid": "^6.1.20",
+    "@google-cloud/storage": "^7.16.0",
     "@hookform/resolvers": "^3.10.0",
     "@jridgewell/trace-mapping": "^0.3.25",
     "@playwright/test": "^1.60.0",
