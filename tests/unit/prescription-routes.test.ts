@@ -49,10 +49,10 @@ beforeEach(() => {
   state.session = { activeClinicId: 10 }; state.authenticated = true;
   state.memory.reset({
     users: [{ id: 7, defaultClinicId: 10, firstName: "Synthetic", lastName: "Provider", npi: "1234567890", title: "MD", signatureImage: syntheticSignature }],
-    clinics: [{ id: 10, name: "Synthetic Clinic", isActive: true, subscriptionStatus: "active" }, { id: 11, name: "Other Synthetic Clinic", isActive: true, subscriptionStatus: "active" }],
+    clinics: [{ id: 10, name: "Synthetic Clinic", isActive: true, subscriptionStatus: "active", prescriptionAddress: "100 Synthetic Clinic Avenue", prescriptionPhone: "555-0100" }, { id: 11, name: "Other Synthetic Clinic", isActive: true, subscriptionStatus: "active" }],
     clinic_memberships: [{ id: 1, userId: 7, clinicId: 10, isActive: true, acceptanceStatus: "active", accessScope: "full", clinicalRole: "provider", adminRole: "owner" }],
     clinician_staff: [{ id: 5, clinicianId: 7, clinicId: 10, isActive: true, role: "nurse" }],
-    prescriber_credentials: [{ id: 1, userId: 7, clinicId: 10, prescribingAuthorized: true, verifiedAt: new Date(), verifiedByUserId: 8, licenseNumber: "SYNTHETIC-001", licenseState: "MS", licenseExpiresAt: "2099-01-01" }],
+    prescriber_credentials: [{ id: 1, userId: 7, clinicId: 10, prescribingAuthorized: true, verifiedAt: new Date(), verifiedByUserId: 8, verifiedNpi: "1234567890", licenseNumber: "SYNTHETIC-001", licenseState: "MS", licenseType: "MD", licenseExpiresAt: "2099-01-01" }],
     patients: [{ id: 20, clinicId: 10, firstName: "Synthetic", lastName: "Patient", dateOfBirth: new Date("1990-01-01"), address: "1 Example Avenue" }],
     prescriptions: [syntheticPrescription()], prescription_documents: [], prescription_audit_events: [],
   });
@@ -60,6 +60,17 @@ beforeEach(() => {
   objects.read.mockReset().mockResolvedValue(Buffer.from("%PDF-synthetic-stored"));
 });
 describe("Actual prescription HTTP routes with synthetic Drizzle predicates", () => {
+  it("blocks signing when NPI changed after independent verification", async () => {
+    state.memory.tables.users[0].npi = "0987654321";
+    expect((await sign()).status).toBe(403);
+    expect(objects.save).not.toHaveBeenCalled();
+  });
+  it("blocks signing without reviewed clinic contacts, never using a personal phone", async () => {
+    state.memory.tables.clinics[0].prescriptionPhone = null;
+    state.memory.tables.users[0].phone = "555-9999";
+    expect((await sign()).status).toBe(422);
+    expect(objects.save).not.toHaveBeenCalled();
+  });
   it("denies unauthenticated access before prescription queries", async () => {
     state.authenticated = false;
     expect((await request("/api/prescriptions/1")).status).toBe(403);

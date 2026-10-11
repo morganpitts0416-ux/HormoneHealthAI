@@ -41,6 +41,7 @@ import { PLATFORM_DEFAULT_BRANDING, resolveBranding } from "@/lib/branding";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { PrescriberCredentialsSettings } from "@/components/prescriber-credentials-settings";
+import { PrescriberVerificationSettings } from "@/components/prescriber-verification-settings";
 import { PrescriptionDirectorySection } from "@/components/prescription-directory-section";
 
 interface StaffMember {
@@ -138,7 +139,7 @@ interface MessagingSettings {
   externalMessagingChannelId: string | null;
 }
 
-type SectionId = "clinic" | "provider" | "branding" | "messaging" | "team" | "preferences" | "diagnoses" | "forms" | "submissions" | "notes" | "blockDefaults" | "chartReview" | "juneSettings" | "encounterTemplates" | "formWorkflows" | "integrations" | "sprucePlaybook" | "baa" | "billing" | "dataImport" | "prescriptionDirectory";
+type SectionId = "clinic" | "provider" | "branding" | "messaging" | "team" | "preferences" | "diagnoses" | "forms" | "submissions" | "notes" | "blockDefaults" | "chartReview" | "juneSettings" | "encounterTemplates" | "formWorkflows" | "integrations" | "sprucePlaybook" | "baa" | "billing" | "dataImport" | "prescriptionDirectory" | "prescriberVerification";
 
 const SECTIONS: { id: SectionId; label: string; icon: React.ComponentType<{ className?: string }>; clinicianOnly?: boolean; providerVisible?: boolean; ownerOnly?: boolean; staffVisible?: boolean; badge?: string }[] = [
   { id: "clinic", label: "Clinic Information", icon: Building2, clinicianOnly: true, ownerOnly: true },
@@ -148,6 +149,7 @@ const SECTIONS: { id: SectionId; label: string; icon: React.ComponentType<{ clas
   { id: "messaging", label: "Messaging Settings", icon: MessageSquare, clinicianOnly: true, ownerOnly: true },
   { id: "preferences", label: "Lab & Clinical Settings", icon: SlidersHorizontal, clinicianOnly: true, providerVisible: true, staffVisible: true },
   { id: "prescriptionDirectory", label: "Prescription Directory", icon: ClipboardList, clinicianOnly: true, providerVisible: true, staffVisible: true },
+  { id: "prescriberVerification", label: "Prescriber Verification", icon: ShieldCheck, clinicianOnly: true },
   { id: "diagnoses", label: "Diagnosis Presets", icon: ClipboardList, clinicianOnly: true, providerVisible: true, staffVisible: true },
   { id: "notes", label: "Note Templates", icon: FileText, clinicianOnly: true, providerVisible: true, staffVisible: true },
   { id: "blockDefaults", label: "Clinical Block Defaults", icon: Stethoscope, clinicianOnly: true, providerVisible: true, staffVisible: true },
@@ -689,6 +691,9 @@ export default function Account() {
   const isOwner = adminRole === "owner" || !(user as any)?.defaultClinicId;
   const isAdmin = adminRole === "admin";
   const isOwnerOrAdmin = isOwner || isAdmin;
+  const canManagePrescriberVerification = !isStaff &&
+    (adminRole === "owner" || adminRole === "admin" || (!((user as any)?.defaultClinicId) && !!user)) &&
+    (user as any)?.isActive !== false;
   const isSuiteProvider = !isStaff && !isOwnerOrAdmin && !!(user as any)?.defaultClinicId;
 
   useEffect(() => {
@@ -1096,6 +1101,7 @@ export default function Account() {
         : SECTIONS;
   const currentClinicalRole = String((user as any)?.clinicalRole || (user as any)?.staffRole || (user as any)?.role || "").toLowerCase();
   const filteredSections = visibleSections.filter(s => {
+    if (s.id === "prescriberVerification" && !canManagePrescriberVerification) return false;
     if (s.id === "prescriptionDirectory" && isStaff && !/nurse|rn|provider/.test(currentClinicalRole)) return false;
     if (!search) return true;
     return s.label.toLowerCase().includes(search.toLowerCase());
@@ -2181,6 +2187,9 @@ export default function Account() {
 
       case "prescriptionDirectory":
         return <PrescriptionDirectorySection />;
+
+      case "prescriberVerification":
+        return <PrescriberVerificationSettings />;
 
       case "notes":
         return (

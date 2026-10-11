@@ -316,7 +316,27 @@ function classify(
   routePath: string,
   evidence: RouteEvidence,
   text: string,
+  sourceFile = "",
 ): RouteClassification {
+  // Static documentation only, NOT middleware or an enforcement rollout.
+  // Reviewed prescription handlers delegate authentication, active-clinic
+  // membership and role checks to these transaction-aware helpers.
+  const prescriptionModule = /(?:^|\/)server\/(?:prescription-routes|prescriber-verification-routes)\.ts$/.test(sourceFile.replaceAll("\\", "/"));
+  const clinicalPaths = new Set([
+    "/api/patients/:id/prescriptions", "/api/patients/:id/prescriptions/batch",
+    "/api/prescriber-credentials/me", "/api/prescription-medication-templates",
+    "/api/prescriptions/:prescriptionId", "/api/prescriptions/:prescriptionId/pdf",
+    "/api/prescriptions/:prescriptionId/sign", "/api/prescriptions/signing-status",
+  ]);
+  const verificationPaths = new Set([
+    "/api/prescriber-credentials/:credentialId/verify", "/api/prescriber-verification",
+    "/api/prescriber-verification/:credentialId/history", "/api/prescription-clinic-contact",
+  ]);
+  const delegatedClinicGuard = /\b(?:getCredentialContext|getPrescriptionPreparationContext|selectedClinic|administrator|getAuthorizedSigner)\s*\(\s*req\b/.test(text);
+  if (prescriptionModule && delegatedClinicGuard) {
+    if (verificationPaths.has(routePath)) return "clinic_administrator_permitted";
+    if (clinicalPaths.has(routePath)) return "active_clinic_required";
+  }
   const identityBaseAuthPaths = new Set([
     "/api/auth/logout",
     "/api/auth/me",
@@ -466,7 +486,7 @@ export function parseExpressRoutes(
       path: routePath,
       localPath: localPath ?? "<dynamic>",
       mountPrefix: prefix || "/",
-      classification: classify(routePath, evidence, callText),
+      classification: classify(routePath, evidence, callText, sourceFile),
       evidence,
     });
     ts.forEachChild(node, visit);

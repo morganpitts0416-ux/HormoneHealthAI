@@ -32,3 +32,34 @@ the Cloud Shell handoff.
 verification are not permission to apply schema, deploy, or activate signing.
 Do not substitute the Cloud Shell handoff's core routes, schema, or encounter
 screen wholesale for newer unrelated work in this repository.
+
+The approved release brief permits offline implementation, synthetic verification,
+and dedicated local release branches/commits. It does not permit remote pushes or
+merges, GCP resources/configuration/traffic changes, production restarts, applied
+database migrations, or live signing activation without separate approval.
+
+**Why:** The user requires independent production provenance and distinct code,
+staging-verification, and production-approval gates.
+
+**How to apply:** Missing production baseline or infrastructure access is a
+reported release blocker, not permission to substitute development source or
+claim staging/production verification. Finish safe code before requesting those
+approvals.
+
+Clinic business contacts must be explicitly reviewed before use on prescription
+letterhead; an account's Clinic Information phone/address is not automatically
+proof of a clinic-specific business contact.
+
+**Why:** Legacy account information can be personal or belong to another clinic,
+and the user prohibits substituting a prescriber's personal phone for the clinic.
+
+**How to apply:** Offer legacy values only for explicit authorized review, never
+silently copy/fall back; keep independent clinic-scoped letterhead authority.
+
+Prescriber approval must be independent: even an owner cannot approve themselves.
+
+**Why:** The user explicitly requires independent credential verification and an
+audit trail.
+
+**How to apply:** Clinic administration does not itself establish signing authority;
+approved identity and current clinic/provider access must be checked separately.

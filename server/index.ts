@@ -1,4 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
+import { runReadOnlyStartupValidation } from "./startup-safety";
 import helmet from "helmet";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
@@ -432,6 +433,7 @@ app.use((req, res, next) => {
       // any response body from this boundary into workflow logs.
       if (path.startsWith("/api/patient-intake") ||
           path.startsWith("/api/prescription") ||
+          path.startsWith("/api/prescriber-verification") ||
           path.startsWith("/api/prescriber-credentials") ||
           /^\/api\/patients\/[^/]+\/prescriptions(?:\/|$)/.test(path)) {
         logLine += " :: [redacted]";
@@ -463,12 +465,8 @@ app.use((req, res, next) => {
   }
 
   try {
-    console.log("[startup] running ensureSchema…");
-    await ensureSchema();
     console.log("[startup] validating schema drift…");
-    await validateSchemaDrift();
-    console.log("[startup] cleaning up bad chart entries…");
-    await cleanupObjectObjectChartEntries();
+    await runReadOnlyStartupValidation(validateSchemaDrift);
     // ── OpenAI / AI integration key check ────────────────────────────────────
     const aiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
     const aiBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;

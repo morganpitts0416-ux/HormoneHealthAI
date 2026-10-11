@@ -7,6 +7,8 @@ import { finalizePrescription, prescriptionReviewHash, PrescriptionError, type S
 import { classifyPrescription } from "./prescription-medication-policy";
 import { prescriptionStorageKey } from "./prescription-storage";
 import { registerPrescriptionDirectoryRoutes } from "./prescription-directory-routes";
+import { registerPrescriberVerificationRoutes } from "./prescriber-verification-routes";
+import { prescriberReviewHash } from "./prescriber-verification-policy";
 
 import { generatePrescriptionPdf } from "./prescription-pdf";
 import {
@@ -258,6 +260,7 @@ export function registerPrescriptionRoutes(app: Express): void {
       .limit(1).for("share");
 
 if (!prescriber || !prescriber.signatureImage ||
+    credential.verifiedNpi !== prescriber.npi ||
     !/^\d{10}$/.test(prescriber.npi ?? "") ||
     !/^data:image\/(?:png|jpeg);base64,/.test(prescriber.signatureImage)) {
   return null;
@@ -276,6 +279,7 @@ return { ...context, credential, prescriber };
   });
 
   registerPrescriptionDirectoryRoutes(app, getPrescriptionPreparationContext);
+  registerPrescriberVerificationRoutes(app, selectedClinic);
 
 
   // Search saved medication templates for the active clinic.
@@ -471,6 +475,7 @@ return { ...context, credential, prescriber };
               prescribingAuthorized: false,
               verifiedAt: null,
               verifiedByUserId: null,
+              verifiedNpi: null,
               updatedAt: new Date()
             })
             .where(and(
@@ -480,6 +485,16 @@ return { ...context, credential, prescriber };
             ))
             .returning();
 
+          await tx.insert(prescriberCredentialAuditEvents).values({
+            credentialId: existing.id, clinicId: context.clinicId,
+            providerUserId: context.userId, verifierUserId: context.userId,
+            action: "credentials_updated", verificationSource: "Provider account credential update",
+            credentialSnapshot: {
+              licenseState: updated.licenseState, licenseNumber: updated.licenseNumber,
+              licenseType: updated.licenseType, licenseExpiresAt: updated.licenseExpiresAt,
+              authorizationReset: true,
+            },
+          });
           return { credentials: updated, created: false };
         }
 
@@ -527,6 +542,7 @@ return { ...context, credential, prescriber };
 
       const input = z.object({
         approved: z.boolean(),
+      verificationHash: z.string().regex(/^[a-f0-9]{64}$/),
         verificationSource: z.string().trim().min(5).max(300),
         notes: z.string().trim().max(2000).optional()
       }).strict().safeParse(req.body);
@@ -597,8 +613,19 @@ return { ...context, credential, prescriber };
           .limit(1);
 
         if (!locked) throw new Error("CREDENTIAL_NOT_FOUND");
+        const [provider] = await tx.select().from(users)
+          .where(eq(users.id, locked.userId)).limit(1).for("share");
+        if (!provider || prescriberReviewHash(locked, provider) !== input.data.verificationHash) {
+          throw new Error("STALE_CREDENTIAL_REVIEW");
+        }
 
         if (input.data.approved) {
+          if (!provider || !/^\d{10}$/.test(provider.npi ?? "") ||
+              !/^data:image\/(?:png|jpeg);base64,/.test(provider.signatureImage ?? "") ||
+              !locked.licenseType?.trim() || !locked.licenseNumber?.trim() ||
+              !/^[A-Z]{2}$/.test(locked.licenseState ?? "")) {
+            throw new Error("INVALID_PROVIDER_CREDENTIALS");
+          }
           if (!locked.licenseExpiresAt) {
             throw new Error("LICENSE_EXPIRATION_REQUIRED");
           }
@@ -629,6 +656,7 @@ return { ...context, credential, prescriber };
             prescribingAuthorized: input.data.approved,
             verifiedAt: input.data.approved ? new Date() : null,
             verifiedByUserId: input.data.approved ? verifierUserId : null,
+            verifiedNpi: input.data.approved ? provider!.npi : null,
             updatedAt: new Date()
           })
           .where(eq(prescriberCredentials.id, locked.id))
@@ -641,6 +669,11 @@ return { ...context, credential, prescriber };
           verifierUserId,
           action: input.data.approved ? "approved" : "revoked",
           verificationSource: input.data.verificationSource,
+          credentialSnapshot: {
+            npi: provider?.npi ?? null, licenseNumber: locked.licenseNumber,
+            licenseState: locked.licenseState, licenseType: locked.licenseType,
+            licenseExpiresAt: locked.licenseExpiresAt,
+          },
           notes: input.data.notes || null
         });
 
@@ -663,7 +696,9 @@ return { ...context, credential, prescriber };
         SELF_VERIFICATION: [403, "Providers cannot verify their own credentials"],
         LICENSE_EXPIRATION_REQUIRED: [400, "License expiration date required"],
         LICENSE_EXPIRED: [400, "Professional license has expired"],
-        PROVIDER_NOT_ACTIVE: [403, "Provider does not have active clinic access"]
+        PROVIDER_NOT_ACTIVE: [403, "Provider does not have active clinic access"],
+        INVALID_PROVIDER_CREDENTIALS: [400, "Valid NPI, saved signature, and complete license details required"],
+        STALE_CREDENTIAL_REVIEW: [409, "Credentials changed; refresh and review before verification"]
       };
 
       if (known[message]) {
@@ -1206,10 +1241,15 @@ app.post("/api/prescriptions/:prescriptionId/sign", async (req, res) => {
               .where(and(eq(clinics.id, rx.clinicId), eq(clinics.isActive, true)))
               .limit(1).for("share");
             if (!patient || !clinic) throw new PrescriptionError(404, "Prescription not found");
+            if (!clinic.prescriptionAddress?.trim() || !clinic.prescriptionPhone?.trim()) {
+              throw new PrescriptionError(422, "Clinic prescription address and phone require administrator review");
+            }
             return {
               patientName: `${patient.firstName} ${patient.lastName}`,
               patientDob: patient.dateOfBirth, patientAddress: patient.address,
               clinicName: clinic.name,
+              clinicAddress: clinic.prescriptionAddress,
+              clinicPhone: clinic.prescriptionPhone,
             };
           },
           async commitDocument(rx, signer, signedAt, object, classification, reviewHash) {

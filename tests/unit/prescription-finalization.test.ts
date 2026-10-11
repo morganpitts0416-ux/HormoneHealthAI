@@ -55,7 +55,7 @@ function harness() {
           lockPrescription: async (id, clinic) => id === rx.id && clinic === rx.clinicId ? rx : undefined,
           authorizeSigner: async () => signer,
           getDocument: async () => doc,
-          getPdfContext: async () => ({ clinicName: "Synthetic Clinic", patientName: "Synthetic Patient", patientDob: "1990-01-01", patientAddress: "1 Example Ave" }),
+          getPdfContext: async () => ({ clinicName: "Synthetic Clinic", clinicAddress: "100 Synthetic Clinic Avenue", clinicPhone: "555-0100", patientName: "Synthetic Patient", patientDob: "1990-01-01", patientAddress: "1 Example Ave" }),
           async commitDocument(_rx, who, signedAt, object) {
             doc = { id: 2, ...object, signedAt, signedByUserId: who.userId };
             rx = { ...rx, status: "signed", signedAt, signedByUserId: who.userId };
@@ -148,12 +148,12 @@ describe("Prescription finalization (synthetic only)", () => {
   });
   it("renders medication, pharmacy, credentials and signing date in saved PDF", () => {
     const pdf = generatePrescriptionPdf({
-      ...draft(), clinicName: "Synthetic Clinic", patientName: "Synthetic Patient",
+      ...draft(), clinicName: "Synthetic Clinic", clinicAddress: "100 Synthetic Clinic Avenue", clinicPhone: "555-0100", patientName: "Synthetic Patient",
       patientDob: "1990-01-01", signedAt: now, signatureImage: signature,
       prescriberName: "Synthetic Provider", prescriberNpi: identity.npi,
       prescriberLicense: identity.license, prescriberLicenseState: "MS",
     }).toString("latin1");
-    for (const text of ["Synthetic Medication", "Synthetic Pharmacy", "555-0101", "Synthetic Patient", "SYNTHETIC-001", "2026-10-10T15:00:00.000Z"]) expect(pdf).toContain(text);
+    for (const text of ["Synthetic Medication", "Synthetic Pharmacy", "555-0101", "Synthetic Patient", "SYNTHETIC-001", "100 Synthetic Clinic Avenue", "555-0100", "2026-10-10T15:00:00.000Z"]) expect(pdf).toContain(text);
   });
   it("does not silently omit missing or invalid signature", () => {
     const input = { ...draft(), clinicName: "Synthetic Clinic", patientName: "Synthetic Patient", patientDob: null, signedAt: now, prescriberName: "Synthetic Provider" };

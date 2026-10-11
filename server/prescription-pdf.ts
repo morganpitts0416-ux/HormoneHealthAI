@@ -35,6 +35,9 @@ export function generatePrescriptionPdf(data: PrescriptionPdfData): Buffer {
   if (!/^data:image\/(?:png|jpeg);base64,/.test(data.signatureImage ?? "")) {
     throw new Error("A valid saved prescriber signature is required");
   }
+  if (!data.clinicAddress?.trim() || !data.clinicPhone?.trim()) {
+    throw new Error("Reviewed clinic address and phone are required");
+  }
   const pdf = new jsPDF({ unit: "pt", format: "letter" });
   pdf.setCreationDate(data.signedAt);
 
@@ -129,9 +132,9 @@ export function generatePrescriptionPdf(data: PrescriptionPdfData): Buffer {
   line("Medication", data.medicationName);
   line("Strength", data.strength);
   line("Form", data.dosageForm);
-  line("Dose", data.dose);
-  line("Route", data.route);
-  line("Frequency", data.frequency);
+  line("Dose", data.dose || "See SIG");
+  line("Route", data.route || "See SIG");
+  line("Frequency", data.frequency || "See SIG");
   line("Directions", data.sig);
   line("Quantity", data.quantity);
   line("Refills", data.refills);

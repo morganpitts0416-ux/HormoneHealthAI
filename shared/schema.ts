@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
-import { pgTable, serial, varchar, text, timestamp, jsonb, integer, boolean, real, numeric, date, time, uniqueIndex, index, check } from "drizzle-orm/pg-core";
+import { pgTable, serial, varchar, text, timestamp, jsonb, integer, boolean, real, numeric, date, time, uniqueIndex, index, check, foreignKey } from "drizzle-orm/pg-core";
 
 // Patient Demographics & ASCVD Risk Factors Schema
 export const patientDemographicsSchema = z.object({
@@ -1748,6 +1748,9 @@ export const clinics = pgTable("clinics", {
   footerText: text("footer_text"),
   // Clinic fax number — printed on all outbound orders so facilities can fax results back.
   fax: varchar("fax", { length: 30 }),
+  // Explicitly reviewed business letterhead; never fall back to personal contacts.
+  prescriptionAddress: text("prescription_address"),
+  prescriptionPhone: varchar("prescription_phone", { length: 50 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -4074,6 +4077,7 @@ export const prescriberCredentials = pgTable("prescriber_credentials", {
   prescribingAuthorized: boolean("prescribing_authorized").notNull().default(false),
   verifiedAt: timestamp("verified_at"),
   verifiedByUserId: integer("verified_by_user_id"),
+  verifiedNpi: varchar("verified_npi", { length: 10 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => ({
@@ -4198,6 +4202,7 @@ export const prescriptions = pgTable("prescriptions", {
 }, (t) => ({
   patientClinicIdx: index("prescriptions_patient_clinic_idx").on(t.patientId, t.clinicId),
   prescriberIdx: index("prescriptions_prescriber_idx").on(t.prescriberUserId),
+  idClinicIdx: uniqueIndex("prescriptions_id_clinic_idx").on(t.id, t.clinicId),
   statusIdx: index("prescriptions_status_idx").on(t.status),
 }));
 
@@ -4227,6 +4232,7 @@ export const prescriptionDocuments = pgTable("prescription_documents", {
   prescriptionIdx: uniqueIndex("prescription_documents_prescription_idx")
     .on(t.prescriptionId),
   clinicIdx: index("prescription_documents_clinic_idx").on(t.clinicId),
+  tenantFk: foreignKey({ name: "prescription_documents_tenant_fk", columns: [t.prescriptionId, t.clinicId], foreignColumns: [prescriptions.id, prescriptions.clinicId] }),
 }));
 
 // ============================================================================
@@ -4309,6 +4315,7 @@ export const prescriberCredentialAuditEvents = pgTable(
     verifierUserId: integer("verifier_user_id").notNull(),
     action: varchar("action", { length: 40 }).notNull(),
     verificationSource: varchar("verification_source", { length: 300 }),
+    credentialSnapshot: jsonb("credential_snapshot"),
     notes: text("notes"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
@@ -4334,6 +4341,7 @@ export const prescriptionMedications = pgTable("prescription_medications", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, t => ({
   identityIdx: uniqueIndex("prescription_medications_identity_idx").on(t.clinicId, t.identityKey),
+  idClinicIdx: uniqueIndex("prescription_medications_id_clinic_idx").on(t.id, t.clinicId),
   clinicIdx: index("prescription_medications_clinic_idx").on(t.clinicId),
 }));
 
@@ -4354,6 +4362,7 @@ export const prescriptionSigs = pgTable("prescription_sigs", {
 }, t => ({
   identityIdx: uniqueIndex("prescription_sigs_identity_idx").on(t.clinicId, t.medicationId, t.identityKey),
   clinicMedicationIdx: index("prescription_sigs_clinic_medication_idx").on(t.clinicId, t.medicationId),
+  tenantFk: foreignKey({ name: "prescription_sigs_tenant_fk", columns: [t.medicationId, t.clinicId], foreignColumns: [prescriptionMedications.id, prescriptionMedications.clinicId] }),
 }));
 
 export type PrescriptionMedication = typeof prescriptionMedications.$inferSelect;
