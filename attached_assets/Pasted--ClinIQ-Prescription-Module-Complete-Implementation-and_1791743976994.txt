@@ -1,0 +1,92 @@
+# ClinIQ Prescription Module — Complete Implementation and Release Preparation
+
+I want you to take ownership of finishing the ClinIQ prescription module so we can begin clinically using the **Sign → Generate PDF → Securely Save → Download/Print** workflow.
+
+The core implementation is already built. I do NOT want to rebuild it, redesign it unnecessarily, or keep creating competing implementations.
+
+**Your objective is to complete the remaining application work, resolve release blockers, and deliver a fully tested, deployment-ready prescription module.**
+
+## 1. Preserve existing ClinIQ functionality
+
+Our application is already running in production on Google Cloud Run and contains real patient information.
+
+You MUST preserve:
+- All existing patient records and encounters.
+- Encounter documentation and transcription functionality.
+- Existing access controls, clinic isolation, and audit logging.
+- Cancellation and subscription functionality.
+- All existing clinical orders and laboratory functionality.
+- Existing prescription drafts, templates, and directory data.
+
+Do not introduce changes to unrelated functionality.
+
+The current Replit prescription branch is `security/team-access-shadow`, with commit `8e655974a39a4d6b8af79d5165b369093f28d1b2`.
+
+The existing GCP codebase also has a separate history containing commit `bb01c55`. Carefully reconcile relevant differences and avoid overwriting production-specific functionality.
+
+Do not assume that passing synthetic tests means the implementation is ready for production.
+
+## 2. Finish the prescriber verification workflow
+
+The backend already supports prescriber credential verification, but an administrator-facing verification interface is missing.
+
+Build a secure interface under Settings → Prescriber Verification.
+
+It should allow authorized administrators to:
+- View providers requiring verification.
+- Review license information, NPI, and prescribing credentials.
+- Record verification source, date, and verifier.
+- Approve or revoke prescribing authorization.
+- View verification history.
+
+Prescribers must not approve their own authorization, including clinic owners.
+
+Prescribing authorization must be enforced on the server, not merely through the UI.
+
+Do not automatically authorize providers based on their role or account ownership.
+
+## 3. Complete prescription PDF generation
+
+Review the existing PDF generator and signing routes.
+
+Ensure the final signed PDF includes:
+- Patient's full name and required identifying information.
+- Prescription date.
+- Medication name, strength, and dosage form.
+- Dose, route, frequency, and complete SIG.
+- Quantity and refills.
+- Prescriber name, credentials, NPI, and applicable license information.
+- Clinic name, address, and phone number.
+- Provider's previously saved electronic signature.
+
+Use the clinic-specific contact information already stored in ClinIQ.
+
+Do not use a provider's personal phone number as a substitute for the clinic phone.
+
+The saved signed PDF must be the same immutable document retrieved for downloading and printing.
+
+Ensure that a prescription cannot be marked signed unless PDF generation, storage, and integrity verification succeed.
+
+## 4. Finalize the medication directory and SIG functionality
+
+Preserve the new medication directory implementation and clinic-shared SIG functionality.
+
+Ensure:
+- Medication search displays name, strength, and formulation.
+- Selecting a medication fills the correct product information.
+- Dose remains independently editable.
+- Saved SIGs are associated with the correct medication formulation.
+- New SIGs can be saved with explicit provider consent.
+- Clinic-specific medications, SIGs, and pharmacy contacts remain isolated.
+- Inactive directory entries cannot be selected for new prescriptions.
+- Existing medication favorites remain intact.
+
+Do not confuse the medication directory with the approved signing formulary.
+
+Complete the noncontrolled medication catalog approval mechanism, including review metadata, expiration, and exact medication matching.
+
+Do not silently authorize every medication in the directory.
+
+Controlled-substance signing must remain disabled until separately implemented and approved.
+
+## 5. Prepare secure Google
