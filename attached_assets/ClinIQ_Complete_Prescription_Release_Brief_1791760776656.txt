@@ -1,0 +1,41 @@
+CLINIQ PRESCRIPTION MODULE — COMPLETE IMPLEMENTATION AND RELEASE BRIEF
+October 11, 2026
+
+OBJECTIVE
+Finish the existing noncontrolled prescription workflow: Create/Review → Explicitly Sign → Generate PDF → Securely Save → Download/Print. Spruce fax transmission is a separate later release. Finish code and tests, prepare an exact reviewed release, but do not activate or modify production without separate explicit approval.
+
+1. PRESERVE EXISTING CLINIQ FUNCTIONALITY
+The application is live on Google Cloud Run and handles real patient data. Preserve all existing patient records, encounters, transcription, cancellation/subscription behavior, access controls, clinic isolation, audit logs, clinical orders, labs, and prescription drafts/templates/directories. Do not modify unrelated functionality. Replit branch security/team-access-shadow currently includes commit 8e655974a39a4d6b8af79d5165b369093f28d1b2 and ancestor af13809. A separate Cloud Shell lineage includes bb01c55. Do not assume that lineage is included in Replit; reconcile the exact relevant differences using a supplied source handoff or verified Git bundle, and report anything unavailable. Do not perform a wholesale branch overwrite.
+
+2. FINISH PRESCRIBER VERIFICATION
+Build an administrator-facing Settings → Prescriber Verification interface using existing server APIs where appropriate. Authorized administrators should review license, NPI, and prescribing credentials; record verification source/date/verifier; approve or revoke prescribing authorization; and review audit history. Prevent self-approval even for clinic owners. Enforce clinic membership, authorization, valid credentials, and permissions on the server. Do not automatically authorize by role or ownership. Maintain an independent verification trail.
+
+3. COMPLETE PRESCRIPTION PDF
+Review the generator and signing routes. Include required patient identifiers, date, medication name/strength/form, dose, route, frequency, full SIG, quantity, refills, prescriber name/credentials/NPI/applicable license details, clinic name/address/phone, and the provider's previously saved signature. Populate clinic-specific contact details already stored in ClinIQ, not personal phone numbers. Validate legal/clinical completeness for intended noncontrolled paper/fax prescriptions. Signing requires an explicit action for each prescription. The immutable saved PDF must be the same one retrieved for download and print. Do not mark signed until upload, read-back, and SHA-256 verification succeed.
+
+4. PRESERVE SMART DIRECTORY AND CLINIC-SHARED SIGS
+Retain medication name + strength + dosage form search; auto-fill product attributes but do not assume prescribed dose. Saved SIGs must be formulation-specific and clinic-isolated. Prompt to save a new SIG only after a draft saves successfully; failure to save the SIG must not resubmit the prescription. Retain clinic-managed pharmacy contacts, activation/deactivation, and existing favorites without automatic conversion. Inactive entries must not be available for new prescriptions. Keep directory entries distinct from the approved signing formulary. Implement/review an explicit, expiring, reviewed noncontrolled signing catalog with exact name/strength/form matching; do not authorize all directory entries or controlled substances.
+
+5. SECURE GOOGLE CLOUD PDF STORAGE
+Prepare private GCS bucket configuration, least-privilege Cloud Run service-account access, secure upload/read-back, SHA-256 integrity verification, audited retrieval, retention/access policy, and handling of orphaned uploads after rollback. No public URLs. If GCP access is unavailable, give exact configuration instructions and label live checks unverified. Never invent infrastructure test results.
+
+6. DATABASE MIGRATIONS AND STARTUP SAFETY
+Review server/prescription-schema.sql and server/prescription-directory-schema.sql against ORM definitions and actual target database schema when access is available. Prepare additive, idempotent, reviewable migrations for only missing objects, including the uniqueness constraint preventing duplicate signed documents. Preserve all existing patient and prescription data. Verify clinic isolation and cross-clinic references. Review existing automatic startup schema reconciliation and chart cleanup; ensure a deployment/restart cannot unexpectedly alter unrelated clinical records. Do not execute production migrations, restart production, or modify live records without explicit approval. Provide rollback/recovery plan and prerequisites.
+
+7. COMPLETE SIGN → SAVE → DOWNLOAD/PRINT
+Provider opens patient encounter, creates/reviews prescription, verifies medication/SIG/quantity/refills/pharmacy, explicitly confirms Sign, generates the final PDF with verified saved signature, securely saves it, marks Signed only after verified persistence, and downloads/prints the same immutable PDF. Enforce authorization server-side. Handle retries, duplicate clicks, concurrent signing, failed uploads, DB rollbacks, and idempotency. Record full audit trail. Signing stays disabled until separately approved.
+
+8. TESTING
+Run focused automated tests and synthetic browser tests, plus isolated integration tests against actual PostgreSQL and private GCS using synthetic records. Verify clinic isolation, staff/provider permissions, prescriber approval and self-approval prevention, formulary restrictions, duplicate/concurrent signing, rollback behavior, PDF content and signature placement, hash verification, retrieval, print/download, and regression coverage for encounters, transcription, clinical orders, cancellation, and access controls. Report pass/fail evidence accurately. Never test using real patient data.
+
+9. EXACT RELEASE PREPARATION
+Use Replit for development, GitHub for reviewed source, and GCP for deployment. Prepare a dedicated clean release branch/commit and exact diff against the currently deployed production revision. Reconcile the Cloud Shell bb01c55 lineage only after verifying its contents. Preserve GCP build requirements (including Node version and npm registry accessibility) without blindly carrying local changes. Produce staging deployment commands for a 0%-traffic Cloud Run revision with signing disabled, then a separate activation procedure with explicit approval. Do not push, merge, deploy, change environment variables, route traffic, or restart production without approval; committing locally to a dedicated branch is permitted. Do not run broad schema cleanup on startup.
+
+10. COMPLETION REPORT
+Provide: (1) implementation/fixes; (2) files changed; (3) test results and failures; (4) build result; (5) unresolved security/clinical/infrastructure blockers; (6) exact migration requirements; (7) GCP resources and env variables, including PRESCRIPTION_PDF_BUCKET, PRESCRIPTION_NONCONTROLLED_CATALOG_PATH, PRESCRIPTION_SIGNING_APPROVED; (8) branch and exact commit; (9) staging deployment and rollback commands; (10) explicit readiness classification: code complete, staging verified, or production activation approved. Do not equate local tests with production readiness.
+
+RELEASE RESTRICTIONS — NONNEGOTIABLE
+Do not access or use real patient data for testing. Do not modify production databases, GCP resources, service environment variables, or traffic; do not restart/deploy production; do not enable signing; do not send real faxes or prescriptions; do not authorize prescribers automatically; do not enable controlled-substance signing; do not push or merge Git branches without separate explicit approval. If a dependency requires access or approval, finish all safe code work first, then provide the exact blocker and request approval. Do not claim any action completed without evidence.
+
+SPECIAL NOTE ABOUT bb01c55
+The user has not yet supplied independently verified Git metadata or a bundle for bb01c55 to Replit. Do not infer that the prior Cloud Shell handoff archive contains the entire commit or that the Replit branch includes it. Prepare a precise comparison plan and request a safe source handoff if needed; do not overwrite Replit or production code to force histories to match.
