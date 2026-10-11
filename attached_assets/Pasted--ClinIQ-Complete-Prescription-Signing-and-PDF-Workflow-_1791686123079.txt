@@ -1,0 +1,56 @@
+## ClinIQ — Complete Prescription Signing and PDF Workflow
+
+I need you to **finish the existing prescription workflow**, not rebuild it.
+
+### Current implementation
+
+The application uses Express, TypeScript, PostgreSQL/Drizzle, and Google Cloud Storage. Production runs on Google Cloud Run.
+
+The following files and functionality already exist:
+
+- `server/prescription-routes.ts` — prescription creation, draft management, authorization, and an unfinished signing endpoint
+- `server/prescription-pdf.ts` — prescription PDF generator with support for the provider's saved electronic signature
+- `server/prescription-storage.ts` — immutable Google Cloud Storage PDF storage and SHA-256 integrity verification
+- `server/prescription-signing-policy.ts` — signing safety gate
+- `shared/schema.ts` — prescription, document, credential, and audit tables
+- A PDF download endpoint at `GET /api/prescriptions/:prescriptionId/pdf`
+
+The provider's saved signature is stored in `users.signatureImage`. Prescriber credentials are stored in `prescriberCredentials`.
+
+The application currently builds successfully using `npm run build`.
+
+### Required functionality
+
+Complete the workflow:
+
+**Create Draft → Review → Sign → Generate PDF → Save → Download/Print**
+
+1. Allow an authorized, verified provider to electronically sign a draft prescription using their saved signature after explicit confirmation.
+2. Generate a professional prescription PDF with patient details, medication instructions, quantity, refills, pharmacy information, provider credentials, and signature.
+3. Save the finalized PDF securely to Google Cloud Storage.
+4. Record the signing provider, timestamp, prescription status, PDF storage reference, integrity hash, and audit event.
+5. Prevent duplicate signing and modifications after finalization.
+6. Handle interrupted uploads, failed database transactions, and retries safely.
+7. Implement or finish the frontend buttons for **Sign, Download PDF, and Print**.
+8. Ensure downloaded and printed PDFs are retrieved from the finalized document, not regenerated from mutable prescription data.
+9. Preserve clinic-level authorization and patient isolation.
+10. Restrict this initial workflow to noncontrolled prescriptions. Do not build a full controlled-substance verification system now, but do not rely on the existing `isControlledSubstance` field alone because draft creation currently defaults it to false.
+
+### Important restrictions
+
+- Do not implement electronic transmission to pharmacies or automated faxing. We will manually fax through Spruce.
+- Do not modify existing SOAP note signing, patient records, or unrelated ClinIQ functionality.
+- Do not overwrite unrelated uncommitted changes.
+- Do not execute broad baseline migrations or alter existing production patient data.
+- Do not deploy or enable signing until the completed workflow passes authorization, concurrency, storage-failure, and PDF-integrity tests.
+- Use synthetic patient data for testing.
+
+### Deliverables
+
+1. Complete backend and frontend implementation.
+2. Any necessary narrowly scoped database or configuration changes.
+3. Automated tests covering signing, permissions, duplicate requests, failed storage, and retrieval.
+4. A summary of files changed and test results.
+5. Exact Google Cloud deployment steps and required environment variables.
+
+**Work in the existing repository. Do not recreate the prescription module or remove the signing safety gate without implementing and validating the necessary protections.**
