@@ -45,9 +45,15 @@ Region discovery includes the Google Cloud SDK's computed `id` and `region`
 fields as well as v1 location labels and qualified v2 resource names. Missing,
 conflicting or ambiguous regions fail closed; no default region is guessed.
 An explicit `--region` still requires describing and verifying the exact
-production service, expected latest-ready revision and its live traffic.
-The expected revision must account for 100% of positive production traffic;
-split traffic, missing status or a changed revision stops before resource creation.
+production service and its live traffic. The authoritative production baseline
+is the resolved `status.traffic[].revisionName` receiving 100% of traffic, not
+`status.latestReadyRevisionName`. Tagged revisions with missing/zero percent
+do not establish the baseline. Split traffic, unresolved revision pointers,
+missing status or a different serving revision stops before resource creation.
+The expected production revision's immutable image is independently read before
+staging and re-read at completion. The final check compares service metadata and
+all actual traffic bindings (including tag/URL bindings, ignoring list ordering),
+plus that image; an informational latest-ready pointer is not a serving change.
 Do not change the expected revision just to get past a provenance failure.
 
 ## Guardrails

@@ -55,16 +55,42 @@ class MetadataSafety(unittest.TestCase):
     def test_expected_revision_and_full_traffic_pass(self):
         d.validate_production_metadata(service(), "us-central1", PRODUCTION_REVISION)
 
-    def test_latest_ready_mismatch_stops_with_observed_revision(self):
+    def test_user_reported_tagged_latest_ready_does_not_override_100_percent_traffic(self):
         row = service()
-        row["status"]["latestReadyRevisionName"] = "hormonehealthai-00598-test"
-        with self.assertRaisesRegex(d.RunnerFailure, "observed hormonehealthai-00598-test"):
+        row["status"]["latestReadyRevisionName"] = "hormonehealthai-00578-7kl"
+        row["status"]["traffic"].insert(0, {"revisionName": "hormonehealthai-00578-7kl",
+                                          "tag": "prescription-test",
+                                          "url": "https://tagged.example.test"})
+        self.assertEqual(d.validate_production_metadata(row, "us-central1", PRODUCTION_REVISION), PRODUCTION_REVISION)
+
+    def test_other_revision_receiving_100_percent_fails_even_when_latest_ready_expected(self):
+        row = service()
+        row["status"]["traffic"][0]["revisionName"] = "hormonehealthai-00578-7kl"
+        with self.assertRaisesRegex(d.RunnerFailure, "traffic mismatch"):
+            d.validate_production_metadata(row, "us-central1", PRODUCTION_REVISION)
+
+    def test_missing_latest_ready_is_not_missing_serving_provenance(self):
+        row = service()
+        del row["status"]["latestReadyRevisionName"]
+        d.validate_production_metadata(row, "us-central1", PRODUCTION_REVISION)
+
+    def test_duplicate_positive_entries_are_split_even_for_same_revision(self):
+        row = service()
+        row["status"]["traffic"] = [{"revisionName": PRODUCTION_REVISION, "percent": 50}] * 2
+        with self.assertRaisesRegex(d.RunnerFailure, "split"):
             d.validate_production_metadata(row, "us-central1", PRODUCTION_REVISION)
 
     def test_split_live_traffic_stops_even_with_expected_latest_ready(self):
         row = service()
         row["status"]["traffic"] = [{"revisionName": PRODUCTION_REVISION, "percent": 90},
                                     {"revisionName": "hormonehealthai-00598-test", "percent": 10}]
+        with self.assertRaisesRegex(d.RunnerFailure, "traffic mismatch"):
+            d.validate_production_metadata(row, "us-central1", PRODUCTION_REVISION)
+
+    def test_tag_with_positive_percent_is_not_ignored(self):
+        row = service()
+        row["status"]["traffic"] = [{"revisionName": PRODUCTION_REVISION, "percent": 90},
+                                    {"revisionName": "hormonehealthai-00578-7kl", "tag": "review", "percent": 10}]
         with self.assertRaisesRegex(d.RunnerFailure, "traffic mismatch"):
             d.validate_production_metadata(row, "us-central1", PRODUCTION_REVISION)
 
@@ -83,10 +109,59 @@ class MetadataSafety(unittest.TestCase):
         with self.assertRaisesRegex(d.RunnerFailure, "100%"):
             d.validate_production_metadata(row, "us-central1", PRODUCTION_REVISION)
 
-    def test_latest_revision_pointer_resolves_verified_ready(self):
+    def test_latest_revision_pointer_without_resolved_traffic_revision_stops(self):
         row = service()
         row["status"]["traffic"] = [{"latestRevision": True, "percent": 100}]
+        with self.assertRaisesRegex(d.RunnerFailure, "resolved revisionName"):
+            d.validate_production_metadata(row, "us-central1", PRODUCTION_REVISION)
+
+    def test_latest_revision_flag_with_resolved_revision_is_verified_by_traffic(self):
+        row = service()
+        row["status"]["traffic"][0]["latestRevision"] = True
+        row["status"]["latestReadyRevisionName"] = "hormonehealthai-00578-7kl"
         d.validate_production_metadata(row, "us-central1", PRODUCTION_REVISION)
+
+    def test_invalid_image_stops(self):
+        for image in ("", "mutable:latest", "sha256:short", "untrusted\nsha256:" + "a" * 64):
+            with self.assertRaisesRegex(d.RunnerFailure, "immutable image"):
+                d.validate_production_image(image)
+
+    def test_final_check_preserves_tagged_revision_and_ignores_ready_pointer_and_order(self):
+        before = service()
+        before["status"]["latestReadyRevisionName"] = "hormonehealthai-00578-7kl"
+        before["status"]["traffic"].append({"revisionName": "hormonehealthai-00578-7kl",
+                                           "tag": "prescription-test", "url": "https://tagged.example.test"})
+        after = json.loads(json.dumps(before))
+        after["status"]["traffic"].reverse()
+        after["status"]["latestReadyRevisionName"] = "hormonehealthai-00579-test"
+        image = "example.test/project/image@sha256:" + "a" * 64
+        d.verify_production_unchanged(before, after, "us-central1", PRODUCTION_REVISION, image, image)
+
+    def test_final_check_detects_tag_binding_change(self):
+        before = service()
+        before["status"]["traffic"].append({"revisionName": "hormonehealthai-00578-7kl", "tag": "review"})
+        after = json.loads(json.dumps(before))
+        after["status"]["traffic"][1]["revisionName"] = "hormonehealthai-00579-test"
+        image = "sha256:" + "a" * 64
+        with self.assertRaisesRegex(d.RunnerFailure, "configuration"):
+            d.verify_production_unchanged(before, after, "us-central1", PRODUCTION_REVISION, image, image)
+
+    def test_final_check_detects_metadata_and_image_change(self):
+        before = service()
+        after = json.loads(json.dumps(before))
+        after["metadata"]["labels"] = {"changed": "true"}
+        image = "sha256:" + "a" * 64
+        with self.assertRaisesRegex(d.RunnerFailure, "metadata changed"):
+            d.verify_production_unchanged(before, after, "us-central1", PRODUCTION_REVISION, image, image)
+        with self.assertRaisesRegex(d.RunnerFailure, "image changed"):
+            d.verify_production_unchanged(before, before, "us-central1", PRODUCTION_REVISION, image, "sha256:" + "b" * 64)
+
+    def test_final_check_detects_serving_revision_change(self):
+        after = service()
+        after["status"]["traffic"][0]["revisionName"] = "hormonehealthai-00578-7kl"
+        image = "sha256:" + "a" * 64
+        with self.assertRaisesRegex(d.RunnerFailure, "traffic mismatch"):
+            d.verify_production_unchanged(service(), after, "us-central1", PRODUCTION_REVISION, image, image)
 
     def test_zero_percent_tag_is_not_a_live_traffic_split(self):
         row = service()
@@ -151,6 +226,42 @@ class MetadataSafety(unittest.TestCase):
             self.assertIn("FAILURE:", log)
             self.assertTrue(all("list" in argv or "describe" in argv for argv in calls))
             self.assertFalse((workspace / "state.json").exists())
+
+    def test_main_split_traffic_or_unverified_image_stops_before_any_cloud_write(self):
+        for failure in ("split", "image"):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as temp:
+                workspace = pathlib.Path(temp)
+                calls = []
+                row = service()
+                row["status"]["latestReadyRevisionName"] = "hormonehealthai-00578-7kl"
+                row["status"]["traffic"].append({"revisionName": "hormonehealthai-00578-7kl",
+                                                "tag": "prescription-test", "url": "https://tagged.example.test"})
+                if failure == "split":
+                    row["status"]["traffic"][0]["percent"] = 90
+                    row["status"]["traffic"][1]["percent"] = 10
+                def simulated(argv, **kwargs):
+                    calls.append(argv)
+                    if "auth" in argv:
+                        stdout = "synthetic@example.test"
+                    elif "projects" in argv:
+                        stdout = "realign-lab-app"
+                    elif "list" in argv:
+                        stdout = json.dumps([row])
+                    elif "revisions" in argv:
+                        stdout = "not-an-immutable-image"
+                    else:
+                        stdout = json.dumps(row)
+                    return subprocess.CompletedProcess(argv, 0, stdout=stdout, stderr="")
+                console = io.StringIO()
+                with patch("run.prepare", return_value=workspace), patch("sys.argv", ["run.py", "--execute"]), \
+                     patch("diagnostics.subprocess.run", side_effect=simulated), \
+                     contextlib.redirect_stdout(console), contextlib.redirect_stderr(console):
+                    with self.assertRaises(SystemExit) as exit:
+                        run.main()
+                self.assertEqual(exit.exception.code, 1)
+                self.assertTrue(all("list" in argv or "describe" in argv for argv in calls))
+                self.assertIn("traffic mismatch" if failure == "split" else "immutable image", console.getvalue())
+                self.assertFalse((workspace / "state.json").exists())
 
 
 if __name__ == "__main__":

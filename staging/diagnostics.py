@@ -159,17 +159,11 @@ def validate_production_metadata(before, region, expected_revision):
         raise RunnerFailure("Described production region differs from the requested region; stopped.")
     status = before.get("status")
     if not isinstance(status, dict):
-        raise RunnerFailure("Production status is missing from Cloud Run describe. Include status.traffic and status.latestReadyRevisionName in the projection.")
-    ready = status.get("latestReadyRevisionName")
-    if not isinstance(ready, str) or not REVISION.fullmatch(ready):
-        raise RunnerFailure("Production latestReadyRevisionName is missing or invalid; no revision can be independently verified.")
-    if ready != expected_revision:
-        raise RunnerFailure(f"Production revision mismatch: expected {expected_revision}; observed {ready}. "
-                            "Reconcile the source with this independently observed revision before retrying; do not change the expected baseline merely to continue.")
+        raise RunnerFailure("Production status is missing from Cloud Run describe. Include status.traffic in the projection.")
     traffic = status.get("traffic")
     if not isinstance(traffic, list) or not traffic:
         raise RunnerFailure("Production traffic metadata is missing; cannot verify the live baseline.")
-    total = 0
+    total, positive = 0, []
     for entry in traffic:
         if not isinstance(entry, dict):
             raise RunnerFailure("Production traffic entry is invalid.")
@@ -177,11 +171,49 @@ def validate_production_metadata(before, region, expected_revision):
         if type(percent) is not int or not 0 <= percent <= 100:
             raise RunnerFailure("Production traffic percentage is missing or invalid.")
         revision = entry.get("revisionName")
-        if revision is None and entry.get("latestRevision") is True:
-            revision = ready
+        # status.traffic must identify the resolved serving revision. A
+        # latestRevision pointer alone must never be resolved using latestReady.
+        if percent and (not isinstance(revision, str) or not REVISION.fullmatch(revision)):
+            raise RunnerFailure("Positive production traffic has no independently resolved revisionName; latestReadyRevisionName is not a serving-baseline substitute.")
         if percent and revision != expected_revision:
             observed = revision if isinstance(revision, str) and REVISION.fullmatch(revision) else "<unverified revision>"
             raise RunnerFailure(f"Production traffic mismatch: positive traffic reaches {observed}, not {expected_revision}. Reconcile production source/traffic before retrying.")
         total += percent
+        if percent:
+            positive.append(entry)
     if total != 100:
         raise RunnerFailure("Production traffic does not independently account for 100%; stopped before staging resource creation.")
+    if len(positive) != 1 or positive[0]["percent"] != 100:
+        raise RunnerFailure("Production traffic is split; expected one resolved revision receiving 100%.")
+    return expected_revision
+
+
+def validate_production_image(image):
+    if not isinstance(image, str) or not re.fullmatch(r"(?:[A-Za-z0-9._:/-]+@)?sha256:[a-f0-9]{64}", image):
+        raise RunnerFailure("Could not independently verify the expected production revision's immutable image digest. Check the shown revision describe command; do not substitute another image.")
+    return image
+
+
+def production_snapshot(metadata, region, expected_revision):
+    """Compare serving state and all traffic bindings, not the informational ready pointer."""
+    active = validate_production_metadata(metadata, region, expected_revision)
+    traffic = []
+    for original in metadata["status"]["traffic"]:
+        entry = dict(original)
+        # Missing percent on a tagged URL is semantically zero.
+        entry.setdefault("percent", 0)
+        traffic.append(entry)
+    return {
+        "service": service_name(metadata), "region": region,
+        "metadata": metadata.get("metadata") or {},
+        "activeRevision": active,
+        # Ordering of API traffic entries is not a routing/configuration change.
+        "traffic": sorted(json.dumps(entry, sort_keys=True) for entry in traffic),
+    }
+
+
+def verify_production_unchanged(before, after, region, expected_revision, prior_image, current_image):
+    if production_snapshot(before, region, expected_revision) != production_snapshot(after, region, expected_revision):
+        raise RunnerFailure("Production traffic configuration or relevant service metadata changed during staging; investigate without changing production.")
+    if validate_production_image(prior_image) != validate_production_image(current_image):
+        raise RunnerFailure("Expected production revision image changed during staging; investigate without changing production.")

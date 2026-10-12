@@ -19,7 +19,7 @@ import zlib
 import struct
 from datetime import datetime, timedelta, timezone
 from prepare import prepare, PROJECT, PRODUCTION_REVISION
-from diagnostics import CommandRunner, RunnerFailure, metadata_json, discover_region, validate_production_metadata, REGION, sanitize
+from diagnostics import CommandRunner, RunnerFailure, metadata_json, discover_region, validate_production_metadata, validate_production_image, verify_production_unchanged, REGION, sanitize
 
 TOOLS = pathlib.Path(__file__).resolve().parent
 
@@ -131,12 +131,11 @@ def main():
                                      "--format=json(id,name,region,location,metadata.name,metadata.labels,status.traffic,status.latestReadyRevisionName)",
                                      capture=True), "Production service verification")
         validate_production_metadata(before, region, PRODUCTION_REVISION)
-        command.note("VERIFIED production ready revision and 100% traffic: " + PRODUCTION_REVISION)
+        command.note("VERIFIED authoritative production revision receiving 100% traffic: " + PRODUCTION_REVISION)
         (workspace / "production-before.json").write_text(json.dumps(before, indent=2))
         previous_image = cloud("run", "revisions", "describe", PRODUCTION_REVISION, "--region=" + region,
                                "--format=value(status.imageDigest)", capture=True)
-        if not re.search(r"sha256:[a-f0-9]{64}$", previous_image):
-            raise RuntimeError("Could not independently capture immutable production rollback image")
+        validate_production_image(previous_image)
         (workspace / "rollback-evidence.json").write_text(json.dumps({
             "service": "hormonehealthai", "region": region, "project": PROJECT,
             "priorRevision": PRODUCTION_REVISION, "priorImage": previous_image,
@@ -314,8 +313,9 @@ def main():
                                     "--format=json(id,name,region,location,metadata.name,metadata.labels,status.traffic,status.latestReadyRevisionName)",
                                     capture=True), "Production post-staging verification")
         validate_production_metadata(after, region, PRODUCTION_REVISION)
-        if after != before:
-            raise RuntimeError("Production metadata changed during staging; investigate without changing production")
+        current_image = cloud("run", "revisions", "describe", PRODUCTION_REVISION, "--region=" + region,
+                              "--format=value(status.imageDigest)", capture=True)
+        verify_production_unchanged(before, after, region, PRODUCTION_REVISION, previous_image, current_image)
         state["actual_http_storage_tests_passed"] = True
         state["browser_journey_tested"] = False
         private_write(workspace / "state.json", json.dumps(state, indent=2))
