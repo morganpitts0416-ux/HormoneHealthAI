@@ -1,0 +1,45 @@
+I want to revise our release preparation strategy.
+
+We have established that both existing GitHub branches contain inherited uploaded assets and that an entirely upload-free Git history is not available.
+
+I do not want to keep blocking prescription development on an impossible baseline requirement.
+
+Please proceed with a focused, read-only release and repository security assessment.
+
+**Part 1 — Repository security**
+
+Determine whether the inherited uploaded files contain sensitive information, including PHI, credentials, access tokens, private keys, database connection strings, or confidential clinic records.
+
+Do not print or reproduce sensitive contents.
+
+Identify whether potentially sensitive files are already published to GitHub or exist only in local commits.
+
+Report the number and categories of affected files, their exposure status, and the recommended remediation.
+
+Do not assume that a private repository eliminates the need for remediation.
+
+**Part 2 — Production reconciliation**
+
+Compare the completed prescription implementation at `ce7a5e06026429e22fa63f846024088aa3252dcb` with the existing GitHub code.
+
+Identify the exact prescription-related changes required to integrate the completed implementation into the verified production source.
+
+Do not overwrite or remove encounter documentation, transcription, cancellation, access-control, or other clinical functionality.
+
+**Part 3 — Recommend a practical release strategy**
+
+Determine whether we can safely:
+
+1. Create a minimal prescription release patch against the verified production source.
+2. Exclude uploaded assets from the release artifact.
+3. Preserve existing application behavior.
+4. Deploy to an isolated staging environment without production traffic.
+5. Address historical repository cleanup separately, provided no sensitive material would be newly exposed.
+
+If the repository contains sensitive material that would be newly disclosed by a push, identify that as a blocker.
+
+If existing GitHub history already contains sensitive information, recommend an appropriate containment and remediation plan.
+
+Do not push, merge, deploy, migrate, rewrite history, or activate signing.
+
+Return a specific recommended release path, including the exact Git baseline, necessary changes, security blockers, and the next action required.
