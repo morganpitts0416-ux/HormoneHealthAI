@@ -19,6 +19,7 @@ import zlib
 import struct
 from datetime import datetime, timedelta, timezone
 from prepare import prepare, PROJECT, PRODUCTION_REVISION
+from diagnostics import CommandRunner, RunnerFailure, metadata_json, discover_region, validate_production_metadata, REGION, sanitize
 
 TOOLS = pathlib.Path(__file__).resolve().parent
 
@@ -90,12 +91,7 @@ def main():
     broken_bucket = False
     phase = "authentication"
 
-    def command(argv, capture=False, env=None, cwd=None):
-        result = subprocess.run(argv, stdout=subprocess.PIPE if capture else log, stderr=log,
-                                env=env if env is not None else clean_environment(), cwd=cwd, text=True)
-        if result.returncode:
-            raise RuntimeError("Operator command failed; sensitive output retained only in private/operator.log")
-        return result.stdout.strip() if capture else None
+    command = CommandRunner(log, clean_environment)
 
     def cloud(*args, capture=False):
         return command(["gcloud", "--quiet", "--project=" + PROJECT, *args], capture=capture)
@@ -120,18 +116,22 @@ def main():
             raise RuntimeError("Wrong Google project")
         step("verify production metadata read-only")
         if args.region:
+            if not REGION.fullmatch(args.region):
+                raise RunnerFailure("--region is not a valid Cloud Run region name; provide an independently verified region, not a URL or resource name.")
             region = args.region
         else:
-            services = json.loads(cloud("run", "services", "list", "--platform=managed",
-                                      "--format=json(metadata.name,metadata.labels)", capture=True))
-            matches = [r for r in services if r["metadata"]["name"].split("/")[-1] == "hormonehealthai"]
-            if len(matches) != 1:
-                raise RuntimeError("Could not independently locate production region; supply --region")
-            region = matches[0]["metadata"]["labels"]["cloud.googleapis.com/location"]
-        before = json.loads(cloud("run", "services", "describe", "hormonehealthai", "--region=" + region,
-                                  "--format=json(status.traffic,status.latestReadyRevisionName)", capture=True))
-        if before["status"]["latestReadyRevisionName"] != PRODUCTION_REVISION:
-            raise RuntimeError("Production revision differs from the user-verified source; stop reconciliation")
+            # gcloud's global list exposes computed id/region fields; a location
+            # label is not guaranteed. Never guess a default region.
+            services = metadata_json(cloud("run", "services", "list", "--platform=managed",
+                                           "--format=json(id,name,region,location,metadata.name,metadata.labels)",
+                                           capture=True), "Production region discovery")
+            region = discover_region(services)
+        command.note("VERIFIED production region: " + region)
+        before = metadata_json(cloud("run", "services", "describe", "hormonehealthai", "--region=" + region,
+                                     "--format=json(id,name,region,location,metadata.name,metadata.labels,status.traffic,status.latestReadyRevisionName)",
+                                     capture=True), "Production service verification")
+        validate_production_metadata(before, region, PRODUCTION_REVISION)
+        command.note("VERIFIED production ready revision and 100% traffic: " + PRODUCTION_REVISION)
         (workspace / "production-before.json").write_text(json.dumps(before, indent=2))
         previous_image = cloud("run", "revisions", "describe", PRODUCTION_REVISION, "--region=" + region,
                                "--format=value(status.imageDigest)", capture=True)
@@ -310,8 +310,10 @@ def main():
               "--update-env-vars=PRESCRIPTION_PDF_BUCKET=" + state["bucket"])
         broken_bucket = False
         command(["node", str(TOOLS / "database.mjs"), "assert", str(workspace)])
-        after = json.loads(cloud("run", "services", "describe", "hormonehealthai", "--region=" + region,
-                                 "--format=json(status.traffic,status.latestReadyRevisionName)", capture=True))
+        after = metadata_json(cloud("run", "services", "describe", "hormonehealthai", "--region=" + region,
+                                    "--format=json(id,name,region,location,metadata.name,metadata.labels,status.traffic,status.latestReadyRevisionName)",
+                                    capture=True), "Production post-staging verification")
+        validate_production_metadata(after, region, PRODUCTION_REVISION)
         if after != before:
             raise RuntimeError("Production metadata changed during staging; investigate without changing production")
         state["actual_http_storage_tests_passed"] = True
@@ -325,8 +327,13 @@ def main():
         for filename in ("admin-password", "app-password", "pgtest-password", "session",
                          "migration-url", "app-url", "accounts.json", "catalog.json", "signature"):
             (private / filename).unlink(missing_ok=True)
-    except Exception:
+    except Exception as error:
+        detail = sanitize(f"{type(error).__name__}: {error}")
+        command.note("STOPPED phase: " + phase)
+        command.note("FAILURE: " + detail)
         print("STOPPED at:", phase, file=sys.stderr)
+        print("Command/context:", command.last_command or "Python staging preparation", file=sys.stderr)
+        print("Reason:", detail, file=sys.stderr)
         print("No production write or destructive cleanup was attempted. Keep created staging resources for diagnosis.", file=sys.stderr)
         print("Private workspace:", workspace, file=sys.stderr)
         raise SystemExit(1)

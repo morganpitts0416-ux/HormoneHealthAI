@@ -33,6 +33,23 @@ enabled; the runner does not change project-wide API enablement.
 Google authentication must already be available through the normal SDK OAuth flow.
 It never asks for a password, key, token or credential in chat.
 
+## Actionable failures and production metadata
+
+Every subprocess records its sanitized command and exit status immediately,
+even when successful stderr is empty. Captured response bodies are not logged.
+On failure, the console and protected log identify the command/context and
+specific validation error or sanitized CLI stderr with an action to take.
+Python metadata errors no longer disappear behind a generic phase message.
+
+Region discovery includes the Google Cloud SDK's computed `id` and `region`
+fields as well as v1 location labels and qualified v2 resource names. Missing,
+conflicting or ambiguous regions fail closed; no default region is guessed.
+An explicit `--region` still requires describing and verifying the exact
+production service, expected latest-ready revision and its live traffic.
+The expected revision must account for 100% of positive production traffic;
+split traffic, missing status or a changed revision stops before resource creation.
+Do not change the expected revision just to get past a provenance failure.
+
 ## Guardrails
 
 - Verify the existing patch checksum and all reviewed standalone module hashes.
