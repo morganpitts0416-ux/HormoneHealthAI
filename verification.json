@@ -1,0 +1,36 @@
+{
+  "unit_and_regression_tests": {
+    "passed": 151,
+    "files": 13,
+    "scope": "143 baseline integration tests plus eight new prescription-log tests; synthetic fixtures only"
+  },
+  "postgres_checks": {
+    "passed": 6,
+    "scope": "Private local socket/database/role; in-memory storage double, not GCS"
+  },
+  "production_build": {
+    "frontend": "passed",
+    "backend": "passed after export helper correction and log policy addition",
+    "notes": "Existing Browserslist/PostCSS/chunk-size warnings; no undefined-export warnings"
+  },
+  "browser": {
+    "passed": true,
+    "scope": "Synthetic intercepted settings only: business contacts persistence/separation; self approval disabled, independent review available",
+    "not_proven": "Real signed-in production endpoints or GCS"
+  },
+  "dependency_audit": {
+    "critical": 0,
+    "high": 30,
+    "moderate": 32,
+    "low": 8
+  },
+  "not_performed": [
+    "Application database migrations",
+    "Production data access",
+    "GCP connections or resource changes",
+    "Remote push/merge",
+    "Production deploy/traffic changes",
+    "Live signing activation",
+    "Existing application service restart"
+  ]
+}

@@ -1,0 +1,343 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>ClinIQ prescription release preparation</title><style>body{font:16px system-ui,sans-serif;max-width:1100px;margin:32px auto;padding:0 24px;color:#19211a;line-height:1.5}h1,h2{color:#465329}pre,code{font:13px ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f5ef;padding:16px;border-radius:6px}table{border-collapse:collapse;width:100%;font-size:13px}td,th{border:1px solid #ddd;padding:6px;text-align:left}.warning{padding:16px;background:#fff3da;border-left:4px solid #8a6c31}</style><h1>Prescription release preparation</h1><p class="warning">Prepared and tested locally. NOT deployed or enabled. The comparison baseline is not independently verified current production source.</p><h2>Release files</h2><p>Workspace directory: <code>generated-artifacts/prescription-release/</code>. Patch: <code>prescription-production.patch</code>. Metadata: <code>manifest.json</code>. Separate migration SQL: <code>migrations/</code>.</p><pre>{
+  &quot;comparison_baseline&quot;: &quot;320a534de8d95265d535085ef0cf06cf95202577&quot;,
+  &quot;reviewed_donor&quot;: &quot;ce7a5e06026429e22fa63f846024088aa3252dcb&quot;,
+  &quot;production_baseline_verified&quot;: false,
+  &quot;sha256&quot;: &quot;085f13a010b77d0769e8b60d97f161ca5c59a2b7c87bef676ece355c4c45681b&quot;,
+  &quot;bytes&quot;: 411606
+}</pre><h2>Verification</h2><pre>{
+  &quot;unit_and_regression_tests&quot;: {
+    &quot;passed&quot;: 151,
+    &quot;files&quot;: 13,
+    &quot;scope&quot;: &quot;143 baseline integration tests plus eight new prescription-log tests; synthetic fixtures only&quot;
+  },
+  &quot;postgres_checks&quot;: {
+    &quot;passed&quot;: 6,
+    &quot;scope&quot;: &quot;Private local socket/database/role; in-memory storage double, not GCS&quot;
+  },
+  &quot;production_build&quot;: {
+    &quot;frontend&quot;: &quot;passed&quot;,
+    &quot;backend&quot;: &quot;passed after export helper correction and log policy addition&quot;,
+    &quot;notes&quot;: &quot;Existing Browserslist/PostCSS/chunk-size warnings; no undefined-export warnings&quot;
+  },
+  &quot;browser&quot;: {
+    &quot;passed&quot;: true,
+    &quot;scope&quot;: &quot;Synthetic intercepted settings only: business contacts persistence/separation; self approval disabled, independent review available&quot;,
+    &quot;not_proven&quot;: &quot;Real signed-in production endpoints or GCS&quot;
+  },
+  &quot;dependency_audit&quot;: {
+    &quot;critical&quot;: 0,
+    &quot;high&quot;: 30,
+    &quot;moderate&quot;: 32,
+    &quot;low&quot;: 8
+  },
+  &quot;not_performed&quot;: [
+    &quot;Application database migrations&quot;,
+    &quot;Production data access&quot;,
+    &quot;GCP connections or resource changes&quot;,
+    &quot;Remote push/merge&quot;,
+    &quot;Production deploy/traffic changes&quot;,
+    &quot;Live signing activation&quot;,
+    &quot;Existing application service restart&quot;
+  ]
+}</pre><h2>Changed-file manifest</h2><table><thead><tr><th>Path</th><th>Change</th></tr></thead><tbody><tr><td>.dockerignore</td><td>modified</td></tr><tr><td>.gcloudignore</td><td>modified</td></tr><tr><td>client/src/components/clinical-orders-panel.tsx</td><td>modified</td></tr><tr><td>client/src/components/prescriber-credentials-settings.tsx</td><td>new</td></tr><tr><td>client/src/components/prescriber-verification-settings.tsx</td><td>new</td></tr><tr><td>client/src/components/prescription-dialog.tsx</td><td>new</td></tr><tr><td>client/src/components/prescription-directory-section.tsx</td><td>new</td></tr><tr><td>client/src/hooks/use-clinic-branding.ts</td><td>modified</td></tr><tr><td>client/src/lib/prescription-directory.ts</td><td>new</td></tr><tr><td>client/src/pages/account.tsx</td><td>modified</td></tr><tr><td>docs/prescription-production-integration.md</td><td>new</td></tr><tr><td>docs/prescription-security-remediation.md</td><td>new</td></tr><tr><td>package-lock.json</td><td>modified</td></tr><tr><td>package.json</td><td>modified</td></tr><tr><td>scripts/prescription-postgres-integration.ts</td><td>new</td></tr><tr><td>scripts/run-prescription-postgres-integration.sh</td><td>new</td></tr><tr><td>scripts/validate-prescription-formulary.ts</td><td>new</td></tr><tr><td>server/index.ts</td><td>modified</td></tr><tr><td>server/prescriber-verification-policy.ts</td><td>new</td></tr><tr><td>server/prescriber-verification-routes.ts</td><td>new</td></tr><tr><td>server/prescription-directory-routes.ts</td><td>new</td></tr><tr><td>server/prescription-directory-schema.sql</td><td>new</td></tr><tr><td>server/prescription-finalization.ts</td><td>new</td></tr><tr><td>server/prescription-log-policy.ts</td><td>new</td></tr><tr><td>server/prescription-medication-policy.ts</td><td>new</td></tr><tr><td>server/prescription-pdf.ts</td><td>new</td></tr><tr><td>server/prescription-release-preflight.sql</td><td>new</td></tr><tr><td>server/prescription-release-schema.sql</td><td>new</td></tr><tr><td>server/prescription-routes.ts</td><td>new</td></tr><tr><td>server/prescription-schema.sql</td><td>new</td></tr><tr><td>server/prescription-signing-policy.ts</td><td>new</td></tr><tr><td>server/prescription-storage.ts</td><td>new</td></tr><tr><td>server/routes.ts</td><td>modified</td></tr><tr><td>server/startup-safety.ts</td><td>new</td></tr><tr><td>shared/schema.ts</td><td>modified</td></tr><tr><td>tests/unit/prescriber-verification.test.ts</td><td>new</td></tr><tr><td>tests/unit/prescription-directory-matching.test.ts</td><td>new</td></tr><tr><td>tests/unit/prescription-directory.test.ts</td><td>new</td></tr><tr><td>tests/unit/prescription-finalization.test.ts</td><td>new</td></tr><tr><td>tests/unit/prescription-fixtures.ts</td><td>new</td></tr><tr><td>tests/unit/prescription-legacy-pdf-regression.test.ts</td><td>new</td></tr><tr><td>tests/unit/prescription-log-policy.test.ts</td><td>new</td></tr><tr><td>tests/unit/prescription-memory-db.ts</td><td>new</td></tr><tr><td>tests/unit/prescription-release-compatibility.test.ts</td><td>new</td></tr><tr><td>tests/unit/prescription-routes.test.ts</td><td>new</td></tr><tr><td>tests/unit/prescription-signing-policy.test.ts</td><td>new</td></tr><tr><td>tests/unit/prescription-startup-safety.test.ts</td><td>new</td></tr><tr><td>tests/unit/prescription-storage.test.ts</td><td>new</td></tr></tbody></table><h2>Integration and launch instructions</h2><pre># Prescription code-only integration and launch
+
+## Scope and the single missing source artifact
+
+Donor implementation: `ce7a5e06026429e22fa63f846024088aa3252dcb`, with the
+local release hardening described below. The generated patch uses GitHub
+`main` commit `320a534de8d95265d535085ef0cf06cf95202577` as its explicit
+**comparison baseline, not a claim about the currently running Cloud Run source**.
+
+The one source artifact needed to finish production reconciliation is the
+**current verified Cloud Run production source snapshot**, with its package
+lock, existing build/start configuration, source checksum, build identifier,
+revision and image-digest provenance. Provide code only: no `.git`, `.env`,
+uploaded briefs/archives/clinical records, service-account keys or credentials.
+Do not infer production provenance from a GitHub branch or use an older
+historical cancellation archive unless it is independently confirmed current.
+
+Offline implementation, patch export and synthetic tests are authorized.
+Remote push, production database operations, GCP resource/deployment changes,
+production traffic and live signing remain separate approvals.
+
+## Export and integrate without overwriting unrelated code
+
+Run in the prepared Replit source:
+
+```sh
+python3 scripts/export-prescription-release.py
+sha256sum generated-artifacts/prescription-release/prescription-production.patch
+```
+
+The exporter is deterministic and allowlisted. It omits uploaded assets,
+agent memory, unrelated checkpoint changes, portal/access foundation changes,
+and unrelated package scripts. It preserves all comparison-baseline schema
+tables and clinic `phone`/`address`, existing clinical-order drawer code and
+shared routes, adding only the prescription registration. Startup removes the
+broad schema migration and chart-cleanup calls; migrations are operator-run only.
+
+In an isolated working copy of the verified production source:
+
+```sh
+# No --3way, --reject, force, or whole-file overwrite.
+git apply --check /approved/prescription-production.patch
+# Only if the complete check passes and the diff has been approved:
+git apply /approved/prescription-production.patch
+git diff --check
+git diff --stat
+```
+
+If the check fails, STOP automatic application—not development. Existing Cloud
+Shell prescription files may already be newer than the comparison baseline.
+Reconcile the specific files/hunks against the supplied production snapshot:
+
+1. Compare each standalone prescription/prescriber module and test in
+   `manifest.json`; retain verified production changes outside this scope.
+2. `shared/schema.ts`: add only the prescription section/table definitions and
+   required `check`/`foreignKey` imports. Preserve existing clinic `phone` and
+   `address` and every encounter, cancellation, order and access definition.
+3. `server/routes.ts`: import/register `registerPrescriptionRoutes(app)` once.
+   Do not transfer the donor&#x27;s unrelated authorization/clinical route changes.
+4. `server/index.ts`: remove only automatic `ensureSchema()` and chart-cleanup
+   startup calls, use `runReadOnlyStartupValidation(validateSchemaDrift)`, retain read-only drift
+   checking and existing middleware/start architecture. Carry the prescription
+   log policy: redact both response contents and patient/prescription path IDs,
+   including case-insensitive route spellings, without changing other workflows.
+5. Account settings: add PrescriberCredentialsSettings, independent admin
+   verification and prescription directories, navigation/role visibility only.
+   Preserve existing clinic contact fields/API, signatures and other settings.
+6. Clinical orders: add the prescription tab/dialog/query/mutation wiring only.
+   Keep existing orders, facilities, referring-provider display and encounters.
+7. Package/lockfile: carry the GCS dependency and patched jsPDF/AutoTable,
+   Express and proxy-addr versions. Resolve the lock against the actual target
+   package declarations; never import unrelated scripts/toolchain changes.
+
+Produce a new target-specific diff/checksum after reconciliation and test that
+exact target. A successfully checked comparison patch is not proof of current
+production integration. Do not push donor commits or their local ancestry.
+
+## Reviewed migrations: no startup migration, no chart cleanup
+
+Inspect the target schema first with `server/prescription-release-preflight.sql`.
+Use a secure named libpq service configured by the database owner—not a URL
+containing a password in a command, document, or chat.
+
+After backup and explicit approval, apply these operations in order:
+
+```sh
+psql &#x27;service=approved_prescription_target&#x27; -X -v ON_ERROR_STOP=1 \
+  -f server/prescription-release-preflight.sql
+# Each script contains its own BEGIN/COMMIT transaction.
+psql &#x27;service=approved_prescription_target&#x27; -X -v ON_ERROR_STOP=1 \
+  -f server/prescription-schema.sql
+psql &#x27;service=approved_prescription_target&#x27; -X -v ON_ERROR_STOP=1 \
+  -f server/prescription-directory-schema.sql
+psql &#x27;service=approved_prescription_target&#x27; -X -v ON_ERROR_STOP=1 \
+  -f server/prescription-release-schema.sql
+```
+
+Core scripts use IF NOT EXISTS: that is not proof that pre-existing table
+definitions match. Resolve preflight findings before application. Review the
+release script&#x27;s constraint changes with the database owner. These commands
+are templates; none was executed against an application/production database.
+Never run drizzle push, broad prod-migrate.sql, or cleanup automatically.
+
+## Exact runtime configuration
+
+| Configuration | Required value/behavior |
+|---|---|
+| `PRESCRIPTION_SIGNING_APPROVED` | `false` or absent until separate signing approval |
+| `PRESCRIPTION_PDF_BUCKET` | Approved private bucket **name**, never a public URL |
+| `PRESCRIPTION_NONCONTROLLED_CATALOG_PATH` | `/var/run/secrets/prescription/catalog.json` (read-only versioned mount) |
+| `DATABASE_URL` | Required by this comparison release&#x27;s storage and read-only startup validator; isolated staging database for staging |
+| `SESSION_SECRET` | Approved secret reference, never a literal in source/commands |
+| Runtime identity | Dedicated Cloud Run service account using ADC; no downloaded keys |
+
+The approved medication catalog is JSON, not a code change per drug. Exact
+normalized medication/strength/form matches are required. Each entry has:
+`medicationName`, `strength`, `dosageForm`, `noncontrolled: true`,
+`sourceReference`, `reviewedBy`, ISO `reviewedAt` and ISO `expiresAt`.
+Unknown, controlled, malformed, duplicate, future-reviewed and expired
+formulations fail closed. Directory entries and saved SIGs alone do not confer
+signing eligibility. Validate a clinically approved catalog before versioning:
+
+```sh
+npx --no-install tsx scripts/validate-prescription-formulary.ts /approved/catalog.json
+```
+
+Store that approved, non-patient catalog as a pinned Secret Manager version,
+mounted read-only at the path above. Changing a drug only requires a reviewed
+catalog version and an approved configuration revision, not application code.
+Do not use synthetic fixture medications as the clinical formulary.
+
+Prescriber configuration: provider saves license details and their existing
+account signature/NPI. A different active full-access clinic owner/admin
+independently reviews and approves them in Account → Prescriber Verification.
+Owner self-approval is denied. Approvals bind the reviewed license/NPI/signature
+and current membership; changes require re-review. Clinical signing authority
+is checked again under transaction-held locks at signing.
+
+Clinic business address/phone are the existing `clinics.address/phone` used by
+orders and the verification screen. Never default to provider personal contacts.
+The admin must confirm business information before saving from verification.
+Old prescription_address/phone columns, if present, are not dropped/backfilled.
+
+Signed PDF retrieval is authenticated `/api/prescriptions/:id/pdf`. It validates
+current clinic access, the committed document linkage and SHA-256 before returning
+`application/pdf` with `private, no-store`. No public/signed GCS URLs are exposed.
+Download and print use the same immutable PDF. An unsuccessful upload/read-back
+or database/audit transaction leaves a draft unsigned; private orphans are not
+downloadable. Retain orphans/documents; no cleanup/deletion is authorized.
+
+## GCP preparation — operator commands only, not executed
+
+Use values from approved infrastructure metadata, not guessed resource paths.
+Use a dedicated **staging service** and isolated database/bucket/secret versions:
+do not deploy synthetic configuration onto the production service.
+
+```sh
+: &quot;${PROJECT:?}&quot; &quot;${REGION:?}&quot; &quot;${STAGING_SERVICE:?}&quot; &quot;${STAGING_SA:?}&quot; &quot;${BUCKET:?}&quot;
+gcloud storage buckets create &quot;gs://$BUCKET&quot; --project=&quot;$PROJECT&quot; \
+  --location=&quot;$REGION&quot; --uniform-bucket-level-access --public-access-prevention
+gcloud iam roles create prescriptionPdfRuntime --project=&quot;$PROJECT&quot; \
+  --title=&quot;Prescription PDF create/read&quot; \
+  --permissions=storage.objects.create,storage.objects.get --stage=GA
+gcloud storage buckets add-iam-policy-binding &quot;gs://$BUCKET&quot; \
+  --member=&quot;serviceAccount:$STAGING_SA&quot; \
+  --role=&quot;projects/$PROJECT/roles/prescriptionPdfRuntime&quot;
+```
+
+If resources already exist, inspect/reuse the approved configuration rather than
+recreating them. Deny public principals. Review location, encryption, retention,
+Data Access logging and IAM; do not provision retention locks/lifecycle deletion.
+Grant the runtime account Secret Accessor on **specific staging/catalog secrets**
+only, and Run Invoker to only approved staging operators. It must have no
+production database secret/bucket permissions.
+
+Build the reconciled, allowlisted source with the existing approved Cloud Build
+pipeline and Docker/buildpack architecture. Build locally with `npm ci` and
+`npm run build`. If the verified pipeline uses the checked-in Dockerfile:
+
+```sh
+# Only after source/infrastructure approval. SOURCE_DIR excludes uploads,
+# credentials, .git, generated artifacts and all unrelated source snapshots.
+gcloud builds submit &quot;$SOURCE_DIR&quot; --project=&quot;$PROJECT&quot; --tag=&quot;$APPROVED_IMAGE_TAG&quot;
+# Resolve CANDIDATE_IMAGE to the resulting verified immutable image digest.
+```
+
+Keep `ffmpeg`/transcription architecture and existing build/start behavior.
+Confirm `.gcloudignore` and Docker build context exclusions before submission.
+Use approved immutable images, not latest tags.
+
+For a new isolated staging service (zero **production** traffic):
+
+```sh
+gcloud run deploy &quot;$STAGING_SERVICE&quot; --project=&quot;$PROJECT&quot; --region=&quot;$REGION&quot; \
+  --image=&quot;$CANDIDATE_IMAGE&quot; --service-account=&quot;$STAGING_SA&quot; --no-allow-unauthenticated \
+  --set-env-vars=&quot;NODE_ENV=production,PRESCRIPTION_SIGNING_APPROVED=false,PRESCRIPTION_PDF_BUCKET=$BUCKET,PRESCRIPTION_NONCONTROLLED_CATALOG_PATH=/var/run/secrets/prescription/catalog.json&quot; \
+  --set-secrets=&quot;DATABASE_URL=$STAGING_DB_SECRET:$STAGING_DB_VERSION,SESSION_SECRET=$STAGING_SESSION_SECRET:$STAGING_SESSION_VERSION,/var/run/secrets/prescription/catalog.json=$CATALOG_SECRET:$CATALOG_VERSION&quot;
+```
+
+This comparison release reads `DATABASE_URL` for both storage and startup
+validation. Confirm that against the actual reconciled production source; if
+that source introduces another variable&#x27;s precedence, bind it to the same
+approved isolated database and ensure no alternate production binding exists.
+Populate only synthetic staging
+accounts/patients after separately approved staging schema setup. Do not copy
+production records, credentials, live Stripe/Spruce/email keys or provider
+signatures. Existing staging services can deploy a candidate with `--no-traffic
+--tag=prescription-review`; a brand-new service has no previous traffic revision,
+so do not claim its first revision has zero staging traffic. Neither operation
+changes production traffic.
+
+Use `gcloud run services proxy &quot;$STAGING_SERVICE&quot; --project=&quot;$PROJECT&quot;
+--region=&quot;$REGION&quot; --port=8081` for approved authenticated staging access.
+No access/identity token needs to be pasted or printed into chat.
+
+Verify real private GCS create-only storage, read-back hash, download/print,
+duplicate signing, wrong-clinic denial and upload failure with synthetic data.
+This requires separate permission to enable **isolated staging** signing; a
+signing-disabled revision does not prove real signing. Confirm logging does not
+record patient data, signatures or credentials.
+
+## Production activation and rollback — separate approvals
+
+Before activation: reconcile the current source, complete the urgent credential
+rotation/access review, approve migrations and clinical/legal PDF/formulary,
+verify real isolated GCS/staging results, record immutable candidate/baseline
+digests and capture the **complete** production traffic map and tags.
+
+Deploy an approved production candidate signing-disabled and zero-traffic:
+
+```sh
+gcloud run services describe &quot;$PRODUCTION_SERVICE&quot; --project=&quot;$PROJECT&quot; \
+  --region=&quot;$REGION&quot; --format=json &gt; /approved/production-before.json
+gcloud run deploy &quot;$PRODUCTION_SERVICE&quot; --project=&quot;$PROJECT&quot; --region=&quot;$REGION&quot; \
+  --image=&quot;$CANDIDATE_IMAGE&quot; --no-traffic --tag=prescription-review \
+  --update-env-vars=PRESCRIPTION_SIGNING_APPROVED=false
+```
+
+Do not inherit staging secrets/database bindings into production or assume the
+production config has the bucket/catalog bindings. Review the explicit
+production bindings before the candidate operation. Traffic promotion and
+`PRESCRIPTION_SIGNING_APPROVED=true` are separate approvals; changing environment
+creates another Cloud Run revision. Verify its digest/config/traffic separately.
+
+Rollback: restore the complete captured revision-percent allocation, not an
+assumed single 100% revision:
+
+```sh
+gcloud run services update-traffic &quot;$PRODUCTION_SERVICE&quot; --project=&quot;$PROJECT&quot; \
+  --region=&quot;$REGION&quot; --to-revisions=&quot;$APPROVED_CAPTURED_REVISION_PERCENT_MAP&quot;
+```
+
+Restore/remove tags to match the captured baseline after approval. If signing
+needs disabling, prepare a separately approved signing-disabled revision.
+Retain additive schema, signed PDFs, audit records and drafts. Never roll back
+by dropping tables, deleting PDFs, overwriting documents or running chart cleanup.
+</pre><h2>Separate security remediation</h2><pre># Urgent separate security remediation
+
+Owner: clinic security/database owner. Status: outstanding; required before live signing.
+
+A password-bearing database connection string was found in historical uploaded
+files already reachable from GitHub. Do not copy, print, test, reuse, include in
+release artifacts, or distribute the credential. No credential values belong in
+this document or a support/chat message.
+
+Required separately authorized actions:
+
+1. Rotate/revoke the affected database credential using the database provider&#x27;s
+   secure controls. Coordinate application Secret Manager/secret bindings with
+   the approved deployment process; do not change production from this task.
+2. Review database access and available access logs, GitHub repository access,
+   and distribution to clones, forks, CI, and other systems.
+3. Have the privacy owner review clinical uploads and determine whether PHI or
+   confidential clinic records were exposed and what incident response applies.
+4. Prepare approved repository-history/cache/clone remediation separately. A
+   private repository and deleting a file at HEAD do not remove historical risk.
+
+This does not block local prescription implementation, synthetic verification,
+or creation of a code-only release patch. It does block live activation until
+the security owner records completed containment/access review. No history
+rewrite or credential rotation was performed by this implementation task.
+
+Dependency remediation for this release:
+
+- jsPDF upgraded from 3.0.3 to 4.2.1; compatible AutoTable upgraded to 5.0.8.
+- Express upgraded within version 4 to 4.22.2.
+- proxy-addr explicitly pinned to the patched 2.0.8 dependency line.
+- Existing clinical PDF APIs and proxy hop configuration are retained. Synthetic
+  PDF, authorization, storage failure and regression tests are required before
+  approving the reconciled production artifact.
+
+The post-change dependency audit reports **zero critical** findings. It still
+reports 30 high, 32 moderate and 8 low findings across the wider application.
+This is not a clean security certification; assess the remaining findings
+separately before approving production exposure. Do not claim they were fixed
+or that generic controls constitute an approved exception.
+
+The existing general HTTP logger still serializes some non-prescription JSON
+responses. The release deidentifies prescription paths and response content;
+other clinical API logging needs separately authorized privacy remediation.
+No actual patient responses were requested or inspected during this work.
+</pre></html>

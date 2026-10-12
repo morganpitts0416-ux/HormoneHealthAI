@@ -1,0 +1,249 @@
+{
+  "comparison_baseline": "320a534de8d95265d535085ef0cf06cf95202577",
+  "reviewed_donor": "ce7a5e06026429e22fa63f846024088aa3252dcb",
+  "production_baseline_verified": false,
+  "sha256": "085f13a010b77d0769e8b60d97f161ca5c59a2b7c87bef676ece355c4c45681b",
+  "bytes": 411606,
+  "files": [
+    {
+      "path": ".dockerignore",
+      "sha256": "2e6b818455d41bb6b688076ab309f1521362f8d4e93fca59a8f321f56ad9ea9c",
+      "kind": "modified"
+    },
+    {
+      "path": ".gcloudignore",
+      "sha256": "648cd32dda107f834368427da02f0479d1b71fe6a90c68a54dd41fdfc3bfd34c",
+      "kind": "modified"
+    },
+    {
+      "path": "client/src/components/clinical-orders-panel.tsx",
+      "sha256": "c6e79f84f14fe94591d6839371f081ac11caa747538a878fb8cdb6bd8ba87609",
+      "kind": "modified"
+    },
+    {
+      "path": "client/src/components/prescriber-credentials-settings.tsx",
+      "sha256": "bc94c6c5efacfc140ba0406e5815fe90e0f61fea50bd9bbd1e9f162d6407343a",
+      "kind": "new"
+    },
+    {
+      "path": "client/src/components/prescriber-verification-settings.tsx",
+      "sha256": "23dabbfbc613759926dca6b5499980e5bfffc88733ea18e57a1ebe3cb64b9d8f",
+      "kind": "new"
+    },
+    {
+      "path": "client/src/components/prescription-dialog.tsx",
+      "sha256": "d4fa3fd251f85b10026153cf27f5339e64332e2405f92cd7cd3b09afc16f8089",
+      "kind": "new"
+    },
+    {
+      "path": "client/src/components/prescription-directory-section.tsx",
+      "sha256": "e16a8c7e4daeff734ba62f3a00cfb965c6ff2f62ea610c469fc0b1ae775c38b5",
+      "kind": "new"
+    },
+    {
+      "path": "client/src/hooks/use-clinic-branding.ts",
+      "sha256": "a3bcc1e97feb1f0e15846da023cb62cf9709e6a2c1c0823ea2224cc6d80827b8",
+      "kind": "modified"
+    },
+    {
+      "path": "client/src/lib/prescription-directory.ts",
+      "sha256": "368d7183f762029a69b58ab7ba044d7e12ea9ce83f34f3a2540f0e7a9fe986ec",
+      "kind": "new"
+    },
+    {
+      "path": "client/src/pages/account.tsx",
+      "sha256": "2c38cd90e845b8306187789493beaa691b052e99d5a3a122681e0be9f67499b2",
+      "kind": "modified"
+    },
+    {
+      "path": "docs/prescription-production-integration.md",
+      "sha256": "82b0e532ad9bf7257e93bd2c65e727598bdffc98b8720cde16227e25481ea274",
+      "kind": "new"
+    },
+    {
+      "path": "docs/prescription-security-remediation.md",
+      "sha256": "3cbc0ea8a876a6c981353712c8d804a8c43e02b516b5a6284246698cff68ac28",
+      "kind": "new"
+    },
+    {
+      "path": "package-lock.json",
+      "sha256": "058c7be1c6dd52c31fb6d6e2c42bdfbea6d93c5aae44383f38aff0c266f54b6e",
+      "kind": "modified"
+    },
+    {
+      "path": "package.json",
+      "sha256": "a5ef7bd07366557abd33f7dd5c28e1a9f643c3de6fba9acc6afb320fcad4b1ea",
+      "kind": "modified"
+    },
+    {
+      "path": "scripts/prescription-postgres-integration.ts",
+      "sha256": "142ace27e9f436cc58b89eba38224ac3b95fed9c8ceefdf419085202a763d4fe",
+      "kind": "new"
+    },
+    {
+      "path": "scripts/run-prescription-postgres-integration.sh",
+      "sha256": "e95dde6b4524b3942aac05ef761666124cba09df1fc00172787851f7300191b3",
+      "kind": "new"
+    },
+    {
+      "path": "scripts/validate-prescription-formulary.ts",
+      "sha256": "51a05ce07e97cc21baf47a7d5e8719c3a04c3cf1394d04eb89d7a53676f49864",
+      "kind": "new"
+    },
+    {
+      "path": "server/index.ts",
+      "sha256": "d98c7803401455d39bd39ea1cd35f253c39db9ca8ebe59a3beda87237fbaa08e",
+      "kind": "modified"
+    },
+    {
+      "path": "server/prescriber-verification-policy.ts",
+      "sha256": "381708c7af4dd616cf9fb9cef46a9e6c8f5a155e95ba100220e0a6d90ede6c03",
+      "kind": "new"
+    },
+    {
+      "path": "server/prescriber-verification-routes.ts",
+      "sha256": "d240f368db44144773ea4eacda6a1538deaa7dcd66be9fb19f82870c4f808628",
+      "kind": "new"
+    },
+    {
+      "path": "server/prescription-directory-routes.ts",
+      "sha256": "68027ddb8b503b5227a0b6e18b8fb1ca9d9cf8f36879d6e6cb3edd5d77f3a8c6",
+      "kind": "new"
+    },
+    {
+      "path": "server/prescription-directory-schema.sql",
+      "sha256": "9ff5f77eea41115da3fea3c1c051518fb213cc9afa61a91b800be795e5176ab3",
+      "kind": "new"
+    },
+    {
+      "path": "server/prescription-finalization.ts",
+      "sha256": "2ab365994317ca42984f81bb70d342db0f1ebd95cef070415c390f5c9d3e7580",
+      "kind": "new"
+    },
+    {
+      "path": "server/prescription-log-policy.ts",
+      "sha256": "b31f909d4f0be6b927a1db6884e9a4ce50fbd15f0beb41154676d18b74225970",
+      "kind": "new"
+    },
+    {
+      "path": "server/prescription-medication-policy.ts",
+      "sha256": "8f657d47b87c052a5066c7ce6a0d2f3d9ea7172e7286027d4303fb1c6c15716c",
+      "kind": "new"
+    },
+    {
+      "path": "server/prescription-pdf.ts",
+      "sha256": "0322281b309f8aaa46816bf4c3f14bed5ed268b363b506ca0648d5e1e58b150f",
+      "kind": "new"
+    },
+    {
+      "path": "server/prescription-release-preflight.sql",
+      "sha256": "64fecc990f6dade04f8f4cf6f8f6470be5df7206ffe5e4a33b8b333e86d37232",
+      "kind": "new"
+    },
+    {
+      "path": "server/prescription-release-schema.sql",
+      "sha256": "59c36c1aa8c9b0341b97c8a0d422842ef5b2999c0b2f848350baf32f4a45aa8f",
+      "kind": "new"
+    },
+    {
+      "path": "server/prescription-routes.ts",
+      "sha256": "1e2a6e31e6f0160ff138a0eeafd1929eaaca95fa611ec14e4ca58b18f8a31261",
+      "kind": "new"
+    },
+    {
+      "path": "server/prescription-schema.sql",
+      "sha256": "03303c78d1b6f704c3a0a29d839d601572383049c2c3e1e855553652b82950cf",
+      "kind": "new"
+    },
+    {
+      "path": "server/prescription-signing-policy.ts",
+      "sha256": "5fa547e92d49594d28fbbcd7547557c3d85a8cccccf816dc87a7bd9d81a563cb",
+      "kind": "new"
+    },
+    {
+      "path": "server/prescription-storage.ts",
+      "sha256": "e1d9b1fe54d234cc3e4ef14f8e7359a278005e456a85fdd470550044032dc420",
+      "kind": "new"
+    },
+    {
+      "path": "server/routes.ts",
+      "sha256": "41a9eae9e33391510a69c154a5b449819445c32f581ba4f58b6326cd96f710c3",
+      "kind": "modified"
+    },
+    {
+      "path": "server/startup-safety.ts",
+      "sha256": "4aea466df9b12d91777a653fb0e2fdb625784398730360211457f3326d62f24f",
+      "kind": "new"
+    },
+    {
+      "path": "shared/schema.ts",
+      "sha256": "bbbbc23fc2f3dec69e26e6751fbc1fdd190bb26fbd3d867be4b4f3b3a508cc44",
+      "kind": "modified"
+    },
+    {
+      "path": "tests/unit/prescriber-verification.test.ts",
+      "sha256": "092915902f18e60d49ed94bd4bdb782dc1d693c5cbfbda8eb205cb67fa7c528a",
+      "kind": "new"
+    },
+    {
+      "path": "tests/unit/prescription-directory-matching.test.ts",
+      "sha256": "c1554163baeb6ebb0bd7590c262d1ab2f911733efd669cfac1d567305521df31",
+      "kind": "new"
+    },
+    {
+      "path": "tests/unit/prescription-directory.test.ts",
+      "sha256": "38f0b270264f53b2cba344dd460c87066f126ef9b523d340e1b4b48b05973173",
+      "kind": "new"
+    },
+    {
+      "path": "tests/unit/prescription-finalization.test.ts",
+      "sha256": "83c7dc20e1804121c27b63da4aa93362052038163dc1f69a998c4f99141e216a",
+      "kind": "new"
+    },
+    {
+      "path": "tests/unit/prescription-fixtures.ts",
+      "sha256": "551c5521d2fdab00b3a8588eccd98ea09d0b710e061e7f2fe4e6ba67bde46f11",
+      "kind": "new"
+    },
+    {
+      "path": "tests/unit/prescription-legacy-pdf-regression.test.ts",
+      "sha256": "19525d4fc7f2c769482116687effbb8e6e13fe654e2ab1fc7abe6975a70eed03",
+      "kind": "new"
+    },
+    {
+      "path": "tests/unit/prescription-log-policy.test.ts",
+      "sha256": "f14721cc43dbf3292657356bf6856452fb5d5469e0735e31a9e8d0a36980e4e2",
+      "kind": "new"
+    },
+    {
+      "path": "tests/unit/prescription-memory-db.ts",
+      "sha256": "b194f3553f9802fa198ab3870626817e35fa8d8f802e4b3f127d5bbbf659927f",
+      "kind": "new"
+    },
+    {
+      "path": "tests/unit/prescription-release-compatibility.test.ts",
+      "sha256": "96830c6885a87cf725eeef2195711d328e362cd48e30a83374e0071cb5628562",
+      "kind": "new"
+    },
+    {
+      "path": "tests/unit/prescription-routes.test.ts",
+      "sha256": "6727b05f7f9a63ee8cf98192b63ca195829fdb94c5d6613bc01cf0539a6379f1",
+      "kind": "new"
+    },
+    {
+      "path": "tests/unit/prescription-signing-policy.test.ts",
+      "sha256": "e91ef0e4de5c9892e34f8a054e198b000462313e1c73166d6537719fb768eec0",
+      "kind": "new"
+    },
+    {
+      "path": "tests/unit/prescription-startup-safety.test.ts",
+      "sha256": "27fb27dfac5ad86b4f495d771c753a7165fc141962aaa68dec0081e5b3c6a3ec",
+      "kind": "new"
+    },
+    {
+      "path": "tests/unit/prescription-storage.test.ts",
+      "sha256": "51c894fe83bef69513d6c0964d6193440b0fb0fcc7cb4a60cfa28717f8d8455b",
+      "kind": "new"
+    }
+  ]
+}
