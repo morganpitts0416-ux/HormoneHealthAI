@@ -25,9 +25,28 @@ def instance_arguments(name, region, password_file):
     return [
         "sql", "instances", "create", name, "--database-version=POSTGRES_18",
         "--edition=ENTERPRISE", "--tier=db-custom-1-3840", "--region=" + region,
-        "--storage-size=10", "--labels=purpose=cliniq-prescription-staging,synthetic-only=true",
+        "--storage-size=10",
         "--flags-file=" + str(password_file),
     ]
+
+
+SQL_DESCRIPTION = "--format=json(name,project,region,databaseVersion,connectionName,state,settings.tier,settings.userLabels)"
+LABELS = {"purpose": "cliniq-prescription-staging", "synthetic-only": "true"}
+
+
+def verify_new_instance(description, name, region, require_labels=False):
+    if not isinstance(description, dict):
+        raise RunnerFailure("New staging SQL instance description is not independently verifiable.")
+    expected = {"name": name, "project": PROJECT, "region": region, "databaseVersion": "POSTGRES_18",
+                "connectionName": PROJECT + ":" + region + ":" + name, "state": "RUNNABLE"}
+    if any(description.get(key) != value for key, value in expected.items()):
+        raise RunnerFailure("New staging SQL instance identity, version or readiness differs from the isolated creation plan; stopped before labels or database work.")
+    settings = description.get("settings")
+    if not isinstance(settings, dict) or settings.get("tier") != "db-custom-1-3840":
+        raise RunnerFailure("New staging SQL instance tier could not be independently verified.")
+    labels = settings.get("userLabels") or {}
+    if not isinstance(labels, dict) or (require_labels and any(labels.get(key) != value for key, value in LABELS.items())):
+        raise RunnerFailure("Synthetic-only staging SQL labels could not be independently verified; no database initialization is allowed.")
 
 
 def create_instance(cloud, state, private, ledger_directory=None):
@@ -99,5 +118,16 @@ def create_instance(cloud, state, private, ledger_directory=None):
             record("instance-created")
         finally:
             password_file.unlink(missing_ok=True)
+        # Only the just-created, independently identified instance can be patched.
+        # This SDK exposes SQL labels only on beta; all creation stays on GA.
+        description = metadata_json(cloud("sql", "instances", "describe", name, SQL_DESCRIPTION, capture=True),
+                                    "New staging SQL identity verification")
+        verify_new_instance(description, name, region)
+        cloud("beta", "sql", "instances", "patch", name,
+              "--update-labels=purpose=cliniq-prescription-staging,synthetic-only=true", capture=True)
+        description = metadata_json(cloud("sql", "instances", "describe", name, SQL_DESCRIPTION, capture=True),
+                                    "New staging SQL label verification")
+        verify_new_instance(description, name, region, require_labels=True)
+        record("instance-created-and-labels-verified")
     finally:
         os.close(lock_fd)

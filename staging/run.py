@@ -20,6 +20,7 @@ from datetime import datetime, timedelta, timezone
 from prepare import prepare, PROJECT, PRODUCTION_REVISION
 from diagnostics import CommandRunner, RunnerFailure, metadata_json, discover_region, validate_production_metadata, validate_production_image, verify_production_unchanged, REGION, sanitize
 from sql_instance import attempt_id, create_instance
+from sdk_compat import validate_sdk
 
 TOOLS = pathlib.Path(__file__).resolve().parent
 
@@ -169,6 +170,9 @@ def main():
         private_write(private / "catalog.json", json.dumps(catalog))
         private_write(workspace / "state.json", json.dumps(state, indent=2))
         source = workspace / "source"
+        step("verify installed SDK compatibility offline before billable resources")
+        sdk_report = validate_sdk(TOOLS, clean_environment(), command.note)
+        private_write(workspace / "sdk-compatibility.json", json.dumps(sdk_report, indent=2))
         step("install and validate actual integrated source")
         build_env = clean_environment()
         build_env["NODE_ENV"] = "development"

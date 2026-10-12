@@ -22,10 +22,30 @@ is performed in prepare-only mode.
 ### Cloud SQL compatibility and retry fencing
 
 Cloud SQL creation uses explicit supported `--database-version`, `--edition`,
-`--tier`, `--region`, `--storage-size` and `--labels` flags. Only the password
+`--tier`, `--region` and `--storage-size` GA flags. Only the password
 is passed in a protected flags file, with the required `--root-password` key.
 Its value is not placed in argv and is explicitly redacted from SDK errors;
 captured creation stdout is never written to logs.
+
+This SDK does not expose SQL labels on GA create or GA patch. After GA creation,
+the runner independently verifies the exact new instance's project, name, region,
+connection name, PostgreSQL 18 version, tier and readiness, then uses only
+`gcloud beta sql instances patch <that-instance> --update-labels=...`.
+Labels are independently read back before proxy startup or database initialization.
+Any patch/verification failure leaves the creation fence in place; it cannot
+be misclassified as an argument rejection permitting another create.
+
+Before billable work, an offline preflight derives every `gcloud` command shape
+from the actual runner source and checks it against the **operator's installed SDK**.
+It includes the complete GA SQL command and properly prefixed password file.
+Each probe uses synthetic resources, an isolated credential-free SDK config,
+and an intentionally invalid sentinel flag. It must exit 2 rejecting **only**
+that flag before command dispatch. Extra unsupported flags, invalid types,
+unavailable tracks or unexpected success stop execution. `--help` is not used
+for validation because it can short-circuit unsupported argument checks.
+The report is saved as `sdk-compatibility.json` in the private workspace.
+This verifies CLI/parser compatibility, not runtime IAM, quotas, API availability
+or a successful staging deployment.
 
 Use the **same `--attempt-id` on every retry**. For the previously rejected
 `cliniq-rx-stage-c73ac1bc32` creation, use `--attempt-id c73ac1bc32`.

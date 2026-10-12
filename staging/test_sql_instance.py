@@ -23,11 +23,24 @@ class CloudSqlSafety(unittest.TestCase):
                       "region": "us-central1", "synthetic_only": True, "production_writes_authorized": False}
         self.ledger = self.root / "ledger"
         self.calls = []
+        self.labeled = False
 
     def cloud(self, *argv, capture=False):
         self.calls.append(argv)
         if "list" in argv:
             return "[]"
+        if "describe" in argv:
+            return json.dumps({
+                "name": self.state["instance"], "project": self.state["project"], "region": self.state["region"],
+                "databaseVersion": "POSTGRES_18", "connectionName": "realign-lab-app:us-central1:" + self.state["instance"],
+                "state": "RUNNABLE", "settings": {"tier": "db-custom-1-3840",
+                    "userLabels": {"purpose": "cliniq-prescription-staging", "synthetic-only": "true"} if self.labeled else {}},
+            })
+        if "patch" in argv:
+            self.assertEqual(argv[:4], ("beta", "sql", "instances", "patch"))
+            self.assertEqual(argv[4], self.state["instance"])
+            self.labeled = True
+            return ""
         flags = json.loads((self.private / "instance-flags.json").read_text())
         self.assertEqual(flags, {"--root-password": self.password})
         self.assertEqual((self.private / "instance-flags.json").stat().st_mode & 0o777, 0o600)
@@ -39,13 +52,59 @@ class CloudSqlSafety(unittest.TestCase):
 
     def test_exact_failed_command_is_replaced_with_supported_flags(self):
         self.create()
-        args = self.calls[-1]
+        args = next(args for args in self.calls if "create" in args)
         for flag in ("--database-version=POSTGRES_18", "--edition=ENTERPRISE", "--tier=db-custom-1-3840",
-                     "--region=us-central1", "--storage-size=10",
-                     "--labels=purpose=cliniq-prescription-staging,synthetic-only=true"):
+                     "--region=us-central1", "--storage-size=10"):
             self.assertIn(flag, args)
+        self.assertFalse(any(arg.startswith("--labels") for arg in args))
+        self.assertNotIn("beta", args)
         self.assertNotIn(self.password, " ".join(args))
         self.assertFalse((self.private / "instance-flags.json").exists())
+
+    def test_labels_are_applied_separately_only_after_fresh_identity_verification(self):
+        self.create()
+        routes = [args[:3] for args in self.calls]
+        self.assertEqual(routes, [("sql", "instances", "list"), ("sql", "instances", "create"),
+                                  ("sql", "instances", "describe"), ("beta", "sql", "instances"),
+                                  ("sql", "instances", "describe")])
+        patch_args = next(args for args in self.calls if "patch" in args)
+        self.assertIn("--update-labels=purpose=cliniq-prescription-staging,synthetic-only=true", patch_args)
+        marker = json.loads((self.ledger / (self.state["instance"] + ".json")).read_text())
+        self.assertEqual(marker["status"], "instance-created-and-labels-verified")
+
+    def test_label_argument_failure_after_creation_never_unlocks_duplicate_creation(self):
+        def cloud(*argv, **kwargs):
+            if "patch" in argv:
+                raise RunnerFailure("unrecognized arguments: --update-labels", exit_code=2, validation_rejected=True)
+            return self.cloud(*argv, **kwargs)
+        with self.assertRaises(RunnerFailure):
+            self.create(cloud)
+        marker = json.loads((self.ledger / (self.state["instance"] + ".json")).read_text())
+        self.assertEqual(marker["status"], "instance-created")
+        self.calls.clear()
+        with self.assertRaisesRegex(RunnerFailure, "previously submitted"):
+            self.create()
+        self.assertEqual(self.calls, [])
+
+    def test_unverified_labels_stop_before_caller_can_initialize_database(self):
+        def cloud(*argv, **kwargs):
+            if "patch" in argv:
+                self.calls.append(argv)
+                return ""
+            return self.cloud(*argv, **kwargs)
+        with self.assertRaisesRegex(RunnerFailure, "labels could not"):
+            self.create(cloud)
+
+    def test_wrong_created_instance_identity_prevents_label_patch(self):
+        def cloud(*argv, **kwargs):
+            if "describe" in argv:
+                result = json.loads(self.cloud(*argv, **kwargs))
+                result["project"] = "wrong-project"
+                return json.dumps(result)
+            return self.cloud(*argv, **kwargs)
+        with self.assertRaisesRegex(RunnerFailure, "identity"):
+            self.create(cloud)
+        self.assertFalse(any("patch" in args for args in self.calls))
 
     def test_success_is_fenced_on_retry_even_if_resource_later_disappears(self):
         self.create()
