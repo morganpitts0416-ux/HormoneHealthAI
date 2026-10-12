@@ -10,7 +10,10 @@ REVISION = re.compile(r"^hormonehealthai-[a-z0-9-]{1,80}$")
 
 
 class RunnerFailure(RuntimeError):
-    pass
+    def __init__(self, message, *, exit_code=None, validation_rejected=False):
+        super().__init__(message)
+        self.exit_code = exit_code
+        self.validation_rejected = validation_rejected
 
 
 def sanitize(value):
@@ -65,28 +68,37 @@ class CommandRunner:
     def __init__(self, log, environment):
         self.log, self.environment = log, environment
         self.last_command = None
+        self.redactions = []
+
+    def redact(self, text):
+        text = str(text)
+        for secret in sorted(set(self.redactions), key=len, reverse=True):
+            if secret:
+                text = text.replace(secret, "[REDACTED]")
+        return sanitize(text)
 
     def note(self, text):
-        self.log.write(sanitize(text) + "\n")
+        self.log.write(self.redact(text) + "\n")
         self.log.flush()
 
     def __call__(self, argv, capture=False, env=None, cwd=None):
-        self.last_command = safe_command(argv)
+        self.last_command = self.redact(safe_command(argv))
         self.note("COMMAND: " + self.last_command)
         try:
             result = subprocess.run(argv, stdout=subprocess.PIPE if capture else self.log,
                                     stderr=subprocess.PIPE, env=env if env is not None else self.environment(),
                                     cwd=cwd, text=True)
         except OSError as error:
-            raise RunnerFailure("Could not launch command: " + sanitize(error) +
+            raise RunnerFailure("Could not launch command: " + self.redact(error) +
                                 ". Check that this executable is installed in Cloud Shell.") from None
         self.note(f"EXIT: {result.returncode}; captured stdout characters: {len(result.stdout or '')}")
-        detail = sanitize(result.stderr or "").strip()
+        detail = self.redact(result.stderr or "").strip()
         if detail:
             self.note("STDERR: " + detail)
         if result.returncode:
             raise RunnerFailure(f"Command exited {result.returncode}: {detail or 'No stderr was emitted.'}\n"
-                                + command_hint(detail))
+                                + command_hint(detail), exit_code=result.returncode,
+                                validation_rejected=result.returncode == 2 and "unrecognized arguments" in detail.lower())
         return result.stdout.strip() if capture else None
 
 

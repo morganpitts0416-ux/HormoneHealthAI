@@ -19,6 +19,26 @@ Without `--execute`, preparation is offline: it copies and checks source only.
 No account login, project configuration change, resource creation or deployment
 is performed in prepare-only mode.
 
+### Cloud SQL compatibility and retry fencing
+
+Cloud SQL creation uses explicit supported `--database-version`, `--edition`,
+`--tier`, `--region`, `--storage-size` and `--labels` flags. Only the password
+is passed in a protected flags file, with the required `--root-password` key.
+Its value is not placed in argv and is explicitly redacted from SDK errors;
+captured creation stdout is never written to logs.
+
+Use the **same `--attempt-id` on every retry**. For the previously rejected
+`cliniq-rx-stage-c73ac1bc32` creation, use `--attempt-id c73ac1bc32`.
+Otherwise an ID derived from the source path remains stable across tooling clones.
+A protected, locked local ledger under `~/.local/state/cliniq-rx-staging` records
+creation submission before the command executes. Only a recognized SDK
+argument rejection before submission permits retry, with an independent
+instance-absence check. Existing instances, successful submissions, uncertain
+failures and concurrent executions stop without creating or adopting resources.
+There is no automatic resume after a potentially successful creation; retain
+the workspace and ledger for read-only reconciliation. Do not delete the ledger
+or change attempt IDs merely to bypass this safeguard.
+
 This creates **billable** resources in `realign-lab-app`: a fresh PostgreSQL 18
 instance, two synthetic databases, private GCS bucket, staging service account,
 secrets, artifact repository, image and separate IAM-protected Cloud Run service.

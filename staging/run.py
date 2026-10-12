@@ -14,12 +14,12 @@ import subprocess
 import sys
 import time
 import urllib.request
-import uuid
 import zlib
 import struct
 from datetime import datetime, timedelta, timezone
 from prepare import prepare, PROJECT, PRODUCTION_REVISION
 from diagnostics import CommandRunner, RunnerFailure, metadata_json, discover_region, validate_production_metadata, validate_production_image, verify_production_unchanged, REGION, sanitize
+from sql_instance import attempt_id, create_instance
 
 TOOLS = pathlib.Path(__file__).resolve().parent
 
@@ -75,6 +75,7 @@ def main():
     parser.add_argument("--source", default=str(pathlib.Path.home() / "cliniq-prescription-staging"))
     parser.add_argument("--materials", default=str(pathlib.Path.home() / "cliniq-prescription-release/materials"))
     parser.add_argument("--region")
+    parser.add_argument("--attempt-id", help="Stable ten-hex staging attempt ID; reuse this ID on every retry")
     parser.add_argument("--execute", action="store_true", help="Create billable isolated staging resources; never production")
     args = parser.parse_args()
     workspace = prepare(args.source, args.materials)
@@ -143,7 +144,7 @@ def main():
             "databaseBackupRestoreEvidence": "NOT verified; requires separate production review",
             "productionSigningActivationApproved": False,
         }, indent=2))
-        nonce = uuid.uuid4().hex[:10]
+        nonce = attempt_id(args.source, args.attempt_id)
         name = "cliniq-rx-stage-" + nonce
         state = {
             "project": PROJECT, "region": region, "nonce": nonce, "service": name, "instance": name,
@@ -156,6 +157,7 @@ def main():
         assert state["instance"] not in {"realign-app", "realign-app-new"}
         for filename in ("admin-password", "app-password", "pgtest-password", "session"):
             private_write(private / filename, secrets.token_urlsafe(48))
+            command.redactions.append((private / filename).read_text())
         private_write(private / "signature", synthetic_signature())
         now = datetime.now(timezone.utc)
         catalog = [{
@@ -179,13 +181,7 @@ def main():
         command(["npx", "--no-install", "vitest", "run", *tests], cwd=source, env=build_env)
         command(["npm", "run", "build"], cwd=source, env=build_env)
         step("create fresh isolated Cloud SQL instance (billable)")
-        private_write(private / "instance-flags.json", json.dumps({
-            "database-version": "POSTGRES_18", "edition": "ENTERPRISE", "tier": "db-custom-1-3840",
-            "region": region, "storage-size": "10", "root-password": (private / "admin-password").read_text(),
-            "labels": "purpose=cliniq-prescription-staging,synthetic-only=true",
-        }))
-        cloud("sql", "instances", "create", name, "--flags-file=" + str(private / "instance-flags.json"))
-        (private / "instance-flags.json").unlink()
+        create_instance(cloud, state, private)
         state["connection_name"] = cloud("sql", "instances", "describe", name, "--format=value(connectionName)", capture=True)
         if state["connection_name"] != PROJECT + ":" + region + ":" + name:
             raise RuntimeError("Unexpected staging SQL connection name")
@@ -328,7 +324,7 @@ def main():
                          "migration-url", "app-url", "accounts.json", "catalog.json", "signature"):
             (private / filename).unlink(missing_ok=True)
     except Exception as error:
-        detail = sanitize(f"{type(error).__name__}: {error}")
+        detail = command.redact(f"{type(error).__name__}: {error}")
         command.note("STOPPED phase: " + phase)
         command.note("FAILURE: " + detail)
         print("STOPPED at:", phase, file=sys.stderr)
