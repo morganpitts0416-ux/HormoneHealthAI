@@ -1,5 +1,81 @@
 # Isolated prescription staging runner
 
+## Continue the already-created attempt `c73ac1bc32`
+
+Use `continue.py --execute --attempt-id c73ac1bc32
+--continue-workspace /tmp/ORIGINAL-PRIVATE-WORKSPACE --materials /path/to/materials`.
+The workspace is the directory printed by the runner that actually created SQL,
+not the integrated source directory and not a new prepare-only copy. The materials
+may be the root of the freshly cloned staging-tooling branch (which contains the
+unchanged approved patch, manifest and `migrations/`).
+
+This explicitly approved continuation does **not** call `create_instance()`.
+It never issues any SQL instance create/patch/reset/delete or SQL user mutation
+command. It reuses the original admin/app/test passwords, session, signature and
+fictional catalog; it does not regenerate/reset credentials. If these protected
+files or the original ledger are missing, stop. Do not substitute another
+workspace, delete the ledger, or allocate a different attempt ID.
+
+Before adoption it checks:
+
+* Original workspace ownership/private permissions, no symlinked private files,
+  exact project/attempt/database/service/bucket/identity names and synthetic-only
+  authorization flags; original ledger status must be exactly
+  `instance-created-and-labels-verified`.
+* The original attempt lock is held for the entire continuation.
+* Live SQL name/project/region/connection name, PostgreSQL version/tier,
+  RUNNABLE state and both synthetic labels. Production SQL names `realign-app`
+  and `realign-app-new` are forbidden, including read commands.
+* Database/user inventories: initially only system databases/accounts; later only
+  the two journaled synthetic databases and expected accounts. Unjournaled data
+  is never adopted. A read-only SQL verifier checks empty/created/seeded state,
+  restricted app-role permissions and exact synthetic account/patient/clinic
+  fixtures before further work.
+* Original production revision/image/traffic evidence against live metadata,
+  including tagged traffic bindings. A changed baseline stops the run.
+* Original source and approved release-material checksums and startup safeguards.
+  A persistent continuation identity pins source, tool bytes, ports and private
+  credential/fixture hashes. Native offline SDK compatibility runs before writes.
+
+After this gate it uses the existing database initialization, isolated PostgreSQL
+tests, reviewed staging SQL, synthetic fixtures, private bucket/IAM/secrets,
+immutable staging build, private staging service, signing/PDF/download/hash,
+wrong-clinic, duplicate-sign and failed-upload probes. Signing is enabled only
+on the dedicated staging service with the fictional catalog, never production.
+
+### Interruption and retry contract
+
+Retry the **same command, same workspace, same attempt and same tooling commit**.
+`private/continuation.json` is an atomically replaced/fsynced 0600 write-ahead
+journal. Original `operator.log` is appended, not overwritten.
+
+* Completed writes are skipped, not replayed. Before continuation, recorded cloud
+  resource configuration/IAM is read back and compared, credential/PDF files are
+  checked, database inventories are checked, and synthetic SQL attestation runs.
+  The real HTTP signing probe is not repeated against its already-signed fixture.
+* Resources found without journal provenance are not adopted or replaced.
+  A pre-existing service cannot be overwritten; a populated image repository
+  cannot be reused for the first recorded build.
+* An error or interruption after durable write intent but before verified
+  completion leaves a **pending/uncertain** entry. Retry stops before writes;
+  it does not assume failure, submit another build, create another resource,
+  seed again, rerun a migration or sign another prescription. Even a command
+  that failed without making changes remains conservatively fenced.
+* Reconciliation of uncertain entries requires a separate, read-only review and
+  explicitly approved recovery. Do not edit/delete the journal to force progress.
+* An occupied proxy port stops the run; the tool never kills an unknown/orphaned
+  process. Missing or changed local files also stop rather than regenerate them.
+* A failed upload probe attempts to restore only the known staging bucket binding.
+  If that cannot be verified/restored, it reports failure and retains evidence.
+* On success, original 0600 credentials remain in the 0700 original workspace so
+  verification/retry is possible. Keep them private and outside Git/uploads.
+  Resource/credential cleanup is separately approved; no resource is deleted.
+
+This is **safe retry with fail-closed uncertain outcomes**, not automatic recovery
+from every interruption. Local tests and SDK parser checks are not proof of real
+GCP IAM/quota availability or a successful staging execution. Browser acceptance
+and physical printing remain separate after HTTP/PDF verification.
+
 **Not deployed or cloud-tested from Replit.** Replit has no authenticated Google
 account, and the integrated production source is in Cloud Shell, not Replit.
 The runner consumes that actual integrated source; it never substitutes GitHub

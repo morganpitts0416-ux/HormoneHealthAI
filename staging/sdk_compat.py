@@ -74,7 +74,17 @@ def runner_probes(tools, root):
         "tag": region + "-docker.pkg.dev/" + SDK_PROJECT + "/" + name + "/app:synthetic",
         "argv": instance_arguments(name, region, flags),
     }
+    state["project"] = SDK_PROJECT
     probes = []
+    from continuation import inspection_queries, inventory_queries
+    for kind in ("account", "project", "bucket", "role", "secret", "repository", "image", "image-inventory", "service"):
+        probes.extend(inspection_queries(state, name + "-database" if kind == "secret" else name, kind))
+    probes.extend(query for _kind, query in inventory_queries(state))
+    probes.extend([
+        ["sql", "databases", "list", "--instance=" + name, "--format=json(name)"],
+        ["sql", "users", "list", "--instance=" + name, "--format=json(name)"],
+        ["run", "services", "list", "--region=" + region, "--format=json(metadata.name)"],
+    ])
     for filename in ("run.py", "sql_instance.py"):
         tree = ast.parse((tools / filename).read_text())
         for node in ast.walk(tree):

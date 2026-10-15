@@ -77,16 +77,28 @@ def main():
     parser.add_argument("--materials", default=str(pathlib.Path.home() / "cliniq-prescription-release/materials"))
     parser.add_argument("--region")
     parser.add_argument("--attempt-id", help="Stable ten-hex staging attempt ID; reuse this ID on every retry")
+    parser.add_argument("--continue-workspace", help="Explicit continuation of c73ac1bc32 using its ORIGINAL protected workspace")
     parser.add_argument("--execute", action="store_true", help="Create billable isolated staging resources; never production")
     args = parser.parse_args()
-    workspace = prepare(args.source, args.materials)
-    print("Prepared private source copy:", workspace, flush=True)
+    continuation = None
+    if args.continue_workspace:
+        from continuation import Continuation, ATTEMPT
+        if not args.execute or args.attempt_id != ATTEMPT:
+            raise RunnerFailure("Continuation requires --execute --attempt-id c73ac1bc32; no new attempt is allowed.")
+        continuation = Continuation(args.continue_workspace, args.materials)
+        workspace = continuation.workspace
+        print("Reusing original protected staging workspace:", workspace, flush=True)
+    else:
+        workspace = prepare(args.source, args.materials)
+        print("Prepared private source copy:", workspace, flush=True)
     if not args.execute:
         print("Prepare-only: no Google Cloud operations, database writes, builds or deployment executed.")
         return
     private = workspace / "private"
-    private.mkdir(mode=0o700)
-    log = open(private / "operator.log", "w")
+    private.mkdir(mode=0o700, exist_ok=bool(continuation))
+    if (private / "operator.log").is_symlink():
+        raise RunnerFailure("Symlinked operator log refused.")
+    log = open(private / "operator.log", "a" if continuation else "w")
     (private / "operator.log").chmod(0o600)
     processes = []
     state = {}
@@ -94,6 +106,8 @@ def main():
     phase = "authentication"
 
     command = CommandRunner(log, clean_environment)
+    if continuation:
+        command = continuation.attach(command)
 
     def cloud(*args, capture=False):
         return command(["gcloud", "--quiet", "--project=" + PROJECT, *args], capture=capture)
@@ -134,10 +148,17 @@ def main():
                                      capture=True), "Production service verification")
         validate_production_metadata(before, region, PRODUCTION_REVISION)
         command.note("VERIFIED authoritative production revision receiving 100% traffic: " + PRODUCTION_REVISION)
-        (workspace / "production-before.json").write_text(json.dumps(before, indent=2))
         previous_image = cloud("run", "revisions", "describe", PRODUCTION_REVISION, "--region=" + region,
                                "--format=value(status.imageDigest)", capture=True)
         validate_production_image(previous_image)
+        if continuation:
+            original_before = json.loads((workspace / "production-original.json").read_text()) if \
+                (workspace / "production-original.json").exists() else json.loads((workspace / "production-before.json").read_text())
+            original_rollback = json.loads((workspace / "rollback-evidence.json").read_text())
+            verify_production_unchanged(original_before, before, region, PRODUCTION_REVISION,
+                                        original_rollback["priorImage"], previous_image)
+            private_write(workspace / "production-original.json", json.dumps(original_before, indent=2))
+        (workspace / "production-before.json").write_text(json.dumps(before, indent=2))
         (workspace / "rollback-evidence.json").write_text(json.dumps({
             "service": "hormonehealthai", "region": region, "project": PROJECT,
             "priorRevision": PRODUCTION_REVISION, "priorImage": previous_image,
@@ -147,7 +168,7 @@ def main():
         }, indent=2))
         nonce = attempt_id(args.source, args.attempt_id)
         name = "cliniq-rx-stage-" + nonce
-        state = {
+        state = continuation.state if continuation else {
             "project": PROJECT, "region": region, "nonce": nonce, "service": name, "instance": name,
             "database": "rx_stage_" + nonce, "app_role": "rx_stage_app_" + nonce,
             "bucket": PROJECT + "-" + name, "repository": name,
@@ -155,11 +176,15 @@ def main():
             "sql_proxy_port": free_port(), "http_proxy_port": free_port(),
             "synthetic_only": True, "production_writes_authorized": False,
         }
+        if continuation and (state["region"] != region or args.region and args.region != state["region"]):
+            raise RunnerFailure("Original staging region differs from independently verified production region.")
         assert state["instance"] not in {"realign-app", "realign-app-new"}
         for filename in ("admin-password", "app-password", "pgtest-password", "session"):
-            private_write(private / filename, secrets.token_urlsafe(48))
+            if not continuation:
+                private_write(private / filename, secrets.token_urlsafe(48))
             command.redactions.append((private / filename).read_text())
-        private_write(private / "signature", synthetic_signature())
+        if not continuation:
+            private_write(private / "signature", synthetic_signature())
         now = datetime.now(timezone.utc)
         catalog = [{
             "medicationName": "SYNTHETIC STAGING MEDICATION", "strength": strength, "dosageForm": "tablet",
@@ -167,7 +192,11 @@ def main():
             "reviewedBy": "Synthetic staging test", "reviewedAt": now.isoformat().replace("+00:00", "Z"),
             "expiresAt": (now + timedelta(days=30)).isoformat().replace("+00:00", "Z"),
         } for strength in ("10 mg", "20 mg")]
-        private_write(private / "catalog.json", json.dumps(catalog))
+        if not continuation:
+            private_write(private / "catalog.json", json.dumps(catalog))
+        if continuation:
+            step("independently verify existing staging instance, inventories and completed resources")
+            continuation.verify_cloud()
         private_write(workspace / "state.json", json.dumps(state, indent=2))
         source = workspace / "source"
         step("verify installed SDK compatibility offline before billable resources")
@@ -184,8 +213,11 @@ def main():
             raise RuntimeError("Actual integrated prescription tests missing")
         command(["npx", "--no-install", "vitest", "run", *tests], cwd=source, env=build_env)
         command(["npm", "run", "build"], cwd=source, env=build_env)
-        step("create fresh isolated Cloud SQL instance (billable)")
-        create_instance(cloud, state, private)
+        if continuation:
+            step("continue after verified SQL creation; no instance mutation is permitted")
+        else:
+            step("create fresh isolated Cloud SQL instance (billable)")
+            create_instance(cloud, state, private)
         state["connection_name"] = cloud("sql", "instances", "describe", name, "--format=value(connectionName)", capture=True)
         if state["connection_name"] != PROJECT + ":" + region + ":" + name:
             raise RuntimeError("Unexpected staging SQL connection name")
@@ -209,8 +241,12 @@ def main():
                                      stdout=log, stderr=log, env=clean_environment())
         processes.append(sql_proxy)
         wait_port(state["sql_proxy_port"], sql_proxy)
+        if continuation:
+            continuation.verify_database()
         step("initialize empty synthetic staging database")
         command(["node", str(TOOLS / "database.mjs"), "create", str(workspace)])
+        if continuation:
+            continuation.verify_database()
         step("run existing isolated PostgreSQL tests against PostgreSQL 18")
         import tempfile
         socket_root = pathlib.Path(tempfile.mkdtemp(prefix="cliniq-rx-pg."))
@@ -245,6 +281,8 @@ def main():
         for filename in migrations:
             command(["node", str(TOOLS / "migrate.mjs"), str(workspace), str(pathlib.Path(args.materials).resolve() / "migrations" / filename)])
         command(["node", str(TOOLS / "database.mjs"), "seed", str(workspace)])
+        if continuation:
+            continuation.verify_database()
         step("configure new staging identity, private bucket and secrets")
         cloud("iam", "service-accounts", "create", name, "--display-name=Synthetic prescription staging")
         cloud("projects", "add-iam-policy-binding", PROJECT, "--member=serviceAccount:" + state["service_account"],
@@ -316,6 +354,9 @@ def main():
         current_image = cloud("run", "revisions", "describe", PRODUCTION_REVISION, "--region=" + region,
                               "--format=value(status.imageDigest)", capture=True)
         verify_production_unchanged(before, after, region, PRODUCTION_REVISION, previous_image, current_image)
+        if continuation:
+            continuation.verify_cloud()
+            continuation.verify_database()
         state["actual_http_storage_tests_passed"] = True
         state["browser_journey_tested"] = False
         private_write(workspace / "state.json", json.dumps(state, indent=2))
@@ -326,7 +367,8 @@ def main():
         # Keep the evidence and protected operator log, not unnecessary local secret copies.
         for filename in ("admin-password", "app-password", "pgtest-password", "session",
                          "migration-url", "app-url", "accounts.json", "catalog.json", "signature"):
-            (private / filename).unlink(missing_ok=True)
+            if not continuation:
+                (private / filename).unlink(missing_ok=True)
     except Exception as error:
         detail = command.redact(f"{type(error).__name__}: {error}")
         command.note("STOPPED phase: " + phase)
@@ -351,6 +393,8 @@ def main():
             except subprocess.TimeoutExpired:
                 process.kill()
         log.close()
+        if continuation:
+            continuation.close()
 
 
 if __name__ == "__main__":
