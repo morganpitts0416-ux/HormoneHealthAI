@@ -15,6 +15,13 @@ If completed reads stop at terminal-operation correlation, use the offline
 before rerunning assessment. It verifies saved window batches and reports only
 operation/audit metadata; it makes no GCP calls and grants no recovery approval.
 
+After inspecting that diagnostic, `reconcile_recovery_audit.py --evidence
+/absolute/protected/assessment-directory` performs fresh staging-only status
+checks, narrowly targeted audit/request review, and uncovered-tail queries.
+It preserves the old historical windows and cannot reset credentials or mutate
+resources. See `RECOVERY.md` for strict actor, identity, label-only and connect
+event review rules.
+
 # Isolated prescription staging runner
 
 ## Continue the already-created attempt `c73ac1bc32`

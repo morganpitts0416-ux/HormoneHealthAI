@@ -190,6 +190,67 @@ one version, and the staging postgres password change.
 
 ## Local verification
 
+### Targeted read-only reconciliation after the diagnostic
+
+`reconcile_recovery_audit.py --evidence /absolute/protected/assessment-directory`
+is a SEPARATE read-only tool. It neither relaxes the original `rotate` gate nor
+authorizes resets. It is pinned to the two operation IDs explicitly identified by
+the operator, not a guessed operation or a broad method/time match.
+
+It first runs the offline diagnostic and validates the original 11-window prefix.
+It then takes the existing attempt lock, verifies the current account/project,
+instance incarnation/labels/version/tier, postgres-only database/user inventories,
+and the exact two-operation SQL inventory. Each operation is independently
+described via the Cloud SQL API with exact ID, target project/instance, type,
+DONE/no-error status and completion timestamp checks. These authoritative status
+checks supply completion evidence; optional Logging `operation.last` is not used
+as a substitute for Cloud SQL status or as an unconditional prerequisite.
+
+Only the uncovered tail from the validated prefix to a fresh fixed cutoff is
+queried broadly, using the existing bounded windows/caps/deadline policy. Narrow
+historical re-reads target the two exact operation IDs around their authoritative
+lifetimes. Any saved unusual event, including `cloudsql.instances.connect`, not
+already returned is re-read by exact insert ID within two seconds of its saved
+timestamp. Immutable historical metadata must agree on those targeted reads.
+The old 11 historical windows are not resubmitted.
+
+Verification requires exact operation ID + correct method + successful audit
+status + staging resource + independently authenticated actor, corroborated by
+authoritative DONE status. Method/time proximity alone never establishes a match.
+Project-number resource names are resolved ONLY against the freshly described
+project number. Unknown aliases, producers, methods, actors, failed statuses or
+additional SQL operations remain blockers, not blanket allowlist exceptions.
+
+The UPDATE request is read transiently in memory only for exact-ID UPDATE queries.
+Raw request/response content and principal emails are NEVER written into evidence,
+printed, passed in argv or included in error messages. The tool outputs only
+whitelisted audit metadata, a principal hash, and a structural request verdict.
+The private audit subprocess disables SDK HTTP and file logging as well.
+To prove the known label update, at least one matching request must contain
+exactly the two expected labels, with no configuration fields except routing,
+kind and optimistic-concurrency metadata. Tier/password/network/flag changes,
+ambiguous wrappers, broad masks, redacted/unsupported bodies and missing label
+requests cannot be inferred safe from the instance's current labels.
+
+Google documents `cloudsql.instances.connect` as a non-LRO Admin Activity event
+requiring an ADMIN_WRITE permission. It is NOT dismissed as a harmless read.
+An exact staging-resource/successful/current-operator match is classified as
+connection authorization rather than instance configuration mutation. That event
+does not prove what SQL was executed through a connection or the absence of data
+access; the report explicitly retains this limitation. Unknown connection actors
+or resources remain blocked.
+
+New protected `reconciliation-*` evidence is written beside, never into, the old
+assessment. It includes fresh metadata, authoritative operations, sanitized audit
+progress, window coverage, a read-only report and a SHA-256 manifest. All original
+evidence hashes/ledger bytes and fresh instance/operations/account are rechecked.
+Interrupted reads keep sanitized progress and a STOPPED marker. There is no reset,
+SQL connection, production lookup, deployment or mutation command.
+
+Even `READ_ONLY_FACTS_RECONCILED_AWAITING_SEPARATE_APPROVAL` is not authorization
+for initialization, credentials, or signing. Do not run the original rotate
+command using this report; approval-path integration remains a separate review.
+
 ### Offline diagnosis after terminal audit correlation fails
 
 Do NOT rerun `assess` just to identify the operation. The standalone adjacent
