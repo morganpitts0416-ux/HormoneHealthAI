@@ -1,0 +1,2074 @@
+diff --git a/client/src/components/clinical-orders-panel.tsx b/client/src/components/clinical-orders-panel.tsx
+index 9cf91801b4396d4d271cbbfdd543aca434a02f69..e763398c28bf82b1bf96a49e65f07201b299c110 100644
+--- a/client/src/components/clinical-orders-panel.tsx
++++ b/client/src/components/clinical-orders-panel.tsx
+@@ -1543,6 +1543,7 @@ export function PatientOrdersTab({ patientId, patientName }: { patientId: number
+       setConfirmSignOpen(false);
+       setReviewDialogOpen(false);
+       setReviewDetail(null);
++      await queryClient.invalidateQueries({ queryKey: ["/api/patients", patientId, "prescriptions"] });
+       await refetchPrescriptions();
+     } catch (error) {
+       setReviewError(error instanceof Error ? error.message : "Prescription signing failed.");
+diff --git a/client/src/components/prescription-dialog.tsx b/client/src/components/prescription-dialog.tsx
+index 276965ede67b279b25dd196a1048f47b414246ea..370ceaeaa7be0fe911f29bc04590ad51179053b2 100644
+--- a/client/src/components/prescription-dialog.tsx
++++ b/client/src/components/prescription-dialog.tsx
+@@ -15,12 +15,14 @@ import { Checkbox } from "@/components/ui/checkbox";
+ import { useToast } from "@/hooks/use-toast";
+ import { queryClient } from "@/lib/queryClient";
+ import { findExactFormulation } from "@/lib/prescription-directory";
++import { useQuery } from "@tanstack/react-query";
+ 
+ interface PrescriptionDialogProps {
+   open: boolean;
+   onClose: () => void;
+   patientId: number;
+   patientName: string;
++  encounterId?: number | null;
+   editPrescriptionId?: number | null;
+ }
+ 
+@@ -66,9 +68,25 @@ export function PrescriptionDialog({
+   onClose,
+   patientId,
+   patientName,
++  encounterId = null,
+   editPrescriptionId = null,
+ }: PrescriptionDialogProps) {
+   const { toast } = useToast();
++  const [originEncounterId, setOriginEncounterId] = useState<number | null>(encounterId);
++  const { data: originEncounters = [], isError: originEncountersError } = useQuery<
++    { id: number; visitDate: string; visitType?: string | null }[]
++  >({
++    queryKey: ["/api/encounters", patientId],
++    enabled: open && !editPrescriptionId,
++    queryFn: async () => {
++      const response = await fetch(`/api/encounters?patientId=${patientId}`, { credentials: "include" });
++      if (!response.ok) throw new Error("Unable to load originating encounters");
++      const encounters = await response.json();
++      if (!Array.isArray(encounters)) throw new Error("Invalid encounter response");
++      return encounters;
++    },
++  });
++  useEffect(() => { setOriginEncounterId(encounterId); }, [open, patientId, encounterId]);
+ 
+   const [medications, setMedications] = useState<Medication[]>([
+     emptyMedication(),
+@@ -684,7 +702,10 @@ if (editPrescriptionId && loadedDraftId !== editPrescriptionId) {
+         ...payloadMedications[0],
+         patientId,
+       }
+-    : { medications: payloadMedications }
++    : {
++        medications: payloadMedications,
++          ...(originEncounterId != null ? { encounterId: originEncounterId } : {}),
++      }
+ ),
+   }
+ );
+@@ -777,6 +798,23 @@ if (editPrescriptionId && loadedDraftId !== editPrescriptionId) {
+             Draft only — prescriptions are not signed or transmitted.
+           </p>
+         </DialogHeader>
++          {!editPrescriptionId && (
++            <div className="space-y-1">
++              <Label htmlFor="prescription-origin-encounter">Originating encounter (optional)</Label>
++              <select id="prescription-origin-encounter"
++                className="w-full rounded-md border bg-background p-2 text-sm"
++                value={originEncounterId ?? ""}
++                onChange={event => setOriginEncounterId(event.target.value ? Number(event.target.value) : null)}>
++                <option value="">Standalone prescription session</option>
++                {originEncounters.map(encounter => (
++                  <option key={encounter.id} value={encounter.id}>
++                    {new Date(encounter.visitDate).toLocaleDateString()} — {encounter.visitType ?? "Encounter"} #{encounter.id}
++                  </option>
++                ))}
++              </select>
++              {originEncountersError && <p role="alert" className="text-xs text-destructive">Unable to load encounter links. Close and reopen to retry, or prescribe as a standalone session.</p>}
++            </div>
++          )}
+ 
+         <fieldset
+   disabled={
+diff --git a/client/src/components/prescription-timeline.tsx b/client/src/components/prescription-timeline.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..9436d99b8165ac5c1b0b4db1624e5de5378deb83
+--- /dev/null
++++ b/client/src/components/prescription-timeline.tsx
+@@ -0,0 +1,227 @@
++import { useState } from "react";
++import { Badge } from "@/components/ui/badge";
++import { Button } from "@/components/ui/button";
++import {
++  Dialog,
++  DialogContent,
++  DialogHeader,
++  DialogTitle,
++} from "@/components/ui/dialog";
++import { Download, FileText, Loader2, Pill, Printer } from "lucide-react";
++
++export interface TimelinePrescription {
++  id: number;
++  encounterId?: number | null;
++  hasSignedSnapshot?: boolean;
++  status: string;
++  signedAt?: string | null;
++  createdAt?: string | null;
++  batchId?: number | string | null;
++  medicationName: string;
++  strength?: string | null;
++  dosageForm?: string | null;
++  sig?: string | null;
++  quantity?: string | null;
++  refills?: number | null;
++  pharmacyName?: string | null;
++}
++
++export interface PrescriptionTimelineEncounter {
++  id: number;
++  visitDate: string | Date;
++}
++
++export type PrescriptionTimelineEvent<TEncounter extends PrescriptionTimelineEncounter> =
++  | { kind: "encounter"; encounter: TEncounter; sortMs: number }
++  | { kind: "prescription-group"; key: string; prescriptions: TimelinePrescription[]; sortMs: number };
++
++/** Interleave encounter rows with prescription batches by their own clinical dates. */
++export function mergePrescriptionTimeline<TEncounter extends PrescriptionTimelineEncounter>(
++  encounters: TEncounter[],
++  prescriptions: TimelinePrescription[],
++): PrescriptionTimelineEvent<TEncounter>[] {
++  const events: PrescriptionTimelineEvent<TEncounter>[] = encounters.map((encounter) => ({
++    kind: "encounter",
++    encounter,
++    sortMs: new Date(encounter.visitDate).getTime(),
++  }));
++  const groups = new Map<string, TimelinePrescription[]>();
++  for (const prescription of prescriptions) {
++    const key = prescription.batchId != null ? `batch-${prescription.batchId}` : `prescription-${prescription.id}`;
++    groups.set(key, [...(groups.get(key) ?? []), prescription]);
++  }
++  for (const [key, items] of Array.from(groups.entries())) {
++    const sortMs = Math.max(...items.map((item) => {
++      const date = item.signedAt ?? item.createdAt;
++      return date ? new Date(date).getTime() : 0;
++    }));
++    events.push({ kind: "prescription-group", key, prescriptions: items, sortMs });
++  }
++  return events.sort((a, b) => b.sortMs - a.sortMs);
++}
++
++function dateLabel(date: string | null | undefined) {
++  if (!date) return "Date unavailable";
++  const parsed = new Date(date);
++  return Number.isNaN(parsed.getTime())
++    ? "Date unavailable"
++    : parsed.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
++}
++
++export function PrescriptionTimelineGroup({
++  groupKey,
++  prescriptions,
++  onOpenDrafts,
++  onOpenEncounter,
++}: {
++  groupKey: string;
++  prescriptions: TimelinePrescription[];
++  onOpenDrafts: () => void;
++  onOpenEncounter?: (id: number) => void;
++}) {
++  const [viewingId, setViewingId] = useState<number | null>(null);
++  const [busyId, setBusyId] = useState<number | null>(null);
++  const [error, setError] = useState("");
++  const viewingPrescription = prescriptions.find((prescription) => prescription.id === viewingId);
++  const isBatch = prescriptions.length > 1;
++
++  async function downloadPdf(prescriptionId: number, print: boolean) {
++    setBusyId(prescriptionId);
++    setError("");
++    const printWindow = print ? window.open("about:blank", "_blank") : null;
++    try {
++      if (print && !printWindow) throw new Error("Allow pop-ups to print the finalized prescription PDF.");
++      const response = await fetch(`/api/prescriptions/${prescriptionId}/pdf`, { credentials: "include" });
++      if (!response.ok) throw new Error("Unable to retrieve the finalized prescription PDF.");
++      const blob = await response.blob();
++      if (!blob.size || (blob.type && !blob.type.includes("pdf"))) throw new Error("The server did not return a valid prescription PDF.");
++      const url = URL.createObjectURL(blob);
++      if (printWindow) {
++        printWindow.addEventListener("load", () => {
++          printWindow.focus();
++          printWindow.print();
++        }, { once: true });
++        printWindow.location.href = url;
++        window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
++      } else {
++        const link = document.createElement("a");
++        link.href = url;
++        link.download = `prescription-${prescriptionId}.pdf`;
++        document.body.appendChild(link);
++        link.click();
++        link.remove();
++        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
++      }
++    } catch (cause) {
++      printWindow?.close();
++      setError(cause instanceof Error ? cause.message : "Unable to open prescription PDF.");
++    } finally {
++      setBusyId(null);
++    }
++  }
++
++  return (
++    <>
++      <section
++        className="rounded-md border border-l-4 border-l-primary/60 bg-card p-3 space-y-2"
++        aria-label={isBatch ? "Prescription batch" : "Prescription"}
++        data-testid={`prescription-timeline-${groupKey}`}
++      >
++        <header className="flex items-center gap-2 flex-wrap">
++          <Pill className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
++          <span className="text-xs font-semibold">{isBatch ? "Prescription batch" : "Prescription"}</span>
++          {isBatch && <Badge variant="secondary" className="text-[10px]">{prescriptions.length} medications</Badge>}
++          <span className="text-xs text-muted-foreground ml-auto">{dateLabel(prescriptions[0]?.signedAt ?? prescriptions[0]?.createdAt)}</span>
++        </header>
++        <div className="divide-y">
++          {prescriptions.map((prescription) => {
++            const signed = prescription.status === "signed";
++            const hasSnapshot = signed && prescription.hasSignedSnapshot === true;
++            return (
++              <article key={prescription.id} className="py-2 first:pt-0 last:pb-0 space-y-2">
++                <div className="flex items-start justify-between gap-3">
++                  <div className="min-w-0 space-y-0.5">
++                    <button
++                      type="button"
++                      className="text-left text-sm font-medium break-words hover:underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm"
++                      onClick={() => {
++                        if (!signed) onOpenDrafts();
++                        else if (hasSnapshot) { setError(""); setViewingId(prescription.id); }
++                        else void downloadPdf(prescription.id, false);
++                      }}
++                      aria-label={signed
++                        ? `Open signed prescription for ${prescription.medicationName}`
++                        : `Open unsigned prescription draft for review: ${prescription.medicationName}`}
++                    >
++                      {prescription.medicationName}
++                      {prescription.strength ? ` — ${prescription.strength}` : ""}
++                      {prescription.dosageForm ? ` ${prescription.dosageForm}` : ""}
++                    </button>
++                    {prescription.sig && <p className="text-xs text-muted-foreground whitespace-pre-wrap">{prescription.sig}</p>}
++                    <p className="text-[11px] text-muted-foreground">
++                      {signed ? `Signed ${dateLabel(prescription.signedAt)}` : "Unsigned draft"}
++                    </p>
++                    {prescription.encounterId && onOpenEncounter && (
++                      <button type="button" className="text-xs underline"
++                        onClick={() => onOpenEncounter(prescription.encounterId!)}>
++                        Originating encounter #{prescription.encounterId}
++                      </button>
++                    )}
++                  </div>
++                  <Badge variant={signed ? "outline" : "secondary"} className="shrink-0">
++                    {signed ? "Signed" : "Unsigned draft"}
++                  </Badge>
++                </div>
++                <div className="flex flex-wrap gap-2">
++                  {signed && hasSnapshot && (
++                    <Button type="button" size="sm" variant="outline" onClick={() => { setError(""); setViewingId(prescription.id); }}>
++                      <FileText className="h-3.5 w-3.5 mr-1" /> View signed document
++                    </Button>
++                  )}
++                  {signed && (
++                    <>
++                      <Button type="button" size="sm" variant="outline" disabled={busyId !== null} onClick={() => void downloadPdf(prescription.id, false)}>
++                        {busyId === prescription.id ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Download className="h-3.5 w-3.5 mr-1" />}
++                        Download PDF
++                      </Button>
++                      <Button type="button" size="sm" variant="outline" disabled={busyId !== null} onClick={() => void downloadPdf(prescription.id, true)}>
++                        {busyId === prescription.id ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Printer className="h-3.5 w-3.5 mr-1" />}
++                        Print
++                      </Button>
++                    </>
++                  )}
++                  {!signed && (
++                    <Button type="button" size="sm" variant="outline" onClick={onOpenDrafts}>
++                      Review or edit unsigned draft
++                    </Button>
++                  )}
++                </div>
++              </article>
++            );
++          })}
++        </div>
++        {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
++      </section>
++      <Dialog open={viewingId !== null} onOpenChange={(open) => { if (!open) setViewingId(null); }}>
++        <DialogContent className="w-[calc(100vw-1rem)] max-w-5xl h-[min(90dvh,900px)] flex flex-col p-0">
++          <DialogHeader className="px-5 pt-5">
++            <DialogTitle>Signed prescription</DialogTitle>
++            <p className="text-sm text-muted-foreground">
++              {viewingPrescription?.medicationName} — read-only signed snapshot
++            </p>
++          </DialogHeader>
++          {viewingId !== null && (
++            <iframe
++              key={viewingId}
++              title={`Signed prescription document for ${viewingPrescription?.medicationName ?? "medication"}`}
++              src={`/api/prescriptions/${viewingId}/html`}
++              className="min-h-0 flex-1 w-full border-t bg-white"
++              referrerPolicy="same-origin"
++              sandbox="allow-same-origin"
++            />
++          )}
++        </DialogContent>
++      </Dialog>
++    </>
++  );
++}
+diff --git a/client/src/pages/patient-profiles.tsx b/client/src/pages/patient-profiles.tsx
+index 1bdd1bd869efff142fc83f47386c1b86301dd027..eb7e69659d3f3382e96fd94bd6c8b19dc01ae76b 100644
+--- a/client/src/pages/patient-profiles.tsx
++++ b/client/src/pages/patient-profiles.tsx
+@@ -79,6 +79,11 @@ import { PharmacyLookup, pharmacyValueFromRecord, pharmacyValueToPatch, type Pha
+ import { PharmacyDisplay } from "@/components/pharmacy-display";
+ import { PatientOrdersTab } from "@/components/clinical-orders-panel";
+ import { FulfillOrderPopover } from "@/components/fulfill-order-popover";
++import {
++  mergePrescriptionTimeline,
++  PrescriptionTimelineGroup,
++  type TimelinePrescription,
++} from "@/components/prescription-timeline";
+ 
+ // ── Safe date display utility ─────────────────────────────────────────────────
+ // Dates from the DB are stored as UTC midnight. Using { timeZone: 'UTC' } prevents
+@@ -3599,6 +3604,22 @@ export default function PatientProfiles() {
+     },
+     enabled: !!selectedPatient,
+   });
++  const { data: timelinePrescriptions = [], isError: timelinePrescriptionsError } = useQuery<TimelinePrescription[]>({
++    queryKey: ["/api/patients", selectedPatient?.id, "prescriptions"],
++    queryFn: async () => {
++      if (!selectedPatient) return [];
++      const response = await fetch(`/api/patients/${selectedPatient.id}/prescriptions`, { credentials: "include" });
++      if (!response.ok) throw new Error("Unable to load prescriptions");
++      const result = await response.json();
++      if (!Array.isArray(result)) throw new Error("Invalid prescriptions response");
++      return result;
++    },
++    enabled: !!selectedPatient,
++  });
++  const encounterTimeline = useMemo(
++    () => mergePrescriptionTimeline(patientEncounters, timelinePrescriptions),
++    [patientEncounters, timelinePrescriptions],
++  );
+ 
+   // Auto-open the correct note editor when a ?encounter=N param is in the URL.
+   // Fires after encounters data is loaded so noteType is available.
+@@ -5490,14 +5511,27 @@ export default function PatientProfiles() {
+                     </div>
+                   </CardContent>
+                 )}
+-                {!inlineEncounter && patientEncounters.length === 0 && (
++                {timelinePrescriptionsError && <CardContent><p role="alert" className="text-sm text-destructive">Unable to load prescriptions for this timeline. Refresh to retry.</p></CardContent>}
++                {!inlineEncounter && patientEncounters.length === 0 && timelinePrescriptions.length === 0 && (
+                   <CardContent>
+                     <p className="text-sm text-muted-foreground">No encounters documented yet. Start one above to create an audio-transcribed SOAP note for this patient.</p>
+                   </CardContent>
+                 )}
+-                {!inlineEncounter && patientEncounters.length > 0 && (
++                {!inlineEncounter && encounterTimeline.length > 0 && (
+                   <CardContent className="space-y-2">
+-                    {patientEncounters.map(enc => {
++                    {encounterTimeline.map((timelineEvent) => {
++                      if (timelineEvent.kind === "prescription-group") {
++                        return (
++                          <PrescriptionTimelineGroup
++                            key={timelineEvent.key}
++                            groupKey={timelineEvent.key}
++                            prescriptions={timelineEvent.prescriptions}
++                            onOpenEncounter={id => { setExpandedEncounterId(null); setInlineEncounter({ mode: "edit", encounterId: id }); }}
++                            onOpenDrafts={() => setProfileSection("orders")}
++                          />
++                        );
++                      }
++                      const enc = timelineEvent.encounter;
+                       const VISIT_LABELS: Record<string, string> = {
+                         "new-patient": "New Patient", "follow-up": "Follow-up", "acute": "Acute Visit",
+                         "wellness": "Wellness / Annual", "procedure": "Procedure", "telemedicine": "Telemedicine", "lab-review": "Lab Review",
+diff --git a/docs/prescription-snapshot-release.md b/docs/prescription-snapshot-release.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..def529b6bfe2479ee1d978f59f275c185a93a4a5
+--- /dev/null
++++ b/docs/prescription-snapshot-release.md
+@@ -0,0 +1,98 @@
++# Immutable prescription snapshot release
++
++## Implemented boundary
++
++The existing prescription finalizer now commits a versioned signing-time snapshot
++and the existing prescription audit event in the same row-locked transaction.
++The server requires signing intent, the current reviewed-content hash, an
++independently verified authenticated provider, current clinic authority and an
++eligible formulation from the reviewed noncontrolled catalog. Saved signature
++and clinic logo bytes are validated before persistence. No PDF upload or cloud
++storage bucket is required to sign a new snapshot.
++
++The frozen record includes patient, medication, pharmacy, clinic letterhead and
++business contacts, prescriber identity/credentials/signature, actual actor ID,
++timestamp, authentication statement, classification and review evidence.
++Canonical JSON hashing tolerates PostgreSQL JSONB key ordering. A prepared
++database trigger prevents signed facts being edited, reopened as drafts or
++deleted; cancellations may update only cancellation/status metadata.
++
++The existing Encounters list interleaves prescription batches with SOAP notes.
++Each medication opens separately. New batch creation supports an optional
++authorized same-patient encounter link or a standalone session. Unsigned drafts
++remain in the existing Orders review/edit workflow. SOAP signing, transcription,
++medications/refills and automatic transmission are not changed.
++
++## HTML, PDF and historical evidence
++
++Authenticated clinic-scoped HTML and PDF routes use only the verified signed
++snapshot. HTML escapes text, allows only embedded PNG/JPEG images and sends a
++restrictive CSP and private/no-store headers. No platform letterhead or footer
++appears in the formal document. New on-demand PDFs have a snapshot-derived
++document ID, signing-time creation date and snapshot hash.
++
++If an existing prescription document is linked, download its original bytes
++through the existing tenant/linkage/hash-verified storage path. Never delete
++historical documents, hashes or transmissions, and never fabricate a snapshot
++for an old signed record using today's account/demographics. Legacy records
++without a snapshot offer their preserved PDF, not reconstructed HTML. Original
++storage is still required to retrieve historical stored artifacts.
++
++## Prepared migration — not applied to any existing database
++
++`scripts/prescription-snapshot-schema.sql` adds only:
++
++- nullable `prescription_batches.encounter_id`;
++- nullable `prescriptions.signed_snapshot`;
++- the signed-facts immutability trigger.
++
++Equivalent preparation is in `server/prod-migrate.sql`. No historical data
++backfill is performed. Apply the focused script only after separate approval
++in an independently verified synthetic staging database. This release does not
++authorize startup migrations or change any production approval flag.
++
++## Local verification
++
++```sh
++npx vitest run tests/unit/prescription-*.test.ts tests/unit/prescriber-*.test.ts tests/unit/prescription-timeline.test.tsx
++bash scripts/run-prescription-postgres-integration.sh
++npm run build
++```
++
++The PostgreSQL wrapper creates and removes a fresh private Unix-socket cluster;
++it never resolves an inherited application database URL. The HTTP integration
++suite uses real PostgreSQL, the actual prescription handlers/finalizer/adapter,
++and cookie-backed Passport authentication in a synthetic-only login harness.
++It does not certify the full application's deployed authentication, browser
++printing, cloud networking, or production compliance.
++
++An optional second argument to the shell wrapper is an existing owner-only,
++canonical absolute evidence directory for synthetic HTML/PDF files.
++
++## Shortest separately approved staging path
++
++1. Apply the code-only transfer patch to an isolated copy of the independently
++   verified current production source. Run `git apply --check` first; resolve
++   divergent shared-file hunks selectively, never overwrite newer functionality.
++   The package comparison baseline is Replit HEAD, not a production attestation.
++2. Independently verify the recovered synthetic-only staging environment and
++   approved access. Apply the focused additive SQL there only.
++3. Deploy a separate staging service with staging-only resources and enable
++   signing only in that synthetic environment. Use a synthetic provider,
++   independent credential approver, saved synthetic signature and test catalog.
++4. Execute authenticated Create Draft → Review → Sign → HTML → PDF →
++   Download/Print in a real browser, including a second clinic, concurrent retry,
++   legacy-document retrieval and changed demographics. Keep protected evidence.
++
++No actual deployed staging signing is claimed by the local tests. Production
++traffic, databases, signing activation, controlled prescribing and automatic
++faxing remain outside this release's authorization.
++
++## Publication
++
++The dedicated parentless patch-transfer branch excludes inherited uploads,
++archives, briefs, environment files and private evidence/history. It contains the
++implementation patch, hashes/manifest and this runbook, not a complete runnable
++application. Do not merge the transfer branch into `main`; selectively integrate
++the patch into the authoritative source. Full-project type checking currently
++has pre-existing failures; the production build is a separate check.
+diff --git a/scripts/prescription-postgres-integration.ts b/scripts/prescription-postgres-integration.ts
+index 7e2284ae0c6f9a7ac603f3458ae47f70998505bc..562e5eac4431239fc755ffc01e444c0a19a22000 100644
+--- a/scripts/prescription-postgres-integration.ts
++++ b/scripts/prescription-postgres-integration.ts
+@@ -1,188 +1,20 @@
+ import assert from "node:assert/strict";
+-import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, chmodSync, lstatSync, realpathSync } from "node:fs";
+-import { join, dirname, isAbsolute } from "node:path";
+-import { tmpdir } from "node:os";
+-import { createHash, randomUUID } from "node:crypto";
+-import pg from "pg";
+-import { drizzle } from "drizzle-orm/node-postgres";
+-import { and, eq } from "drizzle-orm";
+-import * as schema from "../shared/schema";
+-import { getTableColumns } from "drizzle-orm";
+-import { finalizePrescription, prescriptionReviewHash, type SigningDependencies, type SigningTransaction } from "../server/prescription-finalization";
+-import { generatePrescriptionPdf } from "../server/prescription-pdf";
+-import { syntheticSignature } from "../tests/unit/prescription-fixtures";
++import { spawnSync } from "node:child_process";
++import { isAbsolute } from "node:path";
++import { lstatSync, realpathSync } from "node:fs";
+ 
++// The shell wrapper owns and destroys the brand-new private cluster. Never
++// resolve an inherited application DATABASE_URL or perform any cloud calls.
+ const socket = process.argv[2];
+ assert(socket?.startsWith("/tmp/cliniq-rx-pg.") && !socket.includes(".."), "Fresh isolated socket required");
+-const evidenceRoot = process.argv[3] || mkdtempSync(join(tmpdir(), "cliniq-rx-evidence."));
+-assert(isAbsolute(evidenceRoot) && realpathSync(evidenceRoot) === evidenceRoot, "Canonical evidence directory required");
+-const evidenceStat = lstatSync(evidenceRoot);
+-assert(evidenceStat.isDirectory() && evidenceStat.uid === process.getuid!() &&
+-  (evidenceStat.mode & 0o077) === 0, "Owned private evidence directory required");
+-writeFileSync(join(evidenceRoot, "upload-blocker"), "SYNTHETIC ONLY", { flag: "wx", mode: 0o600 });
+-const pool = new pg.Pool({ host: socket, port: 5432, user: "cliniq_synthetic_owner", database: "cliniq_synthetic", ssl: false, max: 6 });
+-const db = drizzle(pool, { schema });
+-let passed = 0;
+-const check = async (name: string, run: () => Promise<void>) => {
+-  await run(); passed++; console.log(`PASS ${name}`);
+-};
+-try {
+-  const identity = await pool.query("select current_database() as name");
+-  assert.equal(identity.rows[0].name, "cliniq_synthetic");
+-  await pool.query("CREATE TABLE users(id integer PRIMARY KEY); CREATE TABLE clinics(id integer PRIMARY KEY, name text)");
+-  for (const script of ["prescription-schema.sql", "prescription-directory-schema.sql", "prescription-release-schema.sql"]) {
+-    await pool.query(readFileSync(`server/${script}`, "utf8"));
+-    await pool.query(readFileSync(`server/${script}`, "utf8")); // Idempotent on an isolated known schema.
+-  }
+-  const storedFile = (key: string) => {
+-    assert.match(key, /^clinics\/10\/prescriptions\/[1-9]\d*\/[a-f0-9-]{36}\/signed\.pdf$/);
+-    return join(evidenceRoot, key);
+-  };
+-  const stored = (key: string) => readFileSync(storedFile(key));
+-  let failUpload = false, failAudit = false, uploads = 0;
+-  const signer = { userId: 7, clinicId: 10, name: "Synthetic Provider", title: "MD", npi: "1234567890",
+-    license: "SYNTHETIC-ONLY", licenseState: "MS", signatureImage: syntheticSignature };
+-  const deps: SigningDependencies = {
+-    transaction: run => db.transaction(async tx => {
+-      const adapter: SigningTransaction = {
+-        async lockPrescription(id, clinicId) {
+-          const [rx] = await tx.select().from(schema.prescriptions)
+-            .where(and(eq(schema.prescriptions.id, id), eq(schema.prescriptions.clinicId, clinicId)))
+-            .limit(1).for("update");
+-          return rx ?? null;
+-        },
+-        async authorizeSigner() { return signer; },
+-        async getDocument(id) {
+-          const [doc] = await tx.select().from(schema.prescriptionDocuments)
+-            .where(eq(schema.prescriptionDocuments.prescriptionId, id)).limit(1);
+-          return doc;
+-        },
+-        async getPdfContext() { return { clinicName: "Synthetic Clinic", clinicAddress: "100 Example Clinic Avenue",
+-           clinicPhone: "555-0100", patientName: "Synthetic Patient", patientDob: "1990-01-01",
+-           patientAddress: "200 Synthetic Patient Avenue" }; },
+-        async commitDocument(rx, actor, signedAt, object) {
+-          const [doc] = await tx.insert(schema.prescriptionDocuments).values({
+-            prescriptionId: rx.id, clinicId: rx.clinicId, ...object, signedByUserId: actor.userId, signedAt,
+-          }).returning();
+-          await tx.update(schema.prescriptions).set({ status: "signed", signedAt, signedByUserId: actor.userId })
+-            .where(eq(schema.prescriptions.id, rx.id));
+-          if (failAudit) throw new Error("Synthetic audit failure");
+-          await tx.insert(schema.prescriptionAuditEvents).values({
+-            prescriptionId: rx.id, clinicId: rx.clinicId, actorUserId: actor.userId, action: "signed",
+-          });
+-          return doc;
+-        },
+-      };
+-      return run(adapter);
+-    }),
+-    classify: () => ({ noncontrolled: true, sourceReference: "SYNTHETIC TEST ONLY" }),
+-    generatePdf: generatePrescriptionPdf,
+-    async storePdf(clinicId, id, pdf) {
+-       if (failUpload) writeFileSync(join(evidenceRoot, "upload-blocker", "cannot-write.pdf"), pdf, { flag: "wx" });
+-      await new Promise(resolve => setTimeout(resolve, 50)); // Overlap concurrent transactions.
+-      const key = `clinics/${clinicId}/prescriptions/${id}/${randomUUID()}/signed.pdf`;
+-       mkdirSync(dirname(storedFile(key)), { recursive: true, mode: 0o700 });
+-       writeFileSync(storedFile(key), pdf, { flag: "wx", mode: 0o600 });
+-       chmodSync(storedFile(key), 0o400);
+-       uploads++;
+-      const hash = createHash("sha256").update(pdf).digest("hex");
+-       assert.equal(createHash("sha256").update(stored(key)).digest("hex"), hash);
+-      return { storageKey: key, sha256Hash: hash };
+-    },
+-    now: () => new Date(),
+-  };
+-  const draft = async () => {
+-    const [rx] = await db.insert(schema.prescriptions).values({
+-      clinicId: 10, patientId: 20, prescriberUserId: 7, createdByUserId: 7,
+-      medicationName: "Synthetic Medication", strength: "10 mg", dosageForm: "tablet",
+-       sig: "SYNTHETIC TEST ONLY: Take one tablet daily", quantity: "30", refills: 1, status: "draft",
+-    }).returning();
+-    return rx;
+-  };
+-  await check("review SQL matches ORM column names and types for all prescription tables", async () => {
+-    const tables = [schema.prescriberCredentials, schema.prescriptionBatches, schema.prescriptionPharmacies,
+-      schema.prescriptions, schema.prescriptionDocuments, schema.prescriptionTransmissions,
+-      schema.prescriptionAuditEvents, schema.prescriberCredentialAuditEvents,
+-      schema.prescriptionMedicationTemplates, schema.prescriptionMedications, schema.prescriptionSigs];
+-    const normalize = (type: string) => type.toLowerCase().replace(/^serial$/, "integer")
+-      .replace(/^varchar\(\d+\)$/, "character varying").replace(/^timestamp$/, "timestamp without time zone");
+-    for (const table of tables) {
+-      const { getTableName } = await import("drizzle-orm");
+-      const columns = await pool.query("select column_name,data_type,character_maximum_length,is_nullable from information_schema.columns where table_schema='public' and table_name=$1", [getTableName(table)]);
+-      for (const column of Object.values(getTableColumns(table))) {
+-        const actual = columns.rows.find(row => row.column_name === column.name);
+-        assert(actual, `${getTableName(table)}.${column.name} missing`);
+-        assert.equal(normalize(column.getSQLType()), actual.data_type, `${getTableName(table)}.${column.name} type`);
+-        const length = /^varchar\((\d+)\)$/.exec(column.getSQLType())?.[1];
+-        if (length) assert.equal(Number(length), actual.character_maximum_length, column.name);
+-        assert.equal(column.notNull ? "NO" : "YES", actual.is_nullable, `${getTableName(table)}.${column.name} nullability`);
+-      }
+-    }
+-  });
+-  await check("review scripts are repeatable on a fresh isolated PostgreSQL schema", async () => {
+-    const constraints = await pool.query("select indexdef from pg_indexes where tablename='prescription_documents'");
+-    assert(constraints.rows.some(row => /UNIQUE.*\bprescription_id\b/.test(row.indexdef)));
+-  });
+-  await check("real row locks serialize concurrent signing into one upload/document/audit", async () => {
+-    const rx = await draft(); const hash = prescriptionReviewHash(rx);
+-    const results = await Promise.all([finalizePrescription(rx.id, 10, hash, deps), finalizePrescription(rx.id, 10, hash, deps)]);
+-    assert.equal(results[0].documentId, results[1].documentId); assert.equal(uploads, 1);
+-    const docs = await db.select().from(schema.prescriptionDocuments);
+-    assert.equal(docs.length, 1);
+-     assert.equal(createHash("sha256").update(stored(docs[0].storageKey)).digest("hex"), docs[0].sha256Hash);
+-     writeFileSync(join(evidenceRoot, "synthetic-signed.pdf"), stored(docs[0].storageKey), { flag: "wx", mode: 0o400 });
+-    assert.equal((await db.select().from(schema.prescriptionAuditEvents)).length, 1);
+-  });
+-  await check("actual private PDF bytes reopen and exclusive-create prevents overwrite", async () => {
+-    const [doc] = await db.select().from(schema.prescriptionDocuments);
+-    const bytes = stored(doc.storageKey);
+-    assert.equal(bytes.subarray(0, 5).toString(), "%PDF-");
+-    assert(bytes.includes(Buffer.from("%%EOF")));
+-    assert.equal(lstatSync(storedFile(doc.storageKey)).mode & 0o777, 0o400);
+-    assert.throws(() => writeFileSync(storedFile(doc.storageKey), bytes, { flag: "wx" }),
+-      (error: any) => error.code === "EEXIST");
+-    assert.equal(createHash("sha256").update(stored(doc.storageKey)).digest("hex"), doc.sha256Hash);
+-  });
+-  await check("failed upload leaves a draft without a document", async () => {
+-    const rx = await draft(); failUpload = true;
+-    await assert.rejects(finalizePrescription(rx.id, 10, prescriptionReviewHash(rx), deps));
+-    failUpload = false;
+-    const [row] = await db.select().from(schema.prescriptions).where(eq(schema.prescriptions.id, rx.id));
+-    assert.equal(row.status, "draft");
+-    assert.equal((await db.select().from(schema.prescriptionDocuments).where(eq(schema.prescriptionDocuments.prescriptionId, rx.id))).length, 0);
+-  });
+-  await check("audit failure rolls back signed state and document; retry is safe", async () => {
+-    const rx = await draft(); failAudit = true;
+-    await assert.rejects(finalizePrescription(rx.id, 10, prescriptionReviewHash(rx), deps));
+-    failAudit = false;
+-    const [row] = await db.select().from(schema.prescriptions).where(eq(schema.prescriptions.id, rx.id));
+-    assert.equal(row.status, "draft");
+-    assert.equal((await db.select().from(schema.prescriptionDocuments).where(eq(schema.prescriptionDocuments.prescriptionId, rx.id))).length, 0);
+-    const result = await finalizePrescription(rx.id, 10, prescriptionReviewHash(rx), deps);
+-    assert.equal(result.status, "signed"); // Unreferenced synthetic object remains inaccessible.
+-  });
+-  await check("cross-clinic document and SIG references are rejected by PostgreSQL", async () => {
+-    const rx = await draft();
+-    await assert.rejects(db.insert(schema.prescriptionDocuments).values({
+-      prescriptionId: rx.id, clinicId: 11, storageKey: "SYNTHETIC", sha256Hash: "a".repeat(64), signedAt: new Date(), signedByUserId: 7,
+-    }));
+-    const [med] = await db.insert(schema.prescriptionMedications).values({
+-      clinicId: 10, medicationName: "Synthetic Medication", strength: "10 mg", dosageForm: "tablet", identityKey: "b".repeat(64),
+-    }).returning();
+-    await assert.rejects(db.insert(schema.prescriptionSigs).values({
+-      clinicId: 11, medicationId: med.id, sig: "Synthetic SIG", identityKey: "c".repeat(64), createdByUserId: 7,
+-    }));
+-  });
+-   const documents = await db.select().from(schema.prescriptionDocuments);
+-   const audits = await db.select().from(schema.prescriptionAuditEvents);
+-   writeFileSync(join(evidenceRoot, "report.json"), JSON.stringify({
+-     status: "LOCAL_SYNTHETIC_ENGINE_CHECKS_PASSED_NOT_STAGING_SIGNING_VALIDATION",
+-     passed, database: "fresh private Unix-socket PostgreSQL; removed after test",
+-     storage: "real owner-only local filesystem adapter, NOT production GCS",
+-     authorization: "synthetic signer adapter, NOT authenticated HTTP route verification",
+-     productionSigningChanged: false, cloudCalls: false, documents, audits,
+-     pdfSha256: createHash("sha256").update(readFileSync(join(evidenceRoot, "synthetic-signed.pdf"))).digest("hex"),
+-   }, null, 2), { flag: "wx", mode: 0o600 });
+-   console.log(`${passed} isolated PostgreSQL checks passed. Actual PDF evidence: ${evidenceRoot}`);
+-   console.log("LIMITATION: Local filesystem storage and synthetic signer adapter, NOT GCS or authenticated staging validation.");
+-} finally { await pool.end(); }
++const evidence = process.argv[3];
++if (evidence) {
++  const stat = lstatSync(evidence);
++  assert(isAbsolute(evidence) && realpathSync(evidence) === evidence && stat.isDirectory() &&
++    stat.uid === process.getuid!() && (stat.mode & 0o077) === 0, "Owned private canonical evidence directory required");
++}
++const result = spawnSync("npx", ["vitest", "run", "tests/unit/prescription-snapshot-postgres.test.ts"], {
++  env: { ...process.env, RX_TEST_SOCKET: socket, RX_EVIDENCE_DIR: evidence ?? "" }, stdio: "inherit",
++});
++if (result.error) throw result.error;
++process.exit(result.status ?? 1);
+diff --git a/scripts/prescription-snapshot-schema.sql b/scripts/prescription-snapshot-schema.sql
+new file mode 100644
+index 0000000000000000000000000000000000000000..726b4e7e9ad59f31b51606114acc8e274ee10b13
+--- /dev/null
++++ b/scripts/prescription-snapshot-schema.sql
+@@ -0,0 +1,34 @@
++-- PREPARED ONLY. Apply solely to an explicitly approved isolated environment.
++-- No historical values are reconstructed, and no existing artifacts are deleted.
++ALTER TABLE prescription_batches
++  ADD COLUMN IF NOT EXISTS encounter_id integer REFERENCES clinical_encounters(id);
++ALTER TABLE prescriptions ADD COLUMN IF NOT EXISTS signed_snapshot jsonb;
++
++-- Protect signed facts even against accidental future unrestricted update paths.
++-- Cancellation/status metadata may change, but medication, linkage and signing
++-- evidence cannot. Legacy signed records remain legacy, never reconstructed.
++CREATE OR REPLACE FUNCTION protect_prescription_signed_facts()
++RETURNS trigger LANGUAGE plpgsql AS $$
++BEGIN
++  IF TG_OP = 'DELETE' THEN
++    IF OLD.signed_at IS NOT NULL OR OLD.signed_snapshot IS NOT NULL THEN
++      RAISE EXCEPTION 'Signed prescription evidence cannot be deleted';
++    END IF;
++    RETURN OLD;
++  END IF;
++  IF OLD.signed_at IS NOT NULL OR OLD.signed_snapshot IS NOT NULL THEN
++    IF (to_jsonb(NEW) - ARRAY['status','cancelled_at','cancelled_by_user_id',
++        'cancellation_reason','updated_at'])
++       IS DISTINCT FROM
++       (to_jsonb(OLD) - ARRAY['status','cancelled_at','cancelled_by_user_id',
++        'cancellation_reason','updated_at'])
++       OR NEW.status = 'draft' THEN
++      RAISE EXCEPTION 'Signed prescription facts are immutable';
++    END IF;
++  END IF;
++  RETURN NEW;
++END;
++$$;
++DROP TRIGGER IF EXISTS prescription_signed_facts_guard ON prescriptions;
++CREATE TRIGGER prescription_signed_facts_guard BEFORE UPDATE OR DELETE ON prescriptions
++FOR EACH ROW EXECUTE FUNCTION protect_prescription_signed_facts();
+diff --git a/scripts/team-access-route-inventory.ts b/scripts/team-access-route-inventory.ts
+index 0e211e2d1a5505c4311f12926579138eac5ce1c0..d7cebbff57b5d155663809f514bc12c08998f2d6 100644
+--- a/scripts/team-access-route-inventory.ts
++++ b/scripts/team-access-route-inventory.ts
+@@ -326,6 +326,7 @@ function classify(
+     "/api/patients/:id/prescriptions", "/api/patients/:id/prescriptions/batch",
+     "/api/prescriber-credentials/me", "/api/prescription-medication-templates",
+     "/api/prescriptions/:prescriptionId", "/api/prescriptions/:prescriptionId/pdf",
++    "/api/prescriptions/:prescriptionId/html",
+     "/api/prescriptions/:prescriptionId/sign", "/api/prescriptions/signing-status",
+   ]);
+   const verificationPaths = new Set([
+diff --git a/server/prescription-finalization.ts b/server/prescription-finalization.ts
+index c4ce98fc5ddda780b6e0c28266f3e1072c4927da..a38089d950d698019586144d802f866dfded2b97 100644
+--- a/server/prescription-finalization.ts
++++ b/server/prescription-finalization.ts
+@@ -1,6 +1,8 @@
+ import { createHash } from "node:crypto";
+ import type { Prescription } from "@shared/schema";
+ import type { PrescriptionPdfData } from "./prescription-pdf";
++import { validatePrescriptionImages } from "./prescription-pdf";
++import { canonicalSnapshotJson, type SignedPrescriptionSnapshot } from "@shared/prescription-snapshot";
+ 
+ export class PrescriptionError extends Error {
+   constructor(public status: number, message: string) { super(message); }
+@@ -9,7 +11,7 @@ export class PrescriptionError extends Error {
+ // Only immutable draft content participates. Signing metadata is deliberately
+ // excluded so a lost success response can be retried without a second upload.
+ const reviewFields = [
+-  "id", "clinicId", "patientId", "medicationName", "strength", "dosageForm",
++  "id", "clinicId", "patientId", "batchId", "medicationName", "strength", "dosageForm",
+   "dose", "route", "frequency", "sig", "quantity", "daysSupply", "refills",
+   "indication", "substitutionAllowed", "isControlledSubstance", "pharmacyName",
+   "pharmacyAddress", "pharmacyPhone", "pharmacyFax",
+@@ -43,25 +45,36 @@ export interface SigningTransaction {
+   authorizeSigner(): Promise<SigningIdentity | null>;
+   getDocument(id: number, clinicId: number): Promise<FinalDocument | undefined>;
+   getPdfContext(rx: Prescription): Promise<Pick<PrescriptionPdfData,
+-    "patientName" | "patientDob" | "patientAddress" | "clinicName" | "clinicAddress" | "clinicPhone">>;
+-  commitDocument(rx: Prescription, signer: SigningIdentity, signedAt: Date,
+-    object: { storageKey: string; sha256Hash: string },
+-    classification: Record<string, unknown>, reviewHash: string): Promise<FinalDocument>;
++    "patientName" | "patientDob" | "patientAddress" | "patientPhone" | "clinicName" | "clinicAddress" | "clinicPhone" | "clinicFax" | "clinicLogo"> & { encounterId?: number | null }>;
++  commitSnapshot(rx: Prescription, snapshot: SignedPrescriptionSnapshot): Promise<void>;
+ }
+ export interface SigningDependencies {
+   transaction<T>(work: (tx: SigningTransaction) => Promise<T>): Promise<T>;
+   classify(rx: Prescription): Record<string, unknown>;
+-  generatePdf(data: PrescriptionPdfData): Buffer;
+-  storePdf(clinicId: number, prescriptionId: number, pdf: Buffer):
+-    Promise<{ storageKey: string; sha256Hash: string }>;
+   now(): Date;
+ }
+ 
++export function verifyPrescriptionSnapshot(rx: Prescription): SignedPrescriptionSnapshot {
++  const snapshot = rx.signedSnapshot;
++  if (!snapshot || snapshot.version !== 1 || !rx.signedAt ||
++      snapshot.prescriptionId !== rx.id || snapshot.clinicId !== rx.clinicId ||
++      snapshot.patientId !== rx.patientId || snapshot.signerUserId !== rx.signedByUserId ||
++      snapshot.signedAt !== rx.signedAt.toISOString() || snapshot.signingIntent !== true) {
++    throw new PrescriptionError(409, "Verified signing-time snapshot unavailable; use the preserved original document");
++  }
++  const { sha256, ...facts } = snapshot;
++  const actual = createHash("sha256").update(canonicalSnapshotJson(facts)).digest("hex");
++  if (actual !== sha256) throw new PrescriptionError(409, "Signed snapshot integrity verification failed");
++  return snapshot;
++}
++
+ export async function finalizePrescription(
+   id: number, clinicId: number, reviewHash: string, deps: SigningDependencies,
++  signingIntent = false,
+ ) {
++  if (signingIntent !== true) throw new PrescriptionError(400, "Explicit electronic signing confirmation required");
+   return deps.transaction(async tx => {
+-    // The row lock serializes sign/sign and sign/edit until upload and commit.
++    // The row lock serializes sign/sign and sign/edit through snapshot + audit commit.
+     const rx = await tx.lockPrescription(id, clinicId);
+     if (!rx) throw new PrescriptionError(404, "Prescription not found");
+     const signer = await tx.authorizeSigner();
+@@ -72,6 +85,12 @@ export async function finalizePrescription(
+       throw new PrescriptionError(409, "Prescription changed; review it again");
+     }
+     if (rx.status === "signed") {
++      if (rx.signedSnapshot) {
++        const snapshot = verifyPrescriptionSnapshot(rx);
++        if (snapshot.signerUserId !== signer.userId) throw new PrescriptionError(409, "Prescription is already finalized");
++        return { id, status: "signed", signedAt: rx.signedAt!, snapshotHash: snapshot.sha256 };
++      }
++      // Preserve the exact linkage of historical signed PDF records.
+       const doc = await tx.getDocument(id, clinicId);
+       if (!doc || rx.signedByUserId !== signer.userId || doc.signedByUserId !== signer.userId) {
+         throw new PrescriptionError(409, "Prescription is already finalized");
+@@ -83,14 +102,39 @@ export async function finalizePrescription(
+     const classification = deps.classify(rx);
+     const context = await tx.getPdfContext(rx);
+     const signedAt = deps.now();
+-    const pdf = deps.generatePdf({
+-      ...context, ...rx, signedAt, prescriberName: signer.name,
++    if (!context.clinicAddress?.trim() || !context.clinicPhone?.trim()) {
++      throw new PrescriptionError(422, "Reviewed clinic contacts required");
++    }
++    validatePrescriptionImages(signer.signatureImage, context.clinicLogo);
++    const facts: Omit<SignedPrescriptionSnapshot, "sha256"> = {
++      version: 1, prescriptionId: rx.id, clinicId, patientId: rx.patientId,
++      batchId: rx.batchId ?? null, encounterId: context.encounterId ?? null,
++      signerUserId: signer.userId, signedAt: signedAt.toISOString(),
++      signingIntent: true, reviewHash, classification,
++      authenticationStatement: "Electronically signed by the authenticated prescriber, who reviewed and authorized this prescription using their saved handwritten signature.",
++      data: {
++      clinicName: context.clinicName, clinicAddress: context.clinicAddress, clinicPhone: context.clinicPhone,
++      clinicFax: context.clinicFax ?? null,
++      clinicLogo: context.clinicLogo ?? null,
++      patientName: context.patientName,
++      patientDob: context.patientDob ? new Date(context.patientDob).toISOString().slice(0, 10) : null,
++      patientAddress: context.patientAddress ?? null, patientPhone: context.patientPhone ?? null,
++      medicationName: rx.medicationName, strength: rx.strength, dosageForm: rx.dosageForm,
++      dose: rx.dose, route: rx.route, frequency: rx.frequency, sig: rx.sig,
++      quantity: rx.quantity, daysSupply: rx.daysSupply, refills: rx.refills, indication: rx.indication,
++      substitutionAllowed: rx.substitutionAllowed, pharmacyName: rx.pharmacyName,
++      pharmacyAddress: rx.pharmacyAddress, pharmacyPhone: rx.pharmacyPhone, pharmacyFax: rx.pharmacyFax,
++      prescriberName: signer.name,
+       prescriberTitle: signer.title, prescriberNpi: signer.npi,
+       prescriberLicense: signer.license, prescriberLicenseState: signer.licenseState,
+       signatureImage: signer.signatureImage,
+-    });
+-    const object = await deps.storePdf(clinicId, id, pdf);
+-    const doc = await tx.commitDocument(rx, signer, signedAt, object, classification, reviewHash);
+-    return { id, status: "signed", signedAt, documentId: doc.id };
++      },
++    };
++    // JSON roundtrip removes undefined draft fields before canonical hashing.
++    const stableFacts = JSON.parse(JSON.stringify(facts)) as typeof facts;
++    const snapshot: SignedPrescriptionSnapshot = { ...stableFacts,
++      sha256: createHash("sha256").update(canonicalSnapshotJson(stableFacts)).digest("hex") };
++    await tx.commitSnapshot(rx, snapshot);
++    return { id, status: "signed", signedAt, snapshotHash: snapshot.sha256 };
+   });
+ }
+diff --git a/server/prescription-html.ts b/server/prescription-html.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..a9a900a93a9eb79cfcacbe0b352c3e1437d1a342
+--- /dev/null
++++ b/server/prescription-html.ts
+@@ -0,0 +1,45 @@
++import type { SignedPrescriptionSnapshot } from "@shared/prescription-snapshot";
++
++const escape = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, ch =>
++  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]!));
++
++/** Render only verified frozen facts, never current account or clinic lookups. */
++export function renderPrescriptionHtml(snapshot: SignedPrescriptionSnapshot): string {
++  const d = snapshot.data;
++  const row = (label: string, value: unknown) => value === null || value === undefined || value === "" ? "" :
++    `<div class="row"><dt>${escape(label)}</dt><dd>${escape(value)}</dd></div>`;
++  const image = (src: string | null | undefined, alt: string) => {
++    if (!src) return "";
++    if (!/^data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/=\r\n]+$/.test(src)) throw new Error("Invalid frozen image");
++    return `<img src="${escape(src)}" alt="${escape(alt)}">`;
++  };
++  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
++<meta name="viewport" content="width=device-width,initial-scale=1"><title>Prescription ${snapshot.prescriptionId}</title>
++<style>
++*{box-sizing:border-box}body{margin:0;background:#f4f4f1;color:#17201e;font:15px/1.6 Georgia,serif}
++main{max-width:816px;margin:24px auto;background:white;padding:48px;border:1px solid #d9ded8}
++header{border-bottom:2px solid #17201e;padding-bottom:20px}h1{font-size:26px;margin:0}h2{font-size:18px;margin:24px 0 10px}
++header img{max-width:160px;max-height:64px}dl{margin:0}.row{display:flex;gap:16px;padding:4px 0;overflow-wrap:anywhere}
++dt{width:145px;flex-shrink:0;color:#53605b}dd{margin:0;white-space:pre-wrap}.rx{font-size:32px}
++.signature img{max-width:240px;max-height:90px}.auth{border-top:1px solid #d9ded8;margin-top:24px;padding-top:16px;font-size:12px}
++@media(max-width:540px){main{margin:0;padding:20px}.row{display:block}dt{width:auto}}
++@media print{body{background:white}main{border:0;margin:0;padding:24px}}
++</style></head><body><main><header>${image(d.clinicLogo, "Issuing clinic letterhead")}
++<h1>${escape(d.clinicName)}</h1><div>${escape(d.clinicAddress)}</div><div>${escape(d.clinicPhone)}</div>
++${d.clinicFax ? `<div>Fax: ${escape(d.clinicFax)}</div>` : ""}</header>
++<h2>PRESCRIPTION</h2><dl>${row("Patient", d.patientName)}${row("DOB", d.patientDob ?? "Not recorded")}
++${row("Patient address", d.patientAddress)}${row("Patient phone", d.patientPhone)}
++${row("Date signed (UTC)", snapshot.signedAt)}</dl><h2 class="rx">Rx</h2><dl>
++${row("Medication", [d.medicationName,d.strength,d.dosageForm].filter(Boolean).join(" "))}
++${row("Directions", d.sig)}${row("Dose",d.dose)}${row("Route",d.route)}${row("Frequency",d.frequency)}
++${row("Quantity",d.quantity)}${row("Days supply",d.daysSupply)}${row("Refills",d.refills)}
++${row("Indication",d.indication)}${row("Substitution",d.substitutionAllowed ? "Permitted" : "Dispense as written")}
++</dl><h2>Pharmacy</h2><dl>${row("Name",d.pharmacyName)}${row("Address",d.pharmacyAddress)}
++${row("Phone",d.pharmacyPhone)}${row("Fax",d.pharmacyFax)}</dl><h2>Prescriber</h2><dl>
++${row("Name",[d.prescriberName,d.prescriberTitle].filter(Boolean).join(", "))}
++${row("NPI",d.prescriberNpi)}${row("License",`${d.prescriberLicense} (${d.prescriberLicenseState})`)}</dl>
++<div class="signature">${image(d.signatureImage,"Prescriber handwritten signature")}</div>
++<div class="auth">${escape(snapshot.authenticationStatement)}<br>
++Signed (UTC): ${escape(snapshot.signedAt)}<br>Prescription ${snapshot.prescriptionId} · SHA-256: ${escape(snapshot.sha256)}</div>
++</main></body></html>`;
++}
+diff --git a/server/prescription-pdf.ts b/server/prescription-pdf.ts
+index 193bbf45f11071776ee94c401df809b994832256..e335d0ff83a7c8e8aef49ea847711faab8420723 100644
+--- a/server/prescription-pdf.ts
++++ b/server/prescription-pdf.ts
+@@ -4,9 +4,12 @@ export interface PrescriptionPdfData {
+   clinicName: string;
+   clinicAddress?: string | null;
+   clinicPhone?: string | null;
++  clinicFax?: string | null;
++  clinicLogo?: string | null;
+   patientName: string;
+   patientDob: Date | string | null;
+   patientAddress?: string | null;
++  patientPhone?: string | null;
+   medicationName: string;
+   strength?: string | null;
+   dosageForm?: string | null;
+@@ -22,6 +25,9 @@ export interface PrescriptionPdfData {
+   route?: string | null;
+   frequency?: string | null;
+   daysSupply?: number | null;
++  indication?: string | null;
++  authenticationStatement?: string;
++  snapshotHash?: string;
+   prescriberName: string;
+   prescriberTitle?: string | null;
+   signatureImage?: string | null;
+@@ -31,6 +37,17 @@ export interface PrescriptionPdfData {
+   signedAt: Date;
+ }
+ 
++export function validatePrescriptionImages(signatureImage: string, clinicLogo?: string | null): void {
++  const pdf = new jsPDF();
++  for (const image of [signatureImage, clinicLogo].filter(Boolean) as string[]) {
++    if (!/^data:image\/(?:png|jpeg);base64,/.test(image) || image.length > 2_800_000) {
++      throw new Error("A valid saved signature / clinic letterhead image is required");
++    }
++    const dimensions = pdf.getImageProperties(image);
++    if (!dimensions.width || !dimensions.height) throw new Error("Invalid signature / letterhead image");
++  }
++}
++
+ export function generatePrescriptionPdf(data: PrescriptionPdfData): Buffer {
+   if (!/^data:image\/(?:png|jpeg);base64,/.test(data.signatureImage ?? "")) {
+     throw new Error("A valid saved prescriber signature is required");
+@@ -39,7 +56,9 @@ export function generatePrescriptionPdf(data: PrescriptionPdfData): Buffer {
+     throw new Error("Reviewed clinic address and phone are required");
+   }
+   const pdf = new jsPDF({ unit: "pt", format: "letter" });
++  validatePrescriptionImages(data.signatureImage!, data.clinicLogo);
+   pdf.setCreationDate(data.signedAt);
++  if (data.snapshotHash && /^[a-f0-9]{64}$/.test(data.snapshotHash)) pdf.setFileId(data.snapshotHash.slice(0, 32));
+ 
+   const LEFT = 50;
+   const RIGHT = 562;
+@@ -48,6 +67,10 @@ export function generatePrescriptionPdf(data: PrescriptionPdfData): Buffer {
+   const LINE_HEIGHT = 15;
+ 
+   let y = TOP;
++  if (data.clinicLogo) {
++    pdf.addImage(data.clinicLogo, data.clinicLogo.startsWith("data:image/png") ? "PNG" : "JPEG", 50, y, 90, 35);
++    y += 48;
++  }
+ 
+   const newPage = () => {
+     pdf.addPage();
+@@ -106,6 +129,7 @@ export function generatePrescriptionPdf(data: PrescriptionPdfData): Buffer {
+ 
+   line("Address", data.clinicAddress);
+   line("Phone", data.clinicPhone);
++  line("Fax", data.clinicFax);
+ 
+   space(12);
+   ensureSpace(30);
+@@ -124,6 +148,7 @@ export function generatePrescriptionPdf(data: PrescriptionPdfData): Buffer {
+ 
+   line("DOB", dob);
+   line("Patient Address", data.patientAddress);
++  line("Patient Phone", data.patientPhone);
+   line("Date Signed", data.signedAt.toISOString());
+ 
+   space(15);
+@@ -139,6 +164,7 @@ export function generatePrescriptionPdf(data: PrescriptionPdfData): Buffer {
+   line("Quantity", data.quantity);
+   line("Refills", data.refills);
+   line("Days Supply", data.daysSupply);
++  line("Indication", data.indication);
+   line(
+     "Substitution",
+     data.substitutionAllowed ? "Allowed" : "Dispense as written"
+@@ -237,10 +263,16 @@ export function generatePrescriptionPdf(data: PrescriptionPdfData): Buffer {
+ 
+   pdf.setFontSize(8);
+   pdf.text(
+-    "Electronically authenticated through ClinIQ.",
++    pdf.splitTextToSize(data.authenticationStatement ??
++      "Electronically signed by the authenticated prescriber using their saved handwritten signature.", RIGHT - LEFT),
+     LEFT,
+     y
+   );
++  if (data.snapshotHash) {
++    y += 25;
++    ensureSpace(24);
++    pdf.text(pdf.splitTextToSize(`Signed snapshot SHA-256: ${data.snapshotHash}`, RIGHT - LEFT), LEFT, y);
++  }
+ 
+   return Buffer.from(pdf.output("arraybuffer"));
+ }
+diff --git a/server/prescription-routes.ts b/server/prescription-routes.ts
+index 888e86167d21f4d95bfe0dbc09c8ef0e3fa03563..aa32397ae8f674372d892c774db7cdf46aaef92c 100644
+--- a/server/prescription-routes.ts
++++ b/server/prescription-routes.ts
+@@ -3,7 +3,9 @@ import { z } from "zod";
+ import { and, eq, sql } from "drizzle-orm";
+ import { db } from "./storage";
+ import { assertPrescriptionSigningEnabled } from "./prescription-signing-policy";
+-import { finalizePrescription, prescriptionReviewHash, PrescriptionError, type SigningTransaction } from "./prescription-finalization";
++import { finalizePrescription, prescriptionReviewHash, PrescriptionError, verifyPrescriptionSnapshot } from "./prescription-finalization";
++import { prescriptionSigningTransaction } from "./prescription-signing-transaction";
++import { renderPrescriptionHtml } from "./prescription-html";
+ import { classifyPrescription } from "./prescription-medication-policy";
+ import { prescriptionStorageKey } from "./prescription-storage";
+ import { registerPrescriptionDirectoryRoutes } from "./prescription-directory-routes";
+@@ -12,7 +14,6 @@ import { prescriberReviewHash } from "./prescriber-verification-policy";
+ 
+ import { generatePrescriptionPdf } from "./prescription-pdf";
+ import {
+-  storeSignedPrescriptionPdf,
+   retrieveSignedPrescriptionPdf,
+ } from "./prescription-storage";
+ 
+@@ -30,6 +31,7 @@ import {
+   prescriberCredentials,
+   prescriberCredentialAuditEvents,
+   users,
++  clinicalEncounters,
+ } from "@shared/schema";
+ 
+ // Validation for an unsigned prescription draft.
+@@ -744,7 +746,13 @@ if (!context) {
+           eq(prescriptions.clinicId, context.clinicId)
+         ));
+ 
+-      return res.json(records);
++      const batches = await db.select().from(prescriptionBatches)
++        .where(and(eq(prescriptionBatches.clinicId, context.clinicId), eq(prescriptionBatches.patientId, patientId)));
++      return res.json(records.map(({ signedSnapshot, ...record }) => ({
++        ...record, hasSignedSnapshot: !!signedSnapshot,
++        encounterId: signedSnapshot ? signedSnapshot.encounterId :
++          batches.find(batch => batch.id === record.batchId)?.encounterId ?? null,
++      })));
+     } catch (error) {
+       console.error("[prescriptions list] Operation failed");
+       return res.status(500).json({ error: "Unable to load prescriptions" });
+@@ -992,7 +1000,8 @@ if (!Number.isSafeInteger(patientId) || patientId <= 0) {
+       }
+ 
+       const batchSchema = z.object({
+-        medications: z.array(prescriptionDraftSchema).min(1).max(20)
++        medications: z.array(prescriptionDraftSchema).min(1).max(20),
++        encounterId: z.number().int().positive().optional().nullable(),
+       }).strict();
+ 
+       const parsed = batchSchema.safeParse(req.body);
+@@ -1012,10 +1021,17 @@ if (!Number.isSafeInteger(patientId) || patientId <= 0) {
+         if (!current || current.clinicId !== clinicId || !lockedPatient) {
+           throw new PrescriptionError(403, "Clinical authorization required");
+         }
++        if (parsed.data.encounterId) {
++          const [encounter] = await tx.select({ id: clinicalEncounters.id }).from(clinicalEncounters)
++            .where(and(eq(clinicalEncounters.id, parsed.data.encounterId), eq(clinicalEncounters.clinicId, clinicId),
++              eq(clinicalEncounters.patientId, patientId))).limit(1).for("share");
++          if (!encounter) throw new PrescriptionError(404, "Originating encounter not found");
++        }
+         const [batch] = await tx.insert(prescriptionBatches).values({
+           clinicId,
+           patientId,
+-          createdByUserId: clinicianId
++          createdByUserId: clinicianId,
++          encounterId: parsed.data.encounterId ?? null,
+         }).returning();
+ 
+         const drafts = [];
+@@ -1060,6 +1076,7 @@ if (!Number.isSafeInteger(patientId) || patientId <= 0) {
+ 
+       return res.status(201).json(result);
+     } catch (error) {
++      if (error instanceof PrescriptionError) return res.status(error.status).json({ error: error.message });
+       console.error("[prescriptions create batch] Operation failed");
+       return res.status(500).json({
+         error: "Unable to save prescription drafts"
+@@ -1071,6 +1088,30 @@ if (!Number.isSafeInteger(patientId) || patientId <= 0) {
+   // Sign prescription — clinical signing remains disabled until
+ // medication eligibility, storage, and audit controls are validated.
+ // Download a previously finalized, signed prescription PDF.
++app.get("/api/prescriptions/:prescriptionId/html", async (req, res) => {
++  try {
++    const context = await getPrescriptionPreparationContext(req);
++    if (!context) return res.status(403).json({ error: "Clinical authorization required" });
++    const id = Number(req.params.prescriptionId);
++    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid prescription ID" });
++    const [rx] = await db.select().from(prescriptions).where(and(
++      eq(prescriptions.id, id), eq(prescriptions.clinicId, context.clinicId), eq(prescriptions.status, "signed")
++    )).limit(1);
++    if (!rx) return res.status(404).json({ error: "Signed prescription not found" });
++    const [patient] = await db.select({ id: patients.id }).from(patients).where(and(
++      eq(patients.id, rx.patientId), eq(patients.clinicId, context.clinicId))).limit(1);
++    if (!patient) return res.status(404).json({ error: "Patient not found" });
++    const snapshot = verifyPrescriptionSnapshot(rx);
++    res.setHeader("Cache-Control", "private, no-store");
++    res.setHeader("X-Content-Type-Options", "nosniff");
++    res.setHeader("Referrer-Policy", "no-referrer");
++    res.setHeader("Content-Security-Policy", "default-src 'none'; img-src data:; style-src 'unsafe-inline'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'");
++    return res.type("html").send(renderPrescriptionHtml(snapshot));
++  } catch (error) {
++    if (error instanceof PrescriptionError) return res.status(error.status).json({ error: error.message });
++    return res.status(500).json({ error: "Unable to render signed prescription" });
++  }
++});
+ app.get("/api/prescriptions/:prescriptionId/pdf", async (req, res) => {
+   try {
+     const context = await getPrescriptionPreparationContext(req);
+@@ -1126,6 +1167,17 @@ app.get("/api/prescriptions/:prescriptionId/pdf", async (req, res) => {
+       ))
+       .limit(1);
+ 
++    if (prescription.signedSnapshot && !document) {
++      const snapshot = verifyPrescriptionSnapshot(prescription);
++      const pdf = generatePrescriptionPdf({ ...snapshot.data, signedAt: new Date(snapshot.signedAt),
++        authenticationStatement: snapshot.authenticationStatement, snapshotHash: snapshot.sha256 });
++      res.setHeader("Content-Type", "application/pdf");
++      res.setHeader("Content-Disposition", `attachment; filename="prescription-${prescriptionId}.pdf"`);
++      res.setHeader("Cache-Control", "private, no-store");
++      res.setHeader("X-Content-Type-Options", "nosniff");
++      return res.send(pdf);
++    }
++    // Existing artifacts always win: exact transmitted bytes are never replaced.
+     if (!document) {
+       return res.status(404).json({
+         error: "Signed PDF not found",
+@@ -1158,6 +1210,7 @@ app.get("/api/prescriptions/:prescriptionId/pdf", async (req, res) => {
+     return res.send(pdf);
+ 
+   } catch (error) {
++    if (error instanceof PrescriptionError) return res.status(error.status).json({ error: error.message });
+     console.error("[prescription PDF download] Operation failed");
+ 
+     return res.status(500).json({
+@@ -1202,19 +1255,10 @@ app.post("/api/prescriptions/:prescriptionId/sign", async (req, res) => {
+     const result = await finalizePrescription(prescriptionId, context.clinicId, confirmation.data.reviewHash, {
+       now: () => new Date(),
+       classify: classifyPrescription,
+-      generatePdf: generatePrescriptionPdf,
+-      storePdf: storeSignedPrescriptionPdf,
+       transaction: work => db.transaction(async tx => {
+         await tx.execute(sql`SET LOCAL statement_timeout = '45s'`);
+         await tx.execute(sql`SET LOCAL idle_in_transaction_session_timeout = '60s'`);
+-        const adapter: SigningTransaction = {
+-          async lockPrescription(id, clinicId) {
+-            const [rx] = await tx.select().from(prescriptions)
+-              .where(and(eq(prescriptions.id, id), eq(prescriptions.clinicId, clinicId)))
+-              .limit(1).for("update");
+-            return rx;
+-          },
+-          async authorizeSigner() {
++        const adapter = prescriptionSigningTransaction(tx, async () => {
+             const current = await getAuthorizedSigner(req, tx);
+             if (!current || current.clinicId !== context.clinicId) return null;
+             return {
+@@ -1226,60 +1270,10 @@ app.post("/api/prescriptions/:prescriptionId/sign", async (req, res) => {
+               licenseState: current.credential.licenseState,
+               signatureImage: current.prescriber.signatureImage!,
+             };
+-          },
+-          async getDocument(id, clinicId) {
+-            const [doc] = await tx.select().from(prescriptionDocuments)
+-              .where(and(eq(prescriptionDocuments.prescriptionId, id), eq(prescriptionDocuments.clinicId, clinicId)))
+-              .limit(1);
+-            return doc;
+-          },
+-          async getPdfContext(rx) {
+-            const [patient] = await tx.select().from(patients)
+-              .where(and(eq(patients.id, rx.patientId), eq(patients.clinicId, rx.clinicId)))
+-              .limit(1).for("share");
+-            const [clinic] = await tx.select().from(clinics)
+-              .where(and(eq(clinics.id, rx.clinicId), eq(clinics.isActive, true)))
+-              .limit(1).for("share");
+-            if (!patient || !clinic) throw new PrescriptionError(404, "Prescription not found");
+-            if (!clinic.address?.trim() || !clinic.phone?.trim()) {
+-              throw new PrescriptionError(422, "Clinic prescription address and phone require administrator review");
+-            }
+-            return {
+-              patientName: `${patient.firstName} ${patient.lastName}`,
+-              patientDob: patient.dateOfBirth, patientAddress: patient.address,
+-              clinicName: clinic.name,
+-              clinicAddress: clinic.address,
+-              clinicPhone: clinic.phone,
+-            };
+-          },
+-          async commitDocument(rx, signer, signedAt, object, classification, reviewHash) {
+-            const [document] = await tx.insert(prescriptionDocuments).values({
+-              prescriptionId: rx.id, clinicId: rx.clinicId, ...object,
+-              signedByUserId: signer.userId, signedAt,
+-            }).returning();
+-            const [signed] = await tx.update(prescriptions).set({
+-              status: "signed", signedAt, signedByUserId: signer.userId,
+-              prescriberUserId: signer.userId,
+-              prescriberNameSnapshot: signer.name, prescriberTitleSnapshot: signer.title,
+-              prescriberNpiSnapshot: signer.npi,
+-              prescriberLicenseSnapshot: signer.license,
+-              prescriberLicenseStateSnapshot: signer.licenseState,
+-              updatedAt: signedAt,
+-            }).where(and(eq(prescriptions.id, rx.id), eq(prescriptions.clinicId, rx.clinicId),
+-              eq(prescriptions.status, "draft"))).returning({ id: prescriptions.id });
+-            if (!signed) throw new PrescriptionError(409, "Prescription is already finalized");
+-            await tx.insert(prescriptionAuditEvents).values({
+-              prescriptionId: rx.id, clinicId: rx.clinicId,
+-              actorUserId: signer.userId, action: "signed",
+-              details: { documentId: document.id, sha256Hash: object.sha256Hash,
+-                reviewHash, classification, signedAt: signedAt.toISOString() },
+-            });
+-            return document;
+-          },
+-        };
++          }, { ipAddress: req.ip ?? null, userAgent: req.get("user-agent")?.slice(0, 1000) ?? null });
+         return work(adapter);
+       }),
+-    });
++    }, confirmation.data.confirmSign);
+     return res.json(result);
+ 
+   } catch (error) {
+diff --git a/server/prescription-signing-policy.ts b/server/prescription-signing-policy.ts
+index 37863435d07250c99b477a425a58697d22d7fbb1..86e8e293e36283f3482b10ff455fcd99a83d1e20 100644
+--- a/server/prescription-signing-policy.ts
++++ b/server/prescription-signing-policy.ts
+@@ -1,6 +1,6 @@
+ /**
+  * Prescription signing remains disabled until:
+- * 1. Secure, durable PDF storage is configured.
++ * 1. Transactional immutable snapshot persistence is deployed and verified.
+  * 2. Medication classification is verified using a trusted source.
+  * 3. Provider authorization and signing audit controls are tested.
+  * 4. Clinical and regulatory review is completed.
+@@ -9,7 +9,6 @@
+  */
+ export function assertPrescriptionSigningEnabled(): void {
+   if (process.env.PRESCRIPTION_SIGNING_APPROVED !== "true" ||
+-      !process.env.PRESCRIPTION_PDF_BUCKET ||
+       !process.env.PRESCRIPTION_NONCONTROLLED_CATALOG_PATH) {
+     throw new Error(
+       "PRESCRIPTION_SIGNING_DISABLED: Prescription signing is not yet approved for clinical use"
+diff --git a/server/prescription-signing-transaction.ts b/server/prescription-signing-transaction.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..2d08d3fbfb239c1f200a81ed69b5d4354d85b038
+--- /dev/null
++++ b/server/prescription-signing-transaction.ts
+@@ -0,0 +1,87 @@
++import { and, eq, sql } from "drizzle-orm";
++import type { db } from "./storage";
++import { clinics, patients, prescriptions, prescriptionBatches, clinicalEncounters,
++  prescriptionDocuments, prescriptionAuditEvents } from "@shared/schema";
++import { PrescriptionError, type SigningIdentity, type SigningTransaction } from "./prescription-finalization";
++
++type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
++
++/** The finalizer's existing transaction adapter; no cloud/PDF side effects. */
++export function prescriptionSigningTransaction(
++  tx: Transaction, authorizeSigner: () => Promise<SigningIdentity | null>,
++  requestEvidence: { ipAddress: string | null; userAgent: string | null },
++): SigningTransaction {
++  return {
++    async lockPrescription(id, clinicId) {
++      const [rx] = await tx.select().from(prescriptions)
++        .where(and(eq(prescriptions.id, id), eq(prescriptions.clinicId, clinicId)))
++        .limit(1).for("update");
++      return rx;
++    },
++    authorizeSigner,
++    async getDocument(id, clinicId) {
++      const [document] = await tx.select().from(prescriptionDocuments)
++        .where(and(eq(prescriptionDocuments.prescriptionId, id), eq(prescriptionDocuments.clinicId, clinicId)))
++        .limit(1);
++      return document;
++    },
++    async getPdfContext(rx) {
++      const [patient] = await tx.select().from(patients)
++        .where(and(eq(patients.id, rx.patientId), eq(patients.clinicId, rx.clinicId)))
++        .limit(1).for("share");
++      const [clinic] = await tx.select().from(clinics)
++        .where(and(eq(clinics.id, rx.clinicId), eq(clinics.isActive, true)))
++        .limit(1).for("share");
++      if (!patient || !clinic) throw new PrescriptionError(404, "Prescription not found");
++      let encounterId: number | null = null;
++      if (rx.batchId) {
++        const [batch] = await tx.select().from(prescriptionBatches)
++          .where(and(eq(prescriptionBatches.id, rx.batchId),
++            eq(prescriptionBatches.clinicId, rx.clinicId), eq(prescriptionBatches.patientId, rx.patientId)))
++          .limit(1).for("share");
++        if (!batch) throw new PrescriptionError(409, "Prescription batch linkage invalid");
++        encounterId = batch.encounterId;
++        if (encounterId) {
++          const [encounter] = await tx.select({ id: clinicalEncounters.id }).from(clinicalEncounters)
++            .where(and(eq(clinicalEncounters.id, encounterId), eq(clinicalEncounters.clinicId, rx.clinicId),
++              eq(clinicalEncounters.patientId, rx.patientId))).limit(1).for("share");
++          if (!encounter) throw new PrescriptionError(409, "Originating encounter linkage invalid");
++        }
++      }
++      return {
++        patientName: `${patient.firstName} ${patient.lastName}`, patientDob: patient.dateOfBirth,
++        patientAddress: patient.address, patientPhone: patient.phone,
++        clinicName: clinic.name, clinicAddress: clinic.address, clinicPhone: clinic.phone, clinicFax: clinic.fax,
++        // Never fetch an external URL while rendering a historical document.
++        clinicLogo: clinic.clinicLogo ?? null, encounterId,
++      };
++    },
++    async commitSnapshot(rx, snapshot) {
++      const signedAt = new Date(snapshot.signedAt);
++      const [signed] = await tx.update(prescriptions).set({
++        status: "signed", signedAt, signedByUserId: snapshot.signerUserId,
++        prescriberUserId: snapshot.signerUserId, signedSnapshot: snapshot,
++        prescriberNameSnapshot: snapshot.data.prescriberName,
++        prescriberTitleSnapshot: snapshot.data.prescriberTitle,
++        prescriberNpiSnapshot: snapshot.data.prescriberNpi,
++        prescriberLicenseSnapshot: snapshot.data.prescriberLicense,
++        prescriberLicenseStateSnapshot: snapshot.data.prescriberLicenseState,
++        updatedAt: signedAt,
++      }).where(and(eq(prescriptions.id, rx.id), eq(prescriptions.clinicId, rx.clinicId),
++        eq(prescriptions.status, "draft"), sql`${prescriptions.signedSnapshot} IS NULL`))
++        .returning({ id: prescriptions.id });
++      if (!signed) throw new PrescriptionError(409, "Prescription is already finalized");
++      await tx.insert(prescriptionAuditEvents).values({
++        prescriptionId: rx.id, clinicId: rx.clinicId,
++        actorUserId: snapshot.signerUserId, action: "signed",
++        details: {
++          snapshotVersion: snapshot.version, snapshotHash: snapshot.sha256,
++          reviewHash: snapshot.reviewHash, signingIntent: true,
++          authenticationStatement: snapshot.authenticationStatement,
++          classification: snapshot.classification, signedAt: snapshot.signedAt,
++          ...requestEvidence,
++        },
++      });
++    },
++  };
++}
+diff --git a/server/prod-migrate.sql b/server/prod-migrate.sql
+index 4c2b8c877bc9890053ea271bacc0614eb281b28d..176e311c94de3f4a57c2da5e67ce9bdc7937bfd6 100644
+--- a/server/prod-migrate.sql
++++ b/server/prod-migrate.sql
+@@ -5,6 +5,41 @@
+ -- ============================================================
+ 
+ -- ── users ───────────────────────────────────────────────────
++-- Prescription snapshot release: PREPARATION ONLY; never run without approval.
++-- Existing signing-time facts and artifacts are deliberately not backfilled.
++ALTER TABLE IF EXISTS prescription_batches ADD COLUMN IF NOT EXISTS encounter_id integer REFERENCES clinical_encounters(id);
++ALTER TABLE IF EXISTS prescriptions ADD COLUMN IF NOT EXISTS signed_snapshot jsonb;
++
++CREATE OR REPLACE FUNCTION protect_prescription_signed_facts()
++RETURNS trigger LANGUAGE plpgsql AS $$
++BEGIN
++  IF TG_OP = 'DELETE' THEN
++    IF OLD.signed_at IS NOT NULL OR OLD.signed_snapshot IS NOT NULL THEN
++      RAISE EXCEPTION 'Signed prescription evidence cannot be deleted';
++    END IF;
++    RETURN OLD;
++  END IF;
++  IF OLD.signed_at IS NOT NULL OR OLD.signed_snapshot IS NOT NULL THEN
++    IF (to_jsonb(NEW) - ARRAY['status','cancelled_at','cancelled_by_user_id',
++        'cancellation_reason','updated_at'])
++       IS DISTINCT FROM
++       (to_jsonb(OLD) - ARRAY['status','cancelled_at','cancelled_by_user_id',
++        'cancellation_reason','updated_at'])
++       OR NEW.status = 'draft' THEN
++      RAISE EXCEPTION 'Signed prescription facts are immutable';
++    END IF;
++  END IF;
++  RETURN NEW;
++END;
++$$;
++DO $$ BEGIN
++  IF to_regclass('prescriptions') IS NOT NULL THEN
++    DROP TRIGGER IF EXISTS prescription_signed_facts_guard ON prescriptions;
++    CREATE TRIGGER prescription_signed_facts_guard BEFORE UPDATE OR DELETE ON prescriptions
++    FOR EACH ROW EXECUTE FUNCTION protect_prescription_signed_facts();
++  END IF;
++END $$;
++
+ ALTER TABLE users ADD COLUMN IF NOT EXISTS npi VARCHAR(20);
+ ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(30);
+ ALTER TABLE users ADD COLUMN IF NOT EXISTS address TEXT;
+diff --git a/shared/prescription-snapshot.ts b/shared/prescription-snapshot.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..9fca9902775897f5d80a189cca0a3cbf609c0da8
+--- /dev/null
++++ b/shared/prescription-snapshot.ts
+@@ -0,0 +1,58 @@
++/** Versioned signing-time facts. Dates are ISO strings, never live account lookups. */
++export interface SignedPrescriptionSnapshot {
++  version: 1;
++  prescriptionId: number;
++  clinicId: number;
++  patientId: number;
++  batchId: number | null;
++  encounterId: number | null;
++  signerUserId: number;
++  signedAt: string;
++  signingIntent: true;
++  reviewHash: string;
++  classification: Record<string, unknown>;
++  authenticationStatement: string;
++  data: {
++    clinicName: string;
++    clinicAddress: string;
++    clinicPhone: string;
++    clinicFax?: string | null;
++    clinicLogo?: string | null;
++    patientName: string;
++    patientDob: string | null;
++    patientAddress?: string | null;
++    patientPhone?: string | null;
++    medicationName: string;
++    strength?: string | null;
++    dosageForm?: string | null;
++    dose?: string | null;
++    route?: string | null;
++    frequency?: string | null;
++    sig: string;
++    quantity: string;
++    daysSupply?: number | null;
++    refills: number;
++    indication?: string | null;
++    substitutionAllowed: boolean;
++    pharmacyName?: string | null;
++    pharmacyAddress?: string | null;
++    pharmacyPhone?: string | null;
++    pharmacyFax?: string | null;
++    prescriberName: string;
++    prescriberTitle?: string | null;
++    prescriberNpi: string;
++    prescriberLicense: string;
++    prescriberLicenseState: string;
++    signatureImage: string;
++  };
++  sha256: string;
++}
++
++/** JSONB can reorder object keys. Canonicalize before hashing and verification. */
++export function canonicalSnapshotJson(value: unknown): string {
++  if (value === null || typeof value !== "object") return JSON.stringify(value);
++  if (Array.isArray(value)) return `[${value.map(canonicalSnapshotJson).join(",")}]`;
++  return `{${Object.keys(value).sort().map(key =>
++    `${JSON.stringify(key)}:${canonicalSnapshotJson((value as Record<string, unknown>)[key])}`
++  ).join(",")}}`;
++}
+diff --git a/shared/schema.ts b/shared/schema.ts
+index 6947d16895859b5cfe74345fe4a1badd00b51530..752cde39fa7b23a442cea0a378b50c7d818b7676 100644
+--- a/shared/schema.ts
++++ b/shared/schema.ts
+@@ -4139,6 +4139,7 @@ export const prescriptionBatches = pgTable("prescription_batches", {
+   clinicId: integer("clinic_id").notNull(),
+   patientId: integer("patient_id").notNull(),
+   createdByUserId: integer("created_by_user_id").notNull(),
++  encounterId: integer("encounter_id").references(() => clinicalEncounters.id),
+   createdAt: timestamp("created_at").defaultNow().notNull(),
+ }, (t) => ({
+   patientClinicIdx: index("prescription_batches_patient_clinic_idx")
+@@ -4184,6 +4185,10 @@ export const prescriptions = pgTable("prescriptions", {
+   signedAt: timestamp("signed_at"),
+   signedByUserId: integer("signed_by_user_id"),
+ 
++  // New signatures retain their complete evidence independently of PDF storage.
++  // Null means historical/legacy: never backfill from today's demographics.
++  signedSnapshot: jsonb("signed_snapshot").$type<import("./prescription-snapshot").SignedPrescriptionSnapshot>(),
++
+   // Prescriber snapshot captured at signing
+   prescriberNameSnapshot: varchar("prescriber_name_snapshot", { length: 200 }),
+   prescriberTitleSnapshot: varchar("prescriber_title_snapshot", { length: 100 }),
+diff --git a/tests/unit/prescription-finalization.test.ts b/tests/unit/prescription-finalization.test.ts
+index 1efcc56db562aa9097cb51908cd10ae60e5b8acf..4ff3cc4d8363caebfd08a9c6b1302b69d1a826da 100644
+--- a/tests/unit/prescription-finalization.test.ts
++++ b/tests/unit/prescription-finalization.test.ts
+@@ -1,6 +1,6 @@
+ // @vitest-environment node
+ import { describe, expect, it, vi } from "vitest";
+-import { finalizePrescription, prescriptionReviewHash, type SigningDependencies, type SigningIdentity, type FinalDocument } from "../../server/prescription-finalization";
++import { finalizePrescription, prescriptionReviewHash, type SigningDependencies, type SigningIdentity } from "../../server/prescription-finalization";
+ import { requireNoncontrolledMedication } from "../../server/prescription-medication-policy";
+ import { generatePrescriptionPdf } from "../../server/prescription-pdf";
+ import type { Prescription } from "../../shared/schema";
+@@ -30,48 +30,39 @@ const catalog = [{
+ 
+ function harness() {
+   let rx = draft();
+-  let doc: FinalDocument | undefined;
+   let signer: SigningIdentity | null = identity;
+   let failCommit = false;
+   let queue = Promise.resolve();
+   let audits = 0;
+-  const uploads: Buffer[] = [];
+-  const generate = vi.fn(generatePrescriptionPdf);
+-  const store = vi.fn(async (_clinic: number, _id: number, pdf: Buffer) => {
+-    uploads.push(pdf);
+-    return { storageKey: `attempt-${uploads.length}`, sha256Hash: "a".repeat(64) };
+-  });
+   const deps: SigningDependencies = {
+     now: () => now, classify: rx => requireNoncontrolledMedication(rx, catalog, now),
+-    generatePdf: generate, storePdf: store,
+     async transaction(work) {
+       let unlock!: () => void;
+       const previous = queue;
+       queue = new Promise<void>(resolve => { unlock = resolve; });
+       await previous;
+-      const oldRx = { ...rx }, oldDoc = doc, oldAudits = audits;
++      const oldRx = { ...rx }, oldAudits = audits;
+       try {
+         return await work({
+           lockPrescription: async (id, clinic) => id === rx.id && clinic === rx.clinicId ? rx : undefined,
+           authorizeSigner: async () => signer,
+-          getDocument: async () => doc,
++          getDocument: async () => undefined,
+           getPdfContext: async () => ({ clinicName: "Synthetic Clinic", clinicAddress: "100 Synthetic Clinic Avenue", clinicPhone: "555-0100", patientName: "Synthetic Patient", patientDob: "1990-01-01", patientAddress: "1 Example Ave" }),
+-          async commitDocument(_rx, who, signedAt, object) {
+-            doc = { id: 2, ...object, signedAt, signedByUserId: who.userId };
+-            rx = { ...rx, status: "signed", signedAt, signedByUserId: who.userId };
++          async commitSnapshot(_rx, snapshot) {
++            rx = { ...rx, status: "signed", signedSnapshot: snapshot,
++              signedAt: new Date(snapshot.signedAt), signedByUserId: snapshot.signerUserId };
+             audits++;
+             if (failCommit) throw new Error("Synthetic commit failure");
+-            return doc;
+           },
+         });
+       } catch (error) {
+-        rx = oldRx; doc = oldDoc; audits = oldAudits; throw error;
++        rx = oldRx; audits = oldAudits; throw error;
+       } finally { unlock(); }
+     },
+   };
+   return {
+-    deps, store, generate, uploads, sign: () => finalizePrescription(1, 10, prescriptionReviewHash(rx), deps),
+-    get rx() { return rx; }, get audits() { return audits; }, get doc() { return doc; },
++    deps, sign: () => finalizePrescription(1, 10, prescriptionReviewHash(rx), deps, true),
++    get rx() { return rx; }, get audits() { return audits; },
+     setSigner: (value: SigningIdentity | null) => { signer = value; },
+     setFailCommit: (value: boolean) => { failCommit = value; },
+     edit: (data: Partial<Prescription>) => { rx = { ...rx, ...data }; },
+@@ -79,64 +70,63 @@ function harness() {
+ }
+ 
+ describe("Prescription finalization (synthetic only)", () => {
+-  it("saves signed PDF, signer, timestamp and one audit", async () => {
++  it("saves complete frozen snapshot, signer, timestamp and one audit without PDF storage", async () => {
+     const h = harness();
+-    expect(await h.sign()).toMatchObject({ id: 1, status: "signed", documentId: 2, signedAt: now });
++    expect(await h.sign()).toMatchObject({ id: 1, status: "signed", signedAt: now });
+     expect(h.rx.signedByUserId).toBe(7);
+     expect(h.audits).toBe(1);
+-    expect(h.uploads[0].subarray(0, 5).toString()).toBe("%PDF-");
+-    expect(h.generate).toHaveBeenCalledWith(expect.objectContaining({ signatureImage: signature }));
++    expect(h.rx.signedSnapshot?.data.signatureImage).toBe(signature);
++    expect(h.rx.signedSnapshot?.data.patientName).toBe("Synthetic Patient");
+   });
+   it("serializes simultaneous requests and uploads only once", async () => {
+     const h = harness();
+     const [a, b] = await Promise.all([h.sign(), h.sign()]);
+-    expect(a).toEqual(b); expect(h.store).toHaveBeenCalledTimes(1); expect(h.audits).toBe(1);
++    expect(a).toEqual(b); expect(h.audits).toBe(1);
+   });
+   it("retries a lost success response idempotently", async () => {
+     const h = harness();
+     expect(await h.sign()).toEqual(await h.sign());
+-    expect(h.store).toHaveBeenCalledTimes(1);
++    expect(h.audits).toBe(1);
+   });
+   it("denies another clinic before PDF/upload", async () => {
+     const h = harness();
+-    await expect(finalizePrescription(1, 11, prescriptionReviewHash(h.rx), h.deps)).rejects.toMatchObject({ status: 404 });
+-    expect(h.store).not.toHaveBeenCalled();
++    await expect(finalizePrescription(1, 11, prescriptionReviewHash(h.rx), h.deps, true)).rejects.toMatchObject({ status: 404 });
++    expect(h.audits).toBe(0);
+   });
+   it("rejects unverified or revoked signing authority", async () => {
+     const h = harness(); h.setSigner(null);
+     await expect(h.sign()).rejects.toMatchObject({ status: 403 });
+-    expect(h.store).not.toHaveBeenCalled();
++    expect(h.audits).toBe(0);
+   });
+   it("rejects another signer's duplicate", async () => {
+     const h = harness(); await h.sign(); h.setSigner({ ...identity, userId: 8 });
+     await expect(h.sign()).rejects.toMatchObject({ status: 409 });
+-    expect(h.store).toHaveBeenCalledTimes(1);
++    expect(h.audits).toBe(1);
+   });
+   it("rejects a draft changed since review without any upload", async () => {
+     const h = harness(); const hash = prescriptionReviewHash(h.rx); h.edit({ refills: 2 });
+-    await expect(finalizePrescription(1, 10, hash, h.deps)).rejects.toMatchObject({ status: 409 });
+-    expect(h.store).not.toHaveBeenCalled();
++    await expect(finalizePrescription(1, 10, hash, h.deps, true)).rejects.toMatchObject({ status: 409 });
++    expect(h.audits).toBe(0);
+   });
+-  it("leaves draft, no document or audit after interrupted upload; retry succeeds", async () => {
+-    const h = harness(); h.store.mockRejectedValueOnce(new Error("Synthetic upload interrupted"));
+-    await expect(h.sign()).rejects.toThrow("interrupted");
+-    expect(h.rx.status).toBe("draft"); expect(h.doc).toBeUndefined(); expect(h.audits).toBe(0);
+-    await h.sign(); expect(h.rx.status).toBe("signed");
++  it("requires signing intent even when called outside HTTP", async () => {
++    const h = harness();
++    await expect(finalizePrescription(1, 10, prescriptionReviewHash(h.rx), h.deps)).rejects.toMatchObject({ status: 400 });
++    expect(h.audits).toBe(0);
+   });
+   it("rolls back document/status/audit after database failure and retry does not collide with orphan", async () => {
+     const h = harness(); h.setFailCommit(true);
+     await expect(h.sign()).rejects.toThrow("commit failure");
+-    expect(h.rx.status).toBe("draft"); expect(h.doc).toBeUndefined(); expect(h.audits).toBe(0);
++    expect(h.rx.status).toBe("draft"); expect(h.rx.signedSnapshot).toBeUndefined(); expect(h.audits).toBe(0);
+     h.setFailCommit(false); await h.sign();
+-    expect(h.doc?.storageKey).toBe("attempt-2"); expect(h.audits).toBe(1);
++    expect(h.rx.signedSnapshot?.sha256).toMatch(/^[a-f0-9]{64}$/); expect(h.audits).toBe(1);
+   });
+   it("denies controlled flag even with matching catalog entry", async () => {
+     const h = harness(); h.edit({ isControlledSubstance: true });
+-    await expect(h.sign()).rejects.toMatchObject({ status: 422 }); expect(h.store).not.toHaveBeenCalled();
++    await expect(h.sign()).rejects.toMatchObject({ status: 422 }); expect(h.audits).toBe(0);
+   });
+   it.each(["Unknown Drug", "Synthetic Medication / testosterone"])("does not trust false flag for %s", async name => {
+     const h = harness(); h.edit({ medicationName: name });
+-    await expect(h.sign()).rejects.toMatchObject({ status: 422 }); expect(h.store).not.toHaveBeenCalled();
++    await expect(h.sign()).rejects.toMatchObject({ status: 422 }); expect(h.audits).toBe(0);
+   });
+   it.each([{ strength: "20 mg" }, { dosageForm: "compound" }])("denies unknown formulation %j", value => {
+     expect(() => requireNoncontrolledMedication({ ...draft(), ...value }, catalog, now)).toThrow("not eligible");
+diff --git a/tests/unit/prescription-release-compatibility.test.ts b/tests/unit/prescription-release-compatibility.test.ts
+index 4e7e96a3ee73c4829a15a8511cec5490a7958030..d0a20d26d1c17d91fd95b12744098c2509b1b8e3 100644
+--- a/tests/unit/prescription-release-compatibility.test.ts
++++ b/tests/unit/prescription-release-compatibility.test.ts
+@@ -39,7 +39,8 @@ describe("Prescription release compatibility", () => {
+       expect(text).toContain(field);
+     }
+     expect(text).toContain("/Subtype /Image");
+-    expect(text).toContain("Electronically authenticated through ClinIQ.");
++    expect(text).toContain("Electronically signed by the authenticated prescriber");
++    expect(text).not.toMatch(/cliniq/i);
+   });
+   it("wraps long identities and moves the complete signature block to a later page", () => {
+     const bytes = generatePrescriptionPdf({ ...data, sig: "Synthetic long directions. ".repeat(150),
+diff --git a/tests/unit/prescription-routes.test.ts b/tests/unit/prescription-routes.test.ts
+index 11e447f24f991107e6949e6635cd473768bb21bd..8566e00bec86767bf69aab5341137f99a458de7e 100644
+--- a/tests/unit/prescription-routes.test.ts
++++ b/tests/unit/prescription-routes.test.ts
+@@ -147,17 +147,18 @@ describe("Actual prescription HTTP routes with synthetic Drizzle predicates", ()
+     expect((await sign()).status).toBe(503);
+     expect(state.memory.calls).toEqual([]); expect(objects.save).not.toHaveBeenCalled();
+   });
+-  it("signs atomically with row lock, saved signature and document/audit", async () => {
++  it("signs atomically with row lock, saved signature and snapshot/audit without upload", async () => {
+     expect((await sign()).status).toBe(200);
+     expect(state.memory.tables.prescriptions[0]).toMatchObject({ status: "signed", signedByUserId: 7 });
+-    expect(state.memory.tables.prescription_documents).toHaveLength(1);
++    expect(state.memory.tables.prescriptions[0].signedSnapshot.data.signatureImage).toBe(syntheticSignature);
++    expect(state.memory.tables.prescription_documents).toHaveLength(0);
+     expect(state.memory.tables.prescription_audit_events).toHaveLength(1);
+     expect(state.memory.calls).toContainEqual({ table: "prescriptions", lock: "update" });
+   });
+-  it("handles concurrent requests as one sign with one stored document", async () => {
++  it("handles concurrent requests as one sign with one snapshot and audit", async () => {
+     const results = await Promise.all([sign(), sign()]);
+-    expect(results.map(r => r.status)).toEqual([200, 200]); expect(objects.save).toHaveBeenCalledTimes(1);
+-    expect(state.memory.tables.prescription_documents).toHaveLength(1);
++    expect(results.map(r => r.status)).toEqual([200, 200]); expect(objects.save).not.toHaveBeenCalled();
++    expect(state.memory.tables.prescription_audit_events).toHaveLength(1);
+   });
+   it("blocks modification after signing", async () => {
+     await sign();
+@@ -195,10 +196,10 @@ describe("Actual prescription HTTP routes with synthetic Drizzle predicates", ()
+     state.memory.tables.patients[0].clinicId = 11;
+     expect((await sign()).status).toBe(404); expect(objects.save).not.toHaveBeenCalled();
+   });
+-  it("rolls back on upload failure and permits retry", async () => {
++  it("signs even when old PDF storage is unavailable", async () => {
+     objects.save.mockRejectedValueOnce(new Error("Synthetic interrupted upload"));
+-    expect((await sign()).status).toBe(503);
+-    expect(state.memory.tables.prescriptions[0].status).toBe("draft");
++    expect((await sign()).status).toBe(200);
++    expect(state.memory.tables.prescriptions[0].status).toBe("signed");
+     expect(state.memory.tables.prescription_documents).toHaveLength(0);
+     expect((await sign()).status).toBe(200);
+   });
+@@ -210,19 +211,29 @@ describe("Actual prescription HTTP routes with synthetic Drizzle predicates", ()
+   });
+   it("returns stored PDF bytes rather than regenerating", async () => {
+     await sign();
++    addHistoricalDocument();
+     const response = await request("/api/prescriptions/1/pdf");
+     expect(response.status).toBe(200); expect(await response.text()).toBe("%PDF-synthetic-stored");
+     expect(response.headers.get("cache-control")).toBe("private, no-store");
+-    expect(objects.save).toHaveBeenCalledTimes(1); expect(objects.read).toHaveBeenCalledTimes(1);
++    expect(objects.save).not.toHaveBeenCalled(); expect(objects.read).toHaveBeenCalledTimes(1);
+   });
+   it("rejects a document linked to another tenant before reading storage", async () => {
+-    await sign(); state.memory.tables.prescription_documents[0].storageKey = "clinics/11/prescriptions/1/signed.pdf";
++    await sign(); addHistoricalDocument(); state.memory.tables.prescription_documents[0].storageKey = "clinics/11/prescriptions/1/signed.pdf";
+     expect((await request("/api/prescriptions/1/pdf")).status).toBe(500);
+     expect(objects.read).not.toHaveBeenCalled();
+   });
+   it("does not serve bytes on integrity failure", async () => {
+-    await sign(); objects.read.mockRejectedValue(new Error("Synthetic integrity failure"));
++    await sign(); addHistoricalDocument(); objects.read.mockRejectedValue(new Error("Synthetic integrity failure"));
+     const result = await request("/api/prescriptions/1/pdf");
+     expect(result.status).toBe(500); expect(await result.text()).not.toContain("%PDF");
+   });
+ });
++
++function addHistoricalDocument() {
++  const rx = state.memory.tables.prescriptions[0];
++  state.memory.tables.prescription_documents.push({
++    id: 1, prescriptionId: 1, clinicId: 10, signedByUserId: rx.signedByUserId, signedAt: rx.signedAt,
++    storageKey: "clinics/10/prescriptions/1/12345678-1234-1234-1234-123456789012/signed.pdf",
++    sha256Hash: "a".repeat(64),
++  });
++}
+diff --git a/tests/unit/prescription-signing-policy.test.ts b/tests/unit/prescription-signing-policy.test.ts
+index 6f010331ada53e05a55d42bc904c31dd6cfa6d88..7beafd4b70d3e49100715e4783ec3b67b2cea9f3 100644
+--- a/tests/unit/prescription-signing-policy.test.ts
++++ b/tests/unit/prescription-signing-policy.test.ts
+@@ -9,10 +9,16 @@ describe("Prescription signing safety", () => {
+       "PRESCRIPTION_SIGNING_DISABLED"
+     );
+   });
+-  it("requires bucket and reviewed catalog even after approval", () => {
++  it("requires reviewed catalog even after approval", () => {
+     vi.stubEnv("PRESCRIPTION_SIGNING_APPROVED", "true");
+     vi.stubEnv("PRESCRIPTION_PDF_BUCKET", "");
+     vi.stubEnv("PRESCRIPTION_NONCONTROLLED_CATALOG_PATH", "");
+     expect(() => assertPrescriptionSigningEnabled()).toThrow("PRESCRIPTION_SIGNING_DISABLED");
+   });
++  it("does not require a PDF bucket for snapshot signing", () => {
++    vi.stubEnv("PRESCRIPTION_SIGNING_APPROVED", "true");
++    vi.stubEnv("PRESCRIPTION_PDF_BUCKET", "");
++    vi.stubEnv("PRESCRIPTION_NONCONTROLLED_CATALOG_PATH", "/synthetic/catalog.json");
++    expect(() => assertPrescriptionSigningEnabled()).not.toThrow();
++  });
+ });
+diff --git a/tests/unit/prescription-snapshot-postgres.test.ts b/tests/unit/prescription-snapshot-postgres.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..1fd2936957ed8573262bfce14bd6b795e0dea5a6
+--- /dev/null
++++ b/tests/unit/prescription-snapshot-postgres.test.ts
+@@ -0,0 +1,245 @@
++// @vitest-environment node
++// Runs ONLY inside scripts/run-prescription-postgres-integration.sh.
++import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
++import { readFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { randomUUID } from "node:crypto";
++import pg from "pg";
++import { drizzle } from "drizzle-orm/node-postgres";
++import { eq, getTableColumns, getTableName } from "drizzle-orm";
++import express from "express";
++import session from "express-session";
++import passport from "passport";
++import { Strategy } from "passport-local";
++import bcrypt from "bcrypt";
++import type { Server } from "node:http";
++import * as schema from "../../shared/schema";
++import { syntheticSignature } from "./prescription-fixtures";
++import { verifyPrescriptionSnapshot } from "../../server/prescription-finalization";
++import { mergePrescriptionTimeline } from "../../client/src/components/prescription-timeline";
++
++const state = vi.hoisted(() => ({ db: null as any }));
++vi.mock("../../server/storage", () => ({ db: new Proxy({}, { get: (_target, key) => {
++  const value = state.db[key];
++  return typeof value === "function" ? value.bind(state.db) : value;
++} }) }));
++import { registerPrescriptionRoutes } from "../../server/prescription-routes";
++
++const socket = process.env.RX_TEST_SOCKET;
++describe.skipIf(!socket)("Prescription authenticated HTTP + isolated PostgreSQL snapshots", () => {
++  let pool: pg.Pool, server: Server, base: string, temp: string;
++  const loginPassword = randomUUID();
++  const cookie = new Map<number, string>();
++  const api = (path: string, user: number | null = 7, method = "GET", data?: unknown) =>
++    fetch(base + path, { method, headers: { "Content-Type": "application/json",
++      ...(user ? { Cookie: cookie.get(user)! } : {}) }, body: data === undefined ? undefined : JSON.stringify(data) });
++  const draftBody = {
++    medicationName: "Synthetic Medication", strength: "10 mg", dosageForm: "tablet",
++    sig: "Take one tablet daily", quantity: "30", refills: 1,
++    pharmacyName: "Synthetic Pharmacy", pharmacyAddress: "100 Synthetic Pharmacy Avenue",
++    pharmacyPhone: "555-0102", pharmacyFax: "555-0103",
++  };
++  async function create() {
++    const response = await api("/api/patients/20/prescriptions/batch", 7, "POST",
++      { medications: [draftBody, { ...draftBody, sig: "Take one tablet each morning" }], encounterId: 30 });
++    expect(response.status).toBe(201);
++    return (await response.json()).prescriptions;
++  }
++  async function sign(id: number, user = 7) {
++    const review = await api(`/api/prescriptions/${id}`, user);
++    const data = await review.json();
++    return api(`/api/prescriptions/${id}/sign`, user, "POST", { confirmSign: true, reviewHash: data.reviewHash });
++  }
++  beforeAll(async () => {
++    if (!socket?.startsWith("/tmp/cliniq-rx-pg.") || socket.includes("..")) throw new Error("Private synthetic socket required");
++    pool = new pg.Pool({ host: socket, port: 5432, user: "cliniq_synthetic_owner", database: "cliniq_synthetic" });
++    expect((await pool.query("select current_database() as name")).rows[0].name).toBe("cliniq_synthetic");
++    state.db = drizzle(pool, { schema });
++    // Base application auth tables, ORM-identical column types; no live migrations.
++    // Prescription tables and constraints use the actual prepared release SQL.
++    for (const table of [schema.users, schema.clinics, schema.patients, schema.clinicMemberships,
++      schema.clinicianStaff, schema.clinicalEncounters]) {
++      const columns = Object.entries(getTableColumns(table)).map(([key, column]) =>
++        `"${column.name}" ${key === "id" ? "integer PRIMARY KEY" : column.getSQLType()}`);
++      await pool.query(`CREATE TABLE "${getTableName(table)}" (${columns.join(",")})`);
++    }
++    for (const file of ["server/prescription-schema.sql", "server/prescription-directory-schema.sql",
++      "server/prescription-release-schema.sql", "scripts/prescription-snapshot-schema.sql"]) {
++      const sql = readFileSync(file, "utf8");
++      await pool.query(sql);
++      await pool.query(sql); // Additive migration is repeatable in this disposable DB.
++    }
++    await state.db.insert(schema.clinics).values([
++      { id: 10, name: "Synthetic Clinic", address: "100 Synthetic Clinic Avenue", phone: "555-0100", clinicLogo: syntheticSignature, isActive: true, subscriptionStatus: "active" },
++      { id: 11, name: "Other Synthetic Clinic", address: "Other Synthetic Address", phone: "555-0199", isActive: true, subscriptionStatus: "active" },
++    ]);
++    for (const [id, clinicId, role] of [[7, 10, "provider"], [8, 10, "provider"], [9, 11, "provider"], [12, 10, "rn"]] as const) {
++      await state.db.insert(schema.users).values({
++        id, username: `synthetic-${id}`, firstName: "Synthetic", lastName: `Provider ${id}`,
++        passwordHash: await bcrypt.hash(loginPassword, 4), defaultClinicId: clinicId,
++        npi: "1234567890", title: "MD", signatureImage: syntheticSignature,
++      });
++      await state.db.insert(schema.clinicMemberships).values({
++        id, clinicId, userId: id, isActive: true, acceptanceStatus: "active", accessScope: "full", clinicalRole: role,
++      });
++      if (role === "provider") await state.db.insert(schema.prescriberCredentials).values({
++        userId: id, clinicId, licenseNumber: `SYNTHETIC-${id}`, licenseState: "MS", licenseType: "MD",
++        licenseExpiresAt: "2099-01-01", prescribingAuthorized: true,
++        verifiedNpi: "1234567890", verifiedAt: new Date(), verifiedByUserId: id === 8 ? 7 : 8,
++      });
++    }
++    await state.db.insert(schema.patients).values({
++      id: 20, clinicianId: 7, clinicId: 10, firstName: "Synthetic", lastName: "Patient",
++      dateOfBirth: new Date("1990-01-01Z"), address: "200 Synthetic Patient Avenue", phone: "555-0101",
++    });
++    await state.db.insert(schema.clinicalEncounters).values({ id: 30, clinicianId: 7, clinicId: 10, patientId: 20, visitDate: new Date() });
++    temp = mkdtempSync(join(tmpdir(), "rx-snapshot-synthetic."));
++    writeFileSync(join(temp, "catalog.json"), JSON.stringify([{
++      medicationName: draftBody.medicationName, strength: draftBody.strength, dosageForm: draftBody.dosageForm,
++      noncontrolled: true, sourceReference: "SYNTHETIC ONLY", reviewedBy: "Synthetic Reviewer",
++      reviewedAt: "2020-01-01T00:00:00Z", expiresAt: "2099-01-01T00:00:00Z" }]));
++    vi.stubEnv("PRESCRIPTION_SIGNING_APPROVED", "true");
++    vi.stubEnv("PRESCRIPTION_NONCONTROLLED_CATALOG_PATH", join(temp, "catalog.json"));
++    vi.stubEnv("PRESCRIPTION_PDF_BUCKET", "");
++    const app = express(), auth = new passport.Passport();
++    app.use(express.json());
++    app.use(session({ secret: randomUUID(), resave: false, saveUninitialized: false }));
++    auth.serializeUser((user: any, done) => done(null, user.id));
++    auth.deserializeUser(async (id: number, done) => {
++      try { done(null, (await state.db.select().from(schema.users).where(eq(schema.users.id, id)))[0]); }
++      catch (error) { done(error); }
++    });
++    auth.use(new Strategy(async (username, password, done) => {
++      try {
++        const [user] = await state.db.select().from(schema.users).where(eq(schema.users.username, username));
++        done(null, user && await bcrypt.compare(password, user.passwordHash) ? user : false);
++      } catch (error) { done(error); }
++    }));
++    app.use(auth.initialize(), auth.session());
++    // Synthetic-only login harness; all tested prescription handlers are real.
++    app.post("/synthetic-login", auth.authenticate("local"), (_req, res) => res.sendStatus(204));
++    registerPrescriptionRoutes(app);
++    server = await new Promise(resolve => { const listener = app.listen(0, "127.0.0.1", () => resolve(listener)); });
++    base = `http://127.0.0.1:${(server.address() as any).port}`;
++    for (const id of [7, 8, 9, 12]) {
++      const response = await api("/synthetic-login", null, "POST", { username: `synthetic-${id}`, password: loginPassword });
++      expect(response.status).toBe(204);
++      cookie.set(id, response.headers.get("set-cookie")!.split(";")[0]);
++    }
++  }, 30000);
++  afterAll(async () => {
++    await new Promise<void>(resolve => server?.close(() => resolve()) ?? resolve());
++    await pool?.end(); if (temp) rmSync(temp, { recursive: true, force: true });
++    vi.unstubAllEnvs();
++  });
++
++  it("denies anonymous, RN, wrong clinic, unsigned HTML/PDF and missing intent", async () => {
++    const [rx] = await create();
++    expect((await api(`/api/prescriptions/${rx.id}`, null)).status).toBe(403);
++    expect((await sign(rx.id, 12)).status).toBe(403);
++    for (const suffix of ["", "/html", "/pdf"]) {
++      expect((await api(`/api/prescriptions/${rx.id}${suffix}`, 9)).status).toBe(404);
++    }
++    for (const suffix of ["/html", "/pdf"]) expect((await api(`/api/prescriptions/${rx.id}${suffix}`)).status).toBe(404);
++    expect((await api(`/api/prescriptions/${rx.id}/sign`, 7, "POST", { reviewHash: "a".repeat(64) })).status).toBe(400);
++    expect((await api(`/api/prescriptions/${rx.id}/sign`, 9, "POST", { confirmSign: true, reviewHash: "a".repeat(64) })).status).toBe(404);
++  });
++
++  it("commits one immutable snapshot and durable audit under concurrent authenticated signing", async () => {
++    const [rx] = await create();
++    const outcomes = await Promise.all([sign(rx.id), sign(rx.id), sign(rx.id)]);
++    expect(outcomes.map(response => response.status)).toEqual([200, 200, 200]);
++    const results = await Promise.all(outcomes.map(response => response.json()));
++    expect(new Set(results.map(result => result.snapshotHash)).size).toBe(1);
++    const [saved] = await state.db.select().from(schema.prescriptions).where(eq(schema.prescriptions.id, rx.id));
++    const snapshot = verifyPrescriptionSnapshot(saved);
++    expect(snapshot).toMatchObject({ signerUserId: 7, signingIntent: true, encounterId: 30, patientId: 20,
++      data: { patientName: "Synthetic Patient", clinicName: "Synthetic Clinic", pharmacyName: "Synthetic Pharmacy", signatureImage: syntheticSignature } });
++    const events = await state.db.select().from(schema.prescriptionAuditEvents).where(eq(schema.prescriptionAuditEvents.prescriptionId, rx.id));
++    const signed = events.filter((event: any) => event.action === "signed");
++    expect(signed).toHaveLength(1);
++    expect(signed[0].details).toMatchObject({ snapshotHash: snapshot.sha256, signingIntent: true });
++    expect((await sign(rx.id, 8)).status).toBe(409);
++    expect((await pool.query("SELECT * FROM prescription_documents WHERE prescription_id=$1", [rx.id])).rows).toHaveLength(0);
++    await expect(pool.query("UPDATE prescriptions SET sig='tampered' WHERE id=$1", [rx.id])).rejects.toThrow("immutable");
++    await expect(pool.query("DELETE FROM prescriptions WHERE id=$1", [rx.id])).rejects.toThrow("cannot be deleted");
++  });
++
++  it("HTML/PDF use the identical frozen clinical facts and survive patient/clinic/provider edits", async () => {
++    const [rx] = await create(); expect((await sign(rx.id)).status).toBe(200);
++    const htmlBefore = await (await api(`/api/prescriptions/${rx.id}/html`)).text();
++    const pdfBefore = await (await api(`/api/prescriptions/${rx.id}/pdf`)).arrayBuffer();
++    if (process.env.RX_EVIDENCE_DIR) {
++      writeFileSync(join(process.env.RX_EVIDENCE_DIR, "synthetic-signed.html"), htmlBefore, { mode: 0o600, flag: "wx" });
++      writeFileSync(join(process.env.RX_EVIDENCE_DIR, "synthetic-signed.pdf"), Buffer.from(pdfBefore), { mode: 0o600, flag: "wx" });
++    }
++    await state.db.update(schema.users).set({ firstName: "CHANGED", signatureImage: null }).where(eq(schema.users.id, 7));
++    await state.db.update(schema.patients).set({ address: "CHANGED", firstName: "CHANGED" }).where(eq(schema.patients.id, 20));
++    await state.db.update(schema.clinics).set({ name: "CHANGED", clinicLogo: null }).where(eq(schema.clinics.id, 10));
++    const html = await api(`/api/prescriptions/${rx.id}/html`);
++    expect(html.status).toBe(200); expect(await html.text()).toBe(htmlBefore);
++    expect(html.headers.get("content-security-policy")).toContain("default-src 'none'");
++    expect(html.headers.get("cache-control")).toBe("private, no-store");
++    const pdf = Buffer.from(await (await api(`/api/prescriptions/${rx.id}/pdf`)).arrayBuffer());
++    expect(pdf.equals(Buffer.from(pdfBefore))).toBe(true);
++    const pdfText = pdf.toString("latin1");
++    expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
++    expect(Buffer.from(pdfBefore).subarray(0, 5).toString()).toBe("%PDF-");
++    for (const fact of ["Synthetic Clinic", "Synthetic Patient", "Synthetic Pharmacy", "Synthetic Medication", "SYNTHETIC-7"]) {
++      expect(htmlBefore).toContain(fact); expect(pdfText).toContain(fact);
++    }
++    expect(htmlBefore).not.toMatch(/cliniq/i); expect(pdfText).not.toMatch(/cliniq/i);
++    expect(pdfText).not.toContain("CHANGED");
++    await state.db.update(schema.users).set({ firstName: "Synthetic", signatureImage: syntheticSignature }).where(eq(schema.users.id, 7));
++    await state.db.update(schema.patients).set({ firstName: "Synthetic", address: "200 Synthetic Patient Avenue" }).where(eq(schema.patients.id, 20));
++    await state.db.update(schema.clinics).set({ name: "Synthetic Clinic", clinicLogo: syntheticSignature }).where(eq(schema.clinics.id, 10));
++  });
++
++  it("rolls back snapshot/status on real PostgreSQL audit failure; retry commits once", async () => {
++    const [rx] = await create();
++    await pool.query(`CREATE FUNCTION synthetic_fail_audit() RETURNS trigger LANGUAGE plpgsql AS $$
++      BEGIN IF NEW.action='signed' THEN RAISE EXCEPTION 'synthetic audit unavailable'; END IF; RETURN NEW; END; $$;
++      CREATE TRIGGER synthetic_audit_failure BEFORE INSERT ON prescription_audit_events
++      FOR EACH ROW EXECUTE FUNCTION synthetic_fail_audit()`);
++    try {
++      expect((await sign(rx.id)).status).toBe(503);
++      const row = (await pool.query("SELECT status,signed_snapshot FROM prescriptions WHERE id=$1", [rx.id])).rows[0];
++      expect(row).toEqual({ status: "draft", signed_snapshot: null });
++    } finally { await pool.query("DROP TRIGGER synthetic_audit_failure ON prescription_audit_events; DROP FUNCTION synthetic_fail_audit()"); }
++    expect((await sign(rx.id)).status).toBe(200);
++  });
++
++  it("rejects stale review and foreign encounter; preserves standalone and grouped timeline", async () => {
++    const [rx] = await create();
++    expect((await api(`/api/prescriptions/${rx.id}/sign`, 7, "POST", { confirmSign: true, reviewHash: "a".repeat(64) })).status).toBe(409);
++    expect((await api("/api/patients/20/prescriptions/batch", 7, "POST", { medications: [draftBody], encounterId: 999 })).status).toBe(404);
++    const standalone = await api("/api/patients/20/prescriptions/batch", 7, "POST", { medications: [draftBody] });
++    expect(standalone.status).toBe(201);
++    const list = await (await api("/api/patients/20/prescriptions")).json();
++    expect(list.every((record: any) => !("signedSnapshot" in record))).toBe(true);
++    const events = mergePrescriptionTimeline([{ id: 30, visitDate: "2000-01-01" }], list);
++    expect(events.at(-1)?.kind).toBe("encounter");
++    const group = events.find(event => event.kind === "prescription-group" && event.prescriptions.some(item => item.id === rx.id));
++    expect(group?.kind === "prescription-group" && group.prescriptions.length).toBe(2);
++    expect(list.find((record: any) => record.id === rx.id).encounterId).toBe(30);
++  });
++
++  it("legacy signing-time facts are never reconstructed from current demographics", async () => {
++    const [rx] = await create();
++    await pool.query("UPDATE prescriptions SET status='signed', signed_at=now(), signed_by_user_id=7 WHERE id=$1", [rx.id]);
++    expect((await api(`/api/prescriptions/${rx.id}/html`)).status).toBe(409);
++    expect((await api(`/api/prescriptions/${rx.id}/pdf`)).status).toBe(404);
++    expect((await pool.query("SELECT signed_snapshot FROM prescriptions WHERE id=$1", [rx.id])).rows[0].signed_snapshot).toBeNull();
++  });
++  it("retains noncontrolled eligibility and PostgreSQL tenant constraints", async () => {
++    const [rx] = await create();
++    await pool.query("UPDATE prescriptions SET is_controlled_substance=true WHERE id=$1", [rx.id]);
++    expect((await sign(rx.id)).status).toBe(422);
++    await pool.query("UPDATE prescriptions SET is_controlled_substance=false, medication_name='Unknown synthetic formulation' WHERE id=$1", [rx.id]);
++    expect((await sign(rx.id)).status).toBe(422);
++    await expect(pool.query(`INSERT INTO prescription_documents
++      (prescription_id,clinic_id,storage_key,sha256_hash,signed_by_user_id,signed_at)
++      VALUES($1,11,'SYNTHETIC-ONLY',$2,7,now())`, [rx.id, "a".repeat(64)])).rejects.toThrow();
++  });
++});
+diff --git a/tests/unit/prescription-timeline.test.tsx b/tests/unit/prescription-timeline.test.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..034df3e6ca4f928a2b3028e728b9201f0ff2b2da
+--- /dev/null
++++ b/tests/unit/prescription-timeline.test.tsx
+@@ -0,0 +1,36 @@
++import React from "react";
++import { afterEach, describe, expect, it, vi } from "vitest";
++import { cleanup, fireEvent, render, screen } from "@testing-library/react";
++import { PrescriptionTimelineGroup, mergePrescriptionTimeline } from "../../client/src/components/prescription-timeline";
++
++afterEach(cleanup);
++describe("Unified prescription encounters timeline", () => {
++  const medications = [
++    { id: 1, batchId: 5, encounterId: 8, status: "signed", hasSignedSnapshot: true, medicationName: "Synthetic A", signedAt: "2026-10-10", createdAt: "2026-10-01" },
++    { id: 2, batchId: 5, status: "draft", medicationName: "Synthetic B", createdAt: "2026-10-01" },
++  ];
++  it("interleaves batches by signing date and preserves standalone legacy entries", () => {
++    const items = mergePrescriptionTimeline([{ id: 8, visitDate: "2026-10-05" }], [
++      ...medications, { id: 3, status: "signed", medicationName: "Synthetic legacy", createdAt: "2026-09-01" },
++    ]);
++    expect(items.map(item => item.kind)).toEqual(["prescription-group", "encounter", "prescription-group"]);
++    expect(items[0].kind === "prescription-group" && items[0].prescriptions.length).toBe(2);
++  });
++  it("opens each signed medication in a secure HTML frame and links its encounter", () => {
++    const openEncounter = vi.fn(), openDraft = vi.fn();
++    render(<PrescriptionTimelineGroup groupKey="batch-5" prescriptions={medications} onOpenDrafts={openDraft} onOpenEncounter={openEncounter} />);
++    fireEvent.click(screen.getByRole("button", { name: "Originating encounter #8" }));
++    expect(openEncounter).toHaveBeenCalledWith(8);
++    fireEvent.click(screen.getByRole("button", { name: "Open unsigned prescription draft for review: Synthetic B" }));
++    expect(openDraft).toHaveBeenCalledOnce();
++    fireEvent.click(screen.getByRole("button", { name: "Open signed prescription for Synthetic A" }));
++    const frame = screen.getByTitle("Signed prescription document for Synthetic A");
++    expect(frame.getAttribute("src")).toBe("/api/prescriptions/1/html");
++    expect(frame.getAttribute("sandbox")).toBe("allow-same-origin");
++  });
++  it("does not fabricate a formal HTML snapshot for legacy signed records", () => {
++    render(<PrescriptionTimelineGroup groupKey="legacy" prescriptions={[{ id: 3, status: "signed", medicationName: "Legacy synthetic" }]} onOpenDrafts={vi.fn()} />);
++    expect(screen.queryByRole("button", { name: /View signed document/ })).toBeNull();
++    expect(screen.getByRole("button", { name: /Download PDF/ })).toBeTruthy();
++  });
++});

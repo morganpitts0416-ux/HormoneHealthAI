@@ -1,0 +1,43 @@
+{
+  "sourceCommit": "befe0c271e66361deb585cf4998950c427521626",
+  "comparisonBaseline": "1b6a0a93589df1cab0c41e197d0d33a223bae9cd",
+  "baselineIsProductionAttestation": false,
+  "applicationFiles": [
+    "client/src/components/clinical-orders-panel.tsx",
+    "client/src/components/prescription-dialog.tsx",
+    "client/src/components/prescription-timeline.tsx",
+    "client/src/pages/patient-profiles.tsx",
+    "docs/prescription-snapshot-release.md",
+    "scripts/prescription-postgres-integration.ts",
+    "scripts/prescription-snapshot-schema.sql",
+    "scripts/team-access-route-inventory.ts",
+    "server/prescription-finalization.ts",
+    "server/prescription-html.ts",
+    "server/prescription-pdf.ts",
+    "server/prescription-routes.ts",
+    "server/prescription-signing-policy.ts",
+    "server/prescription-signing-transaction.ts",
+    "server/prod-migrate.sql",
+    "shared/prescription-snapshot.ts",
+    "shared/schema.ts",
+    "tests/unit/prescription-finalization.test.ts",
+    "tests/unit/prescription-release-compatibility.test.ts",
+    "tests/unit/prescription-routes.test.ts",
+    "tests/unit/prescription-signing-policy.test.ts",
+    "tests/unit/prescription-snapshot-postgres.test.ts",
+    "tests/unit/prescription-timeline.test.tsx"
+  ],
+  "patchSha256": "245f8358e42e2633d5c518be5cf073c93967443c4e4fb8f0c27d1bede037633a",
+  "patchBytes": 117795,
+  "validation": {
+    "prescriptionAndUiUnitChecks": 130,
+    "accessSoapTranscriptRegressionChecks": 100,
+    "realIsolatedPostgresHttpChecks": 7,
+    "productionBuild": "PASS",
+    "typescriptErrors": 249,
+    "unmodifiedBaselineTypescriptErrors": 249,
+    "deployedStagingSigning": "NOT_RUN",
+    "productionChanged": false
+  },
+  "publication": "Parentless artifact-only transfer; do not merge into main; selectively integrate into verified authoritative source."
+}
