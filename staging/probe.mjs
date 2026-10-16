@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { sameFinalDocument } from "./probe-assertions.mjs";
 const [workspace, mode = "normal"] = process.argv.slice(2);
 const state = JSON.parse(fs.readFileSync(path.join(workspace, "state.json")));
 assert.match(state.service, /^cliniq-rx-stage-[a-z0-9-]+$/);
@@ -87,6 +88,9 @@ try {
     check("signing before independent approval denied", (await provider("POST", `/api/prescriptions/${unsigned.id}/sign`, { confirmSign: true, reviewHash: await review(unsigned.id) })).status === 403);
     check("independent owner approval", (await owner("POST", `/api/prescriber-credentials/${credentials.credentialId}/verify`, approve(credentials))).status === 200);
     const hash = await review(unsigned.id);
+    const unsignedPdf = await provider("GET", `/api/prescriptions/${unsigned.id}/pdf`);
+    check("verified provider cannot download an unsigned draft as a signed PDF", unsignedPdf.status === 404 &&
+      unsignedPdf.bytes.subarray(0,5).toString() !== "%PDF-");
     check("anonymous access denied", [401,403].includes((await anonymous("GET", `/api/prescriptions/${unsigned.id}`)).status));
     check("wrong clinic cannot access prescription", [403,404].includes((await outsider("GET", `/api/prescriptions/${unsigned.id}`)).status));
     check("wrong clinic cannot sign", [403,404].includes((await outsider("POST", `/api/prescriptions/${unsigned.id}/sign`, { confirmSign: true, reviewHash: hash })).status));
@@ -95,7 +99,7 @@ try {
     check("changed review hash denied", [409,422].includes((await provider("POST", `/api/prescriptions/${unsigned.id}/sign`, { confirmSign: true, reviewHash: "0".repeat(64) })).status));
     check("controlled prescription creation denied", (await provider("POST", `/api/patients/${fixture.patient}/prescriptions`, { ...draftBody, isControlledSubstance: true })).status === 400);
     const signs = await Promise.all([1,2].map(() => provider("POST", `/api/prescriptions/${unsigned.id}/sign`, { confirmSign: true, reviewHash: hash })));
-    check("duplicate signing yields exactly one successful finalization", signs.filter(r => r.status === 200).length === 1 && signs.some(r => r.status === 409));
+    check("duplicate signing returns one linked final document", sameFinalDocument(signs, unsigned.id));
     const pdf = await provider("GET", `/api/prescriptions/${unsigned.id}/pdf`);
     check("actual stored PDF downloadable", pdf.status === 200 && pdf.bytes.subarray(0,5).toString() === "%PDF-" && pdf.bytes.includes(Buffer.from("%%EOF")));
     fs.writeFileSync(path.join(workspace, "synthetic-signed.pdf"), pdf.bytes, { mode: 0o600 });
