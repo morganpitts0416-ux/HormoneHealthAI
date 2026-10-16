@@ -248,6 +248,14 @@ def audit_history(instance, operations, fetch=audit_window, end=None, clock=time
         visit(cursor, right)
         cursor = right
     entries.sort(key=lambda e: (audit_time(e["timestamp"]), e["insertId"]))
+    proof = {"from": audit_stamp(start), "until": audit_stamp(end), "createdAt": audit_stamp(created),
+             "complete": True, "calls": calls, "windows": coverage, "count": len(entries),
+             "evidenceSha256": digest(encoded(entries))}
+    # Persist retrieval completion BEFORE correlation can stop the assessment.
+    # This marker does not authorize recovery or turn failed correlation into a pass.
+    if progress:
+        progress({"status": "retrieval-complete", "from": proof["from"], "until": proof["until"],
+                  "count": len(entries), "sha256": proof["evidenceSha256"]})
     # Each control-plane operation must have terminal audit evidence. A valid
     # JSON response containing only the beginning of a paginated history is not
     # sufficient. Unknown audit methods remain blocked by reconcile().
@@ -258,10 +266,9 @@ def audit_history(instance, operations, fetch=audit_window, end=None, clock=time
     for operation in rows(operations, "SQL operations"):
         identity = str(operation.get("name", "")).rsplit("/", 1)[-1]
         if not identity or identity not in terminal_ids:
-            raise Stop("SQL operation has no matching terminal audit evidence; missing/delayed logs require a fresh assessment.")
-    proof = {"from": audit_stamp(start), "until": audit_stamp(end), "createdAt": audit_stamp(created),
-             "complete": True, "calls": calls, "windows": coverage, "count": len(entries),
-             "evidenceSha256": digest(encoded(entries))}
+            safe_id = identity if re.fullmatch(r"[A-Za-z0-9_.-]{1,160}", identity) else "[invalid identifier]"
+            raise Stop("SQL operation has no matching terminal audit evidence: " + safe_id +
+                       ". Preserve saved windows; run the offline audit diagnostic before another assessment.")
     return entries, proof
 
 

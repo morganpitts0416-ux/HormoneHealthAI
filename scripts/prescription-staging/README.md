@@ -10,6 +10,11 @@ Recovery assessment audit queries use creation-to-assessment timestamp bounds,
 small subdivided windows and explicit time/call budgets. Missing or incomplete
 audit evidence still blocks recovery; see `RECOVERY.md` for the coverage rules.
 
+If completed reads stop at terminal-operation correlation, use the offline
+`diagnose_recovery_audit.py --evidence /absolute/protected/assessment-directory`
+before rerunning assessment. It verifies saved window batches and reports only
+operation/audit metadata; it makes no GCP calls and grants no recovery approval.
+
 # Isolated prescription staging runner
 
 ## Continue the already-created attempt `c73ac1bc32`

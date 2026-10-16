@@ -190,6 +190,53 @@ one version, and the staging postgres password change.
 
 ## Local verification
 
+### Offline diagnosis after terminal audit correlation fails
+
+Do NOT rerun `assess` just to identify the operation. The standalone adjacent
+`diagnose_recovery_audit.py --evidence /absolute/protected/assessment-directory`
+reads the saved files locally and makes zero cloud, SQL or subprocess calls.
+It creates no output file, does not edit the ledger/evidence, and never authorizes
+recovery. Python bytecode writes are disabled. Run it from the verified tooling
+checkout so the adjacent `recovery.py` is the reviewed version.
+
+It accepts the pinned producer from the bounded-query release or its own adjacent
+current producer; verifies private permissions, ledger bytes and snapshot identity;
+and validates each completed window's count, hash, bounds and uniqueness. It shows:
+
+- Every SQL operation ID/type/status and insert/start/end timestamps, with a flag
+  for unexpected or failed operations.
+- Whitelisted audit timestamps, insert IDs, service/method/resource, numeric
+  status, operation ID/producer and first/last flags.
+- The exact outcome under the unchanged original terminal-ID rule.
+- Same-ID events lacking `last=true`, and method/time candidates with different
+  IDs. These candidates are explicitly NOT proof or an accepted fallback.
+- Completed-window coverage and hashes without repeating those queries.
+
+Raw request/response bodies, principal identity, error messages, passwords and
+patient fields are never emitted. Never paste the full private evidence bundle
+into chat. The diagnostic's whitelisted operation/audit summary is sufficient
+for the next decision.
+
+Google's LogEntryOperation reference documents ID/first/last as optional and the
+ID as arbitrary; the Cloud SQL audit guide says create/update LROs usually emit
+start/end events. Neither fact by itself proves the live mismatch cause, nor
+justifies accepting a timestamp-only match:
+
+- https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry#LogEntryOperation
+- https://cloud.google.com/sql/docs/postgres/audit-logging
+
+The legacy producer saved batches but not a final retrieval marker before its
+terminal check. Therefore its valid saved windows prove a historical PREFIX, not
+the original planned final cutoff or a successful assessment. That prefix can be
+examined now and retained for a separately reviewed reuse path with fresh instance,
+ledger/operation checks and any uncovered/tail or narrowly targeted delayed-event
+queries. No automated reuse/approval adapter is introduced here. Do not edit or
+remove `STOPPED.txt`, manufacture a coverage proof, or reset credentials.
+
+The current producer now saves an explicit retrieval-complete marker before
+correlation, and identifies the failing SQL operation in its error. The terminal
+verification and all mutation/approval gates remain unchanged.
+
 `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/prescription-staging -p 'test_recovery.py' -v`
 
 Synthetic tests cover unchanged ledgers, failed/unknown operations, partial
