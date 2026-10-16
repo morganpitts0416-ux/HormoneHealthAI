@@ -6,7 +6,7 @@ of an exact protected report and staging-only escrow/password reset. Neither
 action connects to a database, initializes data, or accesses production traffic.
 """
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import fcntl
 import hashlib
 import json
@@ -16,6 +16,7 @@ import re
 import stat
 import subprocess
 import tempfile
+import time
 
 PROJECT = "realign-lab-app"
 ATTEMPT = "c73ac1bc32"
@@ -27,6 +28,12 @@ EXPECTED_LEDGER = {
 }
 LABELS = {"purpose": "cliniq-prescription-staging", "synthetic-only": "true"}
 AUDIT_LIMIT = 10000
+AUDIT_WINDOW = timedelta(hours=6)
+AUDIT_MIN_WINDOW = timedelta(seconds=1)
+AUDIT_BATCH_LIMIT = 201
+AUDIT_QUERY_TIMEOUT = 25
+AUDIT_TOTAL_TIMEOUT = 240
+AUDIT_MAX_CALLS = 96
 ESCROW = NAME + "-recovery-postgres"
 UPDATE_REVIEW = "Historical SQL UPDATE needs explicit review; projected audit metadata cannot prove labels-only changes."
 
@@ -88,13 +95,6 @@ def save(path, value):
 
 def queries():
     """Closed read-only command catalog. No caller-supplied project/resource."""
-    audit_filter = (
-        'logName="projects/' + PROJECT + '/logs/cloudaudit.googleapis.com%2Factivity" '
-        'AND protoPayload.serviceName="cloudsql.googleapis.com" AND ('
-        'resource.labels.database_id="' + PROJECT + ':' + NAME + '" OR '
-        'protoPayload.resourceName="projects/' + PROJECT + '/instances/' + NAME + '" OR '
-        'protoPayload.resourceName="projects/' + PROJECT + '/regions/' + REGION + '/instances/' + NAME + '")'
-    )
     return {
         "account": ["auth", "list", "--filter=status:ACTIVE", "--format=json(account,status)"],
         "project": ["projects", "describe", PROJECT, "--format=json(projectId,projectNumber,lifecycleState)"],
@@ -117,10 +117,6 @@ def queries():
                    "--query=name:" + ATTEMPT, "--format=json(name,assetType,location)"],
         "builds": ["builds", "list", "--region=" + REGION,
                    "--filter=images~" + ATTEMPT, "--format=json(id,status,images,createTime)"],
-        # No request/response bodies, database contents, principal emails or tokens.
-        "audit": ["logging", "read", audit_filter, "--order=asc",
-                  "--limit=" + str(AUDIT_LIMIT),
-                  "--format=json(timestamp,insertId,operation,protoPayload.serviceName,protoPayload.methodName,protoPayload.resourceName,protoPayload.status.code)"],
     }
 
 
@@ -128,14 +124,22 @@ def cloud(key):
     catalog = queries()
     if key not in catalog:
         raise Stop("Command is outside the fixed read-only catalog.")
+    return read_command(key, catalog[key], 180)
+
+
+def read_command(key, arguments, timeout):
     environment = {k: os.environ[k] for k in ("HOME", "PATH", "LANG", "LC_ALL", "CLOUDSDK_CONFIG")
                    if k in os.environ}
     environment.update(CLOUDSDK_CORE_DISABLE_PROMPTS="1", CLOUDSDK_CORE_LOG_HTTP="false",
                        CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK="true")
-    command = ["gcloud", "--quiet", "--project=" + PROJECT, "--verbosity=error", *catalog[key]]
+    command = ["gcloud", "--quiet", "--project=" + PROJECT, "--verbosity=error", *arguments]
     try:
-        result = subprocess.run(command, capture_output=True, text=True, env=environment, timeout=180)
-    except (OSError, subprocess.TimeoutExpired):
+        result = subprocess.run(command, capture_output=True, text=True, env=environment, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        if key == "audit":
+            raise
+        raise Stop("Read-only query " + key + " timed out; no mutation attempted.") from None
+    except OSError:
         raise Stop("Read-only query " + key + " could not complete; no mutation attempted.") from None
     if result.returncode:
         text = result.stderr.lower()
@@ -149,6 +153,116 @@ def cloud(key):
         return json.loads(result.stdout)
     except ValueError:
         raise Stop("Read-only query " + key + " returned invalid JSON.") from None
+
+
+def audit_time(value):
+    try:
+        stamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if stamp.tzinfo is None:
+            raise ValueError()
+        return stamp.astimezone(timezone.utc)
+    except (AttributeError, ValueError, TypeError):
+        raise Stop("Audit provenance contains an invalid or timezone-free timestamp.") from None
+
+
+def audit_stamp(value):
+    return value.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+
+
+def audit_query(start, end):
+    """Each real query has explicit half-open timestamp bounds and a small cap."""
+    if end <= start or end - start > AUDIT_WINDOW:
+        raise Stop("Audit query interval is outside the bounded search policy.")
+    expression = (
+        'logName="projects/' + PROJECT + '/logs/cloudaudit.googleapis.com%2Factivity" '
+        'AND protoPayload.serviceName="cloudsql.googleapis.com" AND ('
+        'resource.labels.database_id="' + PROJECT + ':' + NAME + '" OR '
+        'protoPayload.resourceName="projects/' + PROJECT + '/instances/' + NAME + '" OR '
+        'protoPayload.resourceName="projects/' + PROJECT + '/regions/' + REGION + '/instances/' + NAME + '") '
+        'AND timestamp>="' + audit_stamp(start) + '" AND timestamp<"' + audit_stamp(end) + '"'
+    )
+    # logging read has NO --page-size in GA. The SDK paginates internally up to
+    # this sentinel cap; cap-sized windows are subdivided, never accepted.
+    return ["logging", "read", expression, "--order=desc", "--limit=" + str(AUDIT_BATCH_LIMIT),
+            "--format=json(timestamp,insertId,operation,protoPayload.serviceName,protoPayload.methodName,protoPayload.resourceName,protoPayload.status.code)"]
+
+
+def audit_window(start, end, timeout):
+    return read_command("audit", audit_query(start, end), timeout)
+
+
+def audit_history(instance, operations, fetch=audit_window, end=None, clock=time.monotonic, progress=None):
+    """Cover creation minus one hour through a frozen current cutoff; fail closed."""
+    created = audit_time(instance.get("createTime"))
+    end = end or datetime.now(timezone.utc)
+    start = created - timedelta(hours=1)
+    if created > end or end <= start:
+        raise Stop("Instance creation time is later than the audit cutoff.")
+    began = clock()
+    calls = 0
+    entries, coverage, by_id = [], [], {}
+
+    def visit(left, right):
+        nonlocal calls
+        remaining = AUDIT_TOTAL_TIMEOUT - (clock() - began)
+        if remaining <= 0 or calls >= AUDIT_MAX_CALLS:
+            raise Stop("Audit coverage budget exhausted; incomplete history cannot authorize recovery.")
+        calls += 1
+        timeout = min(AUDIT_QUERY_TIMEOUT, remaining)
+        if progress:
+            progress({"from": audit_stamp(left), "until": audit_stamp(right), "attempt": calls, "status": "querying"})
+        try:
+            batch = rows(fetch(left, right, timeout), "Audit")
+        except subprocess.TimeoutExpired:
+            if progress:
+                progress({"from": audit_stamp(left), "until": audit_stamp(right), "attempt": calls, "status": "timeout"})
+            batch = None
+        if clock() - began >= AUDIT_TOTAL_TIMEOUT:
+            raise Stop("Audit total deadline exceeded; no incomplete result was accepted.")
+        if batch is None or len(batch) >= AUDIT_BATCH_LIMIT:
+            if right - left <= AUDIT_MIN_WINDOW:
+                raise Stop("Audit window remains slow or capped at minimum interval; completeness cannot be verified.")
+            midpoint = left + (right - left) / 2
+            visit(left, midpoint)
+            visit(midpoint, right)
+            return
+        for event in batch:
+            stamp = audit_time(event.get("timestamp"))
+            if not left <= stamp < right or not isinstance(event.get("insertId"), str) or not event["insertId"]:
+                raise Stop("Audit result lacks identity or falls outside its requested interval.")
+            # Duplicates could conceal a partial page; never silently deduplicate.
+            if event["insertId"] in by_id:
+                raise Stop("Duplicate audit identity detected; pagination completeness is ambiguous.")
+            by_id[event["insertId"]] = True
+            entries.append(event)
+        if len(entries) >= AUDIT_LIMIT:
+            raise Stop("Total audit evidence cap reached; history is incomplete.")
+        coverage.append({"from": audit_stamp(left), "until": audit_stamp(right), "count": len(batch),
+                         "sha256": digest(encoded(batch))})
+        if progress:
+            progress({**coverage[-1], "status": "complete", "entries": batch})
+
+    cursor = start
+    while cursor < end:
+        right = min(cursor + AUDIT_WINDOW, end)
+        visit(cursor, right)
+        cursor = right
+    entries.sort(key=lambda e: (audit_time(e["timestamp"]), e["insertId"]))
+    # Each control-plane operation must have terminal audit evidence. A valid
+    # JSON response containing only the beginning of a paginated history is not
+    # sufficient. Unknown audit methods remain blocked by reconcile().
+    terminal_ids = {
+        str(e.get("operation", {}).get("id", "")).rsplit("/", 1)[-1]
+        for e in entries if e.get("operation", {}).get("last") is True
+    }
+    for operation in rows(operations, "SQL operations"):
+        identity = str(operation.get("name", "")).rsplit("/", 1)[-1]
+        if not identity or identity not in terminal_ids:
+            raise Stop("SQL operation has no matching terminal audit evidence; missing/delayed logs require a fresh assessment.")
+    proof = {"from": audit_stamp(start), "until": audit_stamp(end), "createdAt": audit_stamp(created),
+             "complete": True, "calls": calls, "windows": coverage, "count": len(entries),
+             "evidenceSha256": digest(encoded(entries))}
+    return entries, proof
 
 
 def rows(value, kind):
@@ -241,7 +355,7 @@ def reconcile(data):
     return sorted(set(blockers))
 
 
-def assess(home=None, fetch=cloud):
+def assess(home=None, fetch=cloud, audit_reader=audit_history):
     home = Path(home or Path.home()).absolute()
     ledger = protected(home / ".local/state/cliniq-rx-staging", True)
     marker = protected(ledger / (NAME + ".json"))
@@ -260,12 +374,23 @@ def assess(home=None, fetch=cloud):
         root = persistent_root(home)
         evidence = Path(tempfile.mkdtemp(prefix="assessment-", dir=root))
         evidence.chmod(0o700)
+        print("Persistent protected evidence:", evidence, flush=True)
         save(evidence / "original-ledger.json", original)
         save(evidence / "tool-sha256.txt", (digest(Path(__file__).read_bytes()) + "\n").encode())
         data = {}
+        audit_progress = {"attempts": [], "entries": []}
         # Validate target before further inventory; no unknown SQL target allowed.
-        for key in queries():
-            result = fetch(key)
+        for key in [*queries(), "audit"]:
+            if key == "audit":
+                def progress(event):
+                    audit_progress["attempts"].append({k: v for k, v in event.items() if k != "entries"})
+                    audit_progress["entries"].extend(event.get("entries", []))
+                    checkpoint(evidence / "audit-progress.json", audit_progress)
+                    print("Audit " + event["status"] + ": " + event["from"] + " to " + event["until"], flush=True)
+                result, proof = audit_reader(data["instance"], data["operations"], progress=progress)
+                save(evidence / "audit-coverage.json", encoded(proof))
+            else:
+                result = fetch(key)
             if key == "account":
                 # Retain identity correlation without persisting account email.
                 account = rows(result, "Account")
@@ -282,11 +407,15 @@ def assess(home=None, fetch=cloud):
             raise Stop("Instance or original ledger changed during assessment.")
         if fetch("databases") != data["databases"] or fetch("users") != data["users"]:
             raise Stop("SQL inventory changed during assessment.")
+        if fetch("operations") != data["operations"]:
+            raise Stop("SQL operation history changed during audit verification; fresh assessment required.")
         report = {
             "project": PROJECT, "attempt": ATTEMPT, "instance": NAME,
             "createdAt": datetime.now(timezone.utc).isoformat(),
             "status": "BLOCKED_REQUIRES_RECONCILIATION" if blockers else "AWAITING_EXPLICIT_APPROVAL",
             "blockers": blockers, "originalLedgerSha256": digest(original),
+            "auditEvidenceSha256": digest(encoded(data["audit"])),
+            "auditCoverageSha256": digest((evidence / "audit-coverage.json").read_bytes()),
             "administratorCredential": "LOST_NO_ATTEMPT_SECRET_BACKUP_FOUND",
             "passwordResetRequiredToProceed": not any(ATTEMPT in json.dumps(r) for r in data["secrets"]),
             "passwordResetAuthorized": False, "cloudMutationsAuthorized": False,
@@ -387,7 +516,8 @@ def approved_evidence(home, directory, approved_hash, approve_reset, approve_upd
         raise Stop("An incomplete assessment cannot authorize recovery.")
     manifest = json.loads(protected(evidence / "manifest.json").read_text())
     expected_names = {key + ".json" for key in queries()} | {
-        "original-ledger.json", "tool-sha256.txt", "approval-report.json"}
+        "original-ledger.json", "tool-sha256.txt", "approval-report.json",
+        "audit.json", "audit-coverage.json", "audit-progress.json"}
     if not isinstance(manifest, dict) or set(manifest) != expected_names:
         raise Stop("Assessment manifest is incomplete or contains unexpected paths.")
     for name, expected_hash in manifest.items():
@@ -396,9 +526,17 @@ def approved_evidence(home, directory, approved_hash, approve_reset, approve_upd
     report_bytes = (evidence / "approval-report.json").read_bytes()
     if digest(report_bytes) != approved_hash:
         raise Stop("Explicit approval hash differs from this assessment report.")
+    report = json.loads(report_bytes)
+    if (report.get("auditEvidenceSha256") != digest((evidence / "audit.json").read_bytes()) or
+            report.get("auditCoverageSha256") != digest((evidence / "audit-coverage.json").read_bytes())):
+        raise Stop("Approved report does not bind the exact complete audit evidence and coverage.")
     if (evidence / "tool-sha256.txt").read_text().strip() != digest(Path(__file__).read_bytes()):
         raise Stop("Recovery tool changed after assessment.")
-    data = {key: json.loads((evidence / (key + ".json")).read_text()) for key in queries()}
+    data = {key: json.loads((evidence / (key + ".json")).read_text()) for key in [*queries(), "audit"]}
+    coverage = json.loads((evidence / "audit-coverage.json").read_text())
+    if (coverage.get("complete") is not True or coverage.get("count") != len(data["audit"]) or
+            coverage.get("evidenceSha256") != digest(encoded(data["audit"]))):
+        raise Stop("Approved audit coverage is incomplete or differs from its evidence.")
     blockers = reconcile(data)
     if any(b != UPDATE_REVIEW for b in blockers) or (UPDATE_REVIEW in blockers and not approve_updates):
         raise Stop("Unresolved reconciliation blockers or unapproved historical UPDATE review.")
@@ -422,7 +560,7 @@ def checkpoint(path, data):
 
 
 def rotate(directory, approved_hash, approve_reset=False, approve_updates=False,
-           home=None, fetch=cloud, execute=rotation_call, preflight=rotation_preflight):
+           home=None, fetch=cloud, execute=rotation_call, preflight=rotation_preflight, audit_reader=audit_history):
     """Approved staging-only escrow + rotation. Stops BEFORE database initialization."""
     import secrets
     home = Path(home or Path.home()).absolute()
@@ -465,6 +603,9 @@ def rotate(directory, approved_hash, approve_reset=False, approve_updates=False,
                 current = [{"account": digest(account[0]["account"].encode()), "status": "ACTIVE"}]
             if current != approved[key]:
                 raise Stop("Live " + key + " changed since assessment; fresh approval required.")
+        current_audit, _proof = audit_reader(approved["instance"], approved["operations"])
+        if current_audit != approved["audit"] or fetch("operations") != approved["operations"]:
+            raise Stop("Live audit or SQL operations changed since assessment; fresh approval required.")
         if marker.read_bytes() != original:
             raise Stop("Original ledger changed during verification.")
         preflight(workspace)

@@ -6,6 +6,10 @@ original ledger and saves fresh persistent evidence before any separate approval
 for credential rotation or initialization. Its separate `rotate` action requires
 explicit approval of the exact report and staging-only secret escrow/reset.
 
+Recovery assessment audit queries use creation-to-assessment timestamp bounds,
+small subdivided windows and explicit time/call budgets. Missing or incomplete
+audit evidence still blocks recovery; see `RECOVERY.md` for the coverage rules.
+
 # Isolated prescription staging runner
 
 ## Continue the already-created attempt `c73ac1bc32`

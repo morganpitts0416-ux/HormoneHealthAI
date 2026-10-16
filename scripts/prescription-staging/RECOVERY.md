@@ -56,6 +56,42 @@ response bodies that could contain a password. Final instance and SQL inventorie
 are rechecked for drift. Remote state can still change later: every eventual
 mutation must have fresh verification.
 
+### Bounded audit retrieval
+
+The old unbounded, ascending, 10,000-entry audit request has been removed.
+Audit searches now have explicit half-open timestamp bounds covering **verified
+instance creation minus one hour through a frozen current assessment cutoff**.
+This includes the whole instance incarnation/recovery period, not just a recent
+lookback that could hide earlier writes. Identity/resource filters are unchanged.
+
+Each request covers at most six hours, returns at most 201 entries and has a
+25-second subprocess timeout. GA `gcloud logging read` internally paginates but
+does not expose `--page-size`; no unsupported pagination flag is used. A response
+with 201 entries is NEVER accepted as complete. That interval is split in half
+and re-read until each result is below the cap. Timeouts also split the interval.
+Permission/API/JSON failures are not treated as empty results or retried blindly.
+
+The complete retrieval has a 240-second total budget, at most 96 calls, a
+one-second minimum interval, and fewer than 10,000 total accepted records.
+Persistent slowness, dense minimum intervals or exhausted budgets fail closed.
+There is no truncated-history fallback. Each query/completion/timeout prints
+its interval. `audit-progress.json` saves attempted intervals and accepted
+partial metadata batches even on later failure; it never authorizes recovery.
+
+A successful assessment saves `audit.json` plus `audit-coverage.json`, documenting
+contiguous windows, counts, hashes and the exact cutoff. Duplicate audit IDs,
+out-of-window entries, missing terminal audit operation IDs, missing SQL operation
+matches or SQL operations changing during retrieval stop the assessment.
+Every listed SQL operation must have matching terminal audit evidence. Missing
+or delayed log ingestion is a blocker, not permission to proceed. Unrecognized
+mutation methods remain blockers even when creation evidence is present.
+The approval report SHA binds BOTH audit data and the complete coverage proof.
+Old assessments must not be reused with this version: perform a fresh assessment.
+
+Before an explicitly approved rotation, the complete bounded audit retrieval is
+repeated through a fresh cutoff. Any changed audit/SQL history invalidates the
+approval; the credential/reset safety boundaries are otherwise unchanged.
+
 ## Persistent evidence and retries
 
 Each invocation saves a separate 0700 directory under:
@@ -161,6 +197,9 @@ resources, lost processes/retries, persistent permissions and symlinks, drift,
 sanitized SDK errors, exact-hash approval fences, escrow-before-reset ordering,
 failed escrow, uncertain-action no-replay, private persistent credential files,
 historical UPDATE review approval, and prohibited-command absence from assessment.
+Audit regressions cover split-on-timeout, slow success, total deadlines/call
+budgets, capped batches, contiguous coverage, missing terminal operations,
+malformed/partial results, duplicate IDs, drift and report-to-evidence binding.
 An installed SDK parser test injects an intentionally invalid sentinel in an
 isolated credential-free SDK configuration: it tests the actual command shapes
 without dispatching any GCP request. No live-cloud validation is claimed.

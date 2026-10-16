@@ -1,5 +1,6 @@
 """Synthetic lost-workspace recovery checks. No test contacts GCP."""
 import copy
+from datetime import timedelta
 import fcntl
 import importlib.util
 import json
@@ -32,6 +33,7 @@ def fixture():
                         "status": "DONE", "insertTime": "2026-10-11T12:00:01Z"}],
         "audit": [{
             "timestamp": "2026-10-11T12:00:02Z", "insertId": "synthetic-audit",
+            "operation": {"id": "synthetic-operation", "last": True},
             "protoPayload": {"serviceName": "cloudsql.googleapis.com", "methodName": "cloudsql.instances.create",
                              "resourceName": "projects/" + rx.PROJECT + "/instances/" + rx.NAME},
         }],
@@ -61,7 +63,14 @@ class RecoverySafety(unittest.TestCase):
         return copy.deepcopy(self.data[key])
 
     def assess(self):
-        return rx.assess(self.home, self.fetch)
+        return rx.assess(self.home, self.fetch, self.audit_reader)
+
+    def audit_reader(self, instance, operations, **kwargs):
+        events = self.fetch("audit")
+        def window(start, end, timeout):
+            return [e for e in events if start <= rx.audit_time(e["timestamp"]) < end]
+        return rx.audit_history(instance, operations, fetch=window,
+                                end=rx.audit_time(instance["createTime"]) + timedelta(hours=2), **kwargs)
 
     def test_clean_assessment_preserves_ledger_and_never_authorizes_mutation(self):
         before = self.marker.read_bytes(), self.marker.stat().st_mtime_ns
@@ -88,7 +97,7 @@ class RecoverySafety(unittest.TestCase):
         spec = importlib.util.spec_from_file_location("recovery_restart", rx.__file__)
         restart = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(restart)
-        second, _ = restart.assess(self.home, self.fetch)
+        second, _ = restart.assess(self.home, self.fetch, self.audit_reader)
         self.assertNotEqual(first, second)
         self.assertTrue((first / "approval-report.json").exists())
         self.assertEqual(json.loads(self.marker.read_text()), rx.EXPECTED_LEDGER)
@@ -176,6 +185,7 @@ class RecoverySafety(unittest.TestCase):
     def test_update_metadata_cannot_be_misrepresented_as_labels_only(self):
         event = copy.deepcopy(self.data["audit"][0])
         event["protoPayload"]["methodName"] = "cloudsql.instances.update"
+        event["insertId"] = "synthetic-update-audit"
         self.data["audit"].append(event)
         self.assertTrue(any("labels-only" in b for b in rx.reconcile(self.data)))
 
@@ -197,7 +207,7 @@ class RecoverySafety(unittest.TestCase):
                     result["state"] = "FAILED"
             return result
         with self.assertRaisesRegex(rx.Stop, "changed"):
-            rx.assess(self.home, drifting)
+            rx.assess(self.home, drifting, self.audit_reader)
 
     def test_symlinks_and_unsafe_permissions_refused(self):
         self.marker.chmod(0o644)
@@ -215,7 +225,7 @@ class RecoverySafety(unittest.TestCase):
                 raise rx.Stop("Audit permission denied")
             return self.fetch(key)
         with self.assertRaises(rx.Stop):
-            rx.assess(self.home, failing)
+            rx.assess(self.home, failing, lambda *args, **kwargs: failing("audit"))
         directory = next(rx.persistent_root(self.home).glob("assessment-*"))
         self.assertTrue((directory / "STOPPED.txt").exists())
         self.assertFalse((directory / "approval-report.json").exists())
@@ -245,6 +255,7 @@ class RecoverySafety(unittest.TestCase):
         if approve_updates:
             event = copy.deepcopy(self.data["audit"][0])
             event["protoPayload"]["methodName"] = "cloudsql.instances.update"
+            event["insertId"] = "synthetic-update-audit"
             self.data["audit"].append(event)
         evidence, _ = self.assess()
         report_hash = rx.digest((evidence / "approval-report.json").read_bytes())
@@ -267,7 +278,7 @@ class RecoverySafety(unittest.TestCase):
     def rotate(self, **kwargs):
         return rx.rotate(
             self.evidence, self.report_hash, home=self.home, fetch=self.fetch,
-            execute=self.execute, preflight=lambda _: None, **kwargs)
+            execute=self.execute, preflight=lambda _: None, audit_reader=self.audit_reader, **kwargs)
 
     def test_rotation_requires_explicit_approval_and_exact_hash(self):
         self.rotation_fixture()
@@ -362,6 +373,158 @@ class RecoverySafety(unittest.TestCase):
         self.assertIn("--flags-file=/synthetic/private/password-flags.json", reset)
         self.assertFalse(any(a.startswith("--password=") for a in reset))
 
+    def test_approved_report_binds_audit_coverage_not_only_editable_manifest(self):
+        self.rotation_fixture()
+        coverage = self.evidence / "audit-coverage.json"
+        data = json.loads(coverage.read_text())
+        data["until"] = "2026-10-11T12:30:00Z"
+        coverage.write_bytes(rx.encoded(data))
+        manifest_path = self.evidence / "manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest["audit-coverage.json"] = rx.digest(coverage.read_bytes())
+        manifest_path.write_bytes(rx.encoded(manifest))
+        with self.assertRaisesRegex(rx.Stop, "does not bind"):
+            self.rotate(approve_reset=True)
+        self.assertEqual(self.writes, [])
+
+
+class AuditBoundedSafety(unittest.TestCase):
+    def setUp(self):
+        self.data = fixture()
+        self.created = rx.audit_time(self.data["instance"]["createTime"])
+        self.end = self.created + timedelta(hours=12)
+        self.calls = []
+
+    def fetch(self, left, right, timeout):
+        self.calls.append((left, right, timeout))
+        return copy.deepcopy([e for e in self.data["audit"] if left <= rx.audit_time(e["timestamp"]) < right])
+
+    def collect(self, **kwargs):
+        return rx.audit_history(self.data["instance"], self.data["operations"],
+                                fetch=kwargs.pop("fetch", self.fetch), end=self.end, **kwargs)
+
+    def test_complete_half_open_windows_cover_only_instance_lifetime(self):
+        entries, proof = self.collect()
+        self.assertEqual(entries, self.data["audit"])
+        self.assertEqual(proof["from"], rx.audit_stamp(self.created - timedelta(hours=1)))
+        self.assertEqual(proof["until"], rx.audit_stamp(self.end))
+        self.assertTrue(proof["complete"])
+        windows = proof["windows"]
+        self.assertEqual(len(windows), 3)
+        for first, second in zip(windows, windows[1:]):
+            self.assertEqual(first["until"], second["from"])
+        for start, end, timeout in self.calls:
+            command = rx.audit_query(start, end)
+            self.assertLessEqual(end - start, rx.AUDIT_WINDOW)
+            self.assertIn('timestamp>="' + rx.audit_stamp(start) + '"', command[2])
+            self.assertIn('timestamp<"' + rx.audit_stamp(end) + '"', command[2])
+            self.assertIn("--limit=201", command)
+            self.assertIn("--order=desc", command)
+            self.assertNotIn("--page-size", " ".join(command))
+            self.assertLessEqual(timeout, 25)
+
+    def test_timeout_splits_interval_and_retries_only_smaller_reads(self):
+        slow = []
+        def fetch(left, right, timeout):
+            if right - left > timedelta(hours=3):
+                slow.append((left, right))
+                raise subprocess.TimeoutExpired(["synthetic-gcloud"], timeout)
+            return self.fetch(left, right, timeout)
+        entries, proof = self.collect(fetch=fetch)
+        self.assertTrue(slow)
+        self.assertEqual(entries, self.data["audit"])
+        self.assertGreater(proof["calls"], len(proof["windows"]))
+        self.assertTrue(all(b - a <= timedelta(hours=3) for a, b, _ in self.calls))
+
+    def test_cap_sized_batch_is_not_accepted_as_complete(self):
+        def capped(left, right, timeout):
+            if right - left > timedelta(hours=3):
+                return [copy.deepcopy(self.data["audit"][0])] * rx.AUDIT_BATCH_LIMIT
+            return self.fetch(left, right, timeout)
+        entries, proof = self.collect(fetch=capped)
+        self.assertEqual(entries, self.data["audit"])
+        self.assertTrue(all(window["count"] < rx.AUDIT_BATCH_LIMIT for window in proof["windows"]))
+
+    def test_persistent_timeout_fails_closed_at_minimum_window(self):
+        def timeout(left, right, seconds):
+            raise subprocess.TimeoutExpired(["synthetic"], seconds)
+        with patch.object(rx, "AUDIT_MIN_WINDOW", timedelta(hours=1)):
+            with self.assertRaisesRegex(rx.Stop, "minimum interval"):
+                self.collect(fetch=timeout)
+
+    def test_slow_success_cannot_overrun_total_deadline(self):
+        ticks = [0]
+        def slow(left, right, timeout):
+            ticks[0] += rx.AUDIT_TOTAL_TIMEOUT + 1
+            return self.fetch(left, right, timeout)
+        with self.assertRaisesRegex(rx.Stop, "total deadline"):
+            self.collect(fetch=slow, clock=lambda: ticks[0])
+
+    def test_total_query_count_is_bounded_even_for_empty_intervals(self):
+        self.end = self.created + timedelta(days=7)
+        with patch.object(rx, "AUDIT_MAX_CALLS", 2):
+            with self.assertRaisesRegex(rx.Stop, "budget exhausted"):
+                self.collect()
+        self.assertEqual(len(self.calls), 2)
+
+    def test_partial_response_missing_terminal_audit_fails(self):
+        self.data["audit"][0]["operation"]["last"] = False
+        with self.assertRaisesRegex(rx.Stop, "terminal audit"):
+            self.collect()
+
+    def test_missing_update_audit_cannot_be_hidden_by_present_create(self):
+        self.data["operations"].append({
+            "name": "synthetic-missing-update", "operationType": "UPDATE", "status": "DONE", "targetId": rx.NAME})
+        with self.assertRaisesRegex(rx.Stop, "terminal audit"):
+            self.collect()
+
+    def test_empty_or_truncated_json_never_counts_as_evidence(self):
+        with self.assertRaisesRegex(rx.Stop, "terminal audit"):
+            self.collect(fetch=lambda *args: [])
+        result = subprocess.CompletedProcess([], 0, '[{"timestamp":', "")
+        with patch("recovery.subprocess.run", return_value=result):
+            with self.assertRaisesRegex(rx.Stop, "invalid JSON"):
+                rx.audit_window(self.created, self.created + timedelta(minutes=1), 25)
+
+    def test_out_of_window_entries_and_duplicate_ids_are_rejected(self):
+        with self.assertRaisesRegex(rx.Stop, "outside"):
+            self.collect(fetch=lambda *args: copy.deepcopy(self.data["audit"]))
+        with self.assertRaisesRegex(rx.Stop, "Duplicate"):
+            self.collect(fetch=lambda a, b, t: self.fetch(a, b, t) * 2)
+
+    def test_unknown_audit_operation_is_preserved_and_blocks_reconciliation(self):
+        self.data["audit"][0]["protoPayload"]["methodName"] = "cloudsql.instances.delete"
+        entries, _ = self.collect()
+        self.data["audit"] = entries
+        self.assertTrue(any("Unrecognized" in text for text in rx.reconcile(self.data)))
+
+    def test_timeout_subprocess_is_not_converted_to_an_empty_batch(self):
+        error = subprocess.TimeoutExpired(["gcloud"], 25, stderr="synthetic-private-text")
+        with patch("recovery.subprocess.run", side_effect=error):
+            with self.assertRaises(subprocess.TimeoutExpired):
+                rx.audit_window(self.created, self.created + timedelta(minutes=1), 25)
+
+    def test_new_sql_operations_after_audit_invalidate_assessment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            helper = RecoverySafety()
+            helper.setUp()
+            try:
+                counts = [0]
+                def fetch(key):
+                    result = helper.fetch(key)
+                    if key == "operations":
+                        counts[0] += 1
+                        if counts[0] > 1:
+                            result.append({"name": "new-operation"})
+                    return result
+                with self.assertRaisesRegex(rx.Stop, "history changed"):
+                    rx.assess(helper.home, fetch, helper.audit_reader)
+                root = rx.persistent_root(helper.home)
+                self.assertFalse(any(p.exists() for p in root.glob("assessment-*/approval-report.json")))
+                self.assertTrue(any(p.exists() for p in root.glob("assessment-*/STOPPED.txt")))
+            finally:
+                helper.doCleanups()
+
 
 @unittest.skipUnless(shutil.which("gcloud"), "Installed SDK unavailable")
 class RecoveryNativeSdk(unittest.TestCase):
@@ -370,7 +533,9 @@ class RecoveryNativeSdk(unittest.TestCase):
             environment = isolated_environment(
                 {k: os.environ[k] for k in ("HOME", "PATH", "LANG") if k in os.environ},
                 Path(directory))
-            for key, args in rx.queries().items():
+            start = rx.audit_time("2026-10-11T12:00:00Z")
+            catalog = {**rx.queries(), "audit": rx.audit_query(start, start + timedelta(hours=1))}
+            for key, args in catalog.items():
                 with self.subTest(command=key):
                     # Deliberate parser rejection BEFORE dispatch, no credentials.
                     probe_command(args, environment)
