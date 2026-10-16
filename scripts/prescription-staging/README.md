@@ -22,6 +22,13 @@ It preserves the old historical windows and cannot reset credentials or mutate
 resources. See `RECOVERY.md` for strict actor, identity, label-only and connect
 event review rules.
 
+For the two resource-identity blockers, use
+`diagnose_recovery_resource_identity.py --evidence
+/absolute/protected/reconciliation-directory`. It prints only selected identity
+fields side by side with independently verified expected values, and performs two
+exact bounded log reads. See the resource-format correction in `RECOVERY.md`;
+neither this diagnostic nor an identity match grants recovery approval.
+
 # Isolated prescription staging runner
 
 ## Continue the already-created attempt `c73ac1bc32`

@@ -46,7 +46,7 @@ def describe_query(identity):
             "--format=json(name,targetId,targetProject,targetLink,operationType,status,error,insertTime,startTime,endTime)"]
 
 
-def resource_identity(resource, project):
+def resource_identity(resource, project, create_operation=None):
     """Accept only enumerated shapes and independently verified project aliases."""
     raw = diagnostic.identifier(resource)
     number = str(project.get("projectNumber", ""))
@@ -62,6 +62,16 @@ def resource_identity(resource, project):
                    f"projects/{alias}/regions/{rx.REGION}/instances/{rx.NAME}",
                    f"projects/{alias}/locations/{rx.REGION}/instances/{rx.NAME}"}:
             return "verified-project-id" if alias == rx.PROJECT else "verified-project-number-alias"
+        # CREATE permission/audit resource can be the project parent. This name
+        # alone proves NO instance identity: require the independently described,
+        # exact successful CREATE operation to supply the missing target binding.
+        if raw == f"projects/{alias}" and create_operation is not None:
+            if (operation_id(create_operation.get("name")) == CREATE and
+                    create_operation.get("targetProject") in {rx.PROJECT, number} and
+                    create_operation.get("targetId") == rx.NAME and
+                    create_operation.get("operationType") == "CREATE" and
+                    create_operation.get("status") == "DONE" and not create_operation.get("error")):
+                return "verified-create-parent-via-authoritative-operation"
     raise rx.Stop("Audit resource identity is not an enumerated form of the verified staging instance.")
 
 
@@ -147,6 +157,26 @@ def review_label_request(request, project):
             "settingsVersionPresent": "settingsVersion" in settings}
 
 
+def monitored_resource_consistent(raw, project):
+    resource = raw.get("resource") or {}
+    labels = resource.get("labels") or {}
+    if not isinstance(labels, dict):
+        raise rx.Stop("Monitored-resource labels are malformed.")
+    aliases = {rx.PROJECT, str(project["projectNumber"])}
+    allowed_database_ids = {alias + ":" + rx.NAME for alias in aliases}
+    # Logging's cloudsql_database descriptor defines database_id as the instance
+    # name. Bare names are safe ONLY with the correct type AND a verified project
+    # label; never interpret a foreign/wildcard project as an alias.
+    if resource.get("type") == "cloudsql_database" and labels.get("project_id") in aliases:
+        allowed_database_ids.add(rx.NAME)
+    return (
+        ("project_id" not in labels or labels["project_id"] in aliases) and
+        ("database_id" not in labels or labels["database_id"] in allowed_database_ids) and
+        ("region" not in labels or labels["region"] == rx.REGION) and
+        ("service" not in labels or labels["service"] == "cloudsql.googleapis.com") and
+        ("method" not in labels or labels["method"] == (raw.get("protoPayload") or {}).get("methodName")))
+
+
 def sanitize_event(raw, project, details=False):
     """Raw request/principal values are never persisted, printed or returned."""
     event = diagnostic.safe_event(raw)
@@ -156,12 +186,7 @@ def sanitize_event(raw, project, details=False):
     event["principalSha256"] = rx.digest(email.encode()) if isinstance(email, str) and email else None
     # Cross-check monitored-resource labels when supplied; never silently prefer
     # a matching payload name over contradictory project/instance/region labels.
-    labels = (raw.get("resource") or {}).get("labels") or {}
-    aliases = {rx.PROJECT, str(project["projectNumber"])}
-    event["monitoredResourceConsistent"] = (
-        ("project_id" not in labels or labels["project_id"] in aliases) and
-        ("database_id" not in labels or labels["database_id"] in {alias + ":" + rx.NAME for alias in aliases}) and
-        ("region" not in labels or labels["region"] == rx.REGION))
+    event["monitoredResourceConsistent"] = monitored_resource_consistent(raw, project)
     event["requestReview"] = None
     if details:
         try:
@@ -261,22 +286,25 @@ def classify(events, descriptions, project, operator_hash):
     for event in events:
         identity = event["insertId"]
         try:
-            normalization = resource_identity(event["resourceName"], project)
+            method = event["methodName"]
+            op = None
+            if method != "cloudsql.instances.connect":
+                op = operation_id(event["operationId"])
+                if method != METHODS[EXPECTED[op]]:
+                    raise rx.Stop("Audit method does not match the exact authoritative operation type.")
+            normalization = resource_identity(event["resourceName"], project,
+                                              descriptions[CREATE] if op == CREATE and method == METHODS["CREATE"] else None)
             if event["serviceName"] != "cloudsql.googleapis.com" or event["statusCode"] not in {None, 0}:
                 raise rx.Stop("Audit service or status is unexpected.")
             if not event["monitoredResourceConsistent"]:
                 raise rx.Stop("Monitored-resource labels contradict the staging project/instance/region.")
             if event["principalSha256"] != operator_hash:
                 raise rx.Stop("Audit actor differs from the independently authenticated operator.")
-            method = event["methodName"]
             if method == "cloudsql.instances.connect":
                 reviewed.append({"insertId": identity, "classification": "STAGING_CONNECTION_AUTHORIZATION_NOT_CONFIGURATION_MUTATION",
                                  "resourceNormalization": normalization,
                                  "limitation": "Does not establish what SQL, if any, was executed through a connection."})
                 continue
-            op = operation_id(event["operationId"])
-            if method != METHODS[EXPECTED[op]]:
-                raise rx.Stop("Audit method does not match the exact authoritative operation type.")
             if event["producer"] not in {None, *RESOURCE_NAMES}:
                 raise rx.Stop("Audit operation producer is unexpected.")
             operation = descriptions[op]

@@ -192,6 +192,38 @@ one version, and the staging postgres password change.
 
 ### Targeted read-only reconciliation after the diagnostic
 
+#### Resource-format correction and two-record identity diagnostic
+
+`diagnose_recovery_resource_identity.py --evidence /absolute/protected/reconciliation-directory`
+verifies the completed manifest and original ledger, refreshes staging identity and
+the two authoritative operations, and re-reads ONLY insert IDs `-9z64loe3oqmy` and
+`-9f8c59e3pdtd` within two seconds of their preserved timestamps. It makes no
+historical-window queries. Its projection excludes request/response bodies,
+principal identities and unrequested labels. Output shows actual resource type,
+name and selected system labels next to verified project ID/number, instance,
+region and exact operation bindings; old versus corrected checks are explicit.
+The original reconciliation remains unchanged and BLOCKED; the new report cannot
+authorize resets or be supplied to `rotate`.
+
+Two normalization cases are narrowly supported:
+
+* Logging's [`cloudsql_database` descriptor](https://cloud.google.com/logging/docs/api/v2/resource-list#cloudsql_database)
+  defines `database_id` as the instance name, not exclusively `project:instance`.
+  That bare name is accepted ONLY for type `cloudsql_database` with an independent
+  matching `project_id`; prefixed names still must match a verified project alias.
+  Wrong project/instance/region values, wildcard projects and contradictory
+  service/method labels remain failures.
+* A project-level CREATE audit resource does not itself identify an instance.
+  It is accepted ONLY for the exact CREATE ID/method with independently described
+  successful DONE/no-error operation targeting the verified project and instance.
+  Parent-only resources are NEVER accepted for UPDATE/connect, wrong operation
+  IDs/types or unknown projects. All existing actor, timing, producer, success,
+  label-only request and current-instance checks remain mandatory.
+
+This handles known representations without declaring unknown records valid.
+The metadata diagnostic must be inspected before rerunning reconciliation; a
+different resource, unsupported shape or contradictory field remains blocked.
+
 `reconcile_recovery_audit.py --evidence /absolute/protected/assessment-directory`
 is a SEPARATE read-only tool. It neither relaxes the original `rotate` gate nor
 authorizes resets. It is pinned to the two operation IDs explicitly identified by
