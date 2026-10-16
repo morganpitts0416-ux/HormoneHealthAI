@@ -192,6 +192,11 @@ one version, and the staging postgres password change.
 
 ### Targeted read-only reconciliation after the diagnostic
 
+After a successful reconciliation, the next step is the **read-only** administrator
+recovery plan in `ADMIN_RECOVERY.md`, using `recover_staging_admin.py prepare`.
+The successful report is NOT reset approval. The legacy `rotate` action does not
+consume this evidence and must not be bypassed to force it to do so.
+
 #### Empty monitored-region label: missing evidence, not a regional alias
 
 The [Logging MonitoredResource API](https://cloud.google.com/logging/docs/reference/v2/rest/v2/MonitoredResource)

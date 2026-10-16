@@ -35,6 +35,16 @@ to independently verify the actual Cloud SQL region and historical labels-only
 UPDATE request. Wrong nonempty regions and other identity contradictions still
 block; no credential reset or staging initialization is authorized.
 
+## Approval-gated administrator recovery after reconciliation passes
+
+Use `recover_staging_admin.py prepare` with the successful protected reconciliation
+and its original assessment. Prepare only reads cloud metadata, verifies evidence,
+checks installed SDK command parsing, and writes a local approval plan. It does
+not generate credentials or mutate GCP. See `ADMIN_RECOVERY.md` for exact-instance
+approval, escrow/read-back-before-reset, interruption fences and the separately
+controlled synthetic initialization/signing path. Do not use legacy `rotate` as a
+substitute for this plan.
+
 # Isolated prescription staging runner
 
 ## Continue the already-created attempt `c73ac1bc32`
