@@ -29,6 +29,12 @@ fields side by side with independently verified expected values, and performs tw
 exact bounded log reads. See the resource-format correction in `RECOVERY.md`;
 neither this diagnostic nor an identity match grants recovery approval.
 
+An empty monitored-resource region is treated as missing evidence, not a location
+alias. Use the full read-only reconciliation against the original `assessment-*`
+to independently verify the actual Cloud SQL region and historical labels-only
+UPDATE request. Wrong nonempty regions and other identity contradictions still
+block; no credential reset or staging initialization is authorized.
+
 # Isolated prescription staging runner
 
 ## Continue the already-created attempt `c73ac1bc32`

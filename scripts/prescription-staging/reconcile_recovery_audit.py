@@ -172,9 +172,26 @@ def monitored_resource_consistent(raw, project):
     return (
         ("project_id" not in labels or labels["project_id"] in aliases) and
         ("database_id" not in labels or labels["database_id"] in allowed_database_ids) and
-        ("region" not in labels or labels["region"] == rx.REGION) and
+        # An absent/empty string supplies no location evidence. This only checks
+        # contradictions; reconcile() MUST independently verify the actual
+        # instance region with fresh Cloud SQL metadata before and after use.
+        ("region" not in labels or isinstance(labels["region"], str) and labels["region"] in {"", rx.REGION}) and
         ("service" not in labels or labels["service"] == "cloudsql.googleapis.com") and
         ("method" not in labels or labels["method"] == (raw.get("protoPayload") or {}).get("methodName")))
+
+
+def monitored_region_evidence(raw):
+    labels = (raw.get("resource") or {}).get("labels") or {}
+    if "region" not in labels:
+        return {"state": "ABSENT", "value": None, "suppliesRegionEvidence": False}
+    value = labels["region"]
+    if not isinstance(value, str):
+        return {"state": "INVALID_TYPE", "value": None, "suppliesRegionEvidence": False}
+    state = ("EMPTY_UNSPECIFIED" if value == "" else
+             "EXPLICIT_EXPECTED" if value == rx.REGION else "CONTRADICTORY_NONEMPTY")
+    return {"state": state,
+            "value": value if re.fullmatch(r"[a-z0-9-]{0,64}", value) else None,
+            "suppliesRegionEvidence": state == "EXPLICIT_EXPECTED"}
 
 
 def sanitize_event(raw, project, details=False):
@@ -187,6 +204,7 @@ def sanitize_event(raw, project, details=False):
     # Cross-check monitored-resource labels when supplied; never silently prefer
     # a matching payload name over contradictory project/instance/region labels.
     event["monitoredResourceConsistent"] = monitored_resource_consistent(raw, project)
+    event["monitoredResourceRegion"] = monitored_region_evidence(raw)
     event["requestReview"] = None
     if details:
         try:
@@ -458,6 +476,15 @@ def reconcile(evidence, home=None, fetch=rx.cloud, describe=None, reader_factory
             "historicalWindowsReused": old["coverage"]["completedWindows"],
             "historicalPrefixUntil": old["coverage"]["until"], "freshAuditCutoff": rx.audit_stamp(cutoff),
             "readOnlyAuditCalls": reader.calls, **results,
+            # verify_identity() requires exact region/project/name/connectionName
+            # before reading audits. Final fetch equality above re-establishes it.
+            "independentRegionVerification": {
+                "source": "fresh Cloud SQL instances.describe, rechecked after audit reads",
+                "project": fresh["instance"]["project"], "instance": fresh["instance"]["name"],
+                "region": fresh["instance"]["region"], "expectedRegion": rx.REGION,
+                "verifiedBeforeAndAfter": True,
+                "emptyAuditRegionIsNotUsedAsProof": True,
+            },
             "limitations": ["Connection authorization logs do not prove absence of SQL statements or patient data.",
                             "This report is not input authorization to the old rotate/assess command.",
                             "No timestamp-only or method-only correlation is accepted."],

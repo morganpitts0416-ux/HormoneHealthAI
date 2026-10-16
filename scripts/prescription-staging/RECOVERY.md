@@ -192,6 +192,34 @@ one version, and the staging postgres password change.
 
 ### Targeted read-only reconciliation after the diagnostic
 
+#### Empty monitored-region label: missing evidence, not a regional alias
+
+The [Logging MonitoredResource API](https://cloud.google.com/logging/docs/reference/v2/rest/v2/MonitoredResource)
+defines labels as string values. It does not establish that an empty string is an
+alias for a particular region, nor does the Cloud SQL audit guide promise that
+every audit event populates region. The observed empty string is therefore
+treated as unspecified/no regional evidence, never as proof of `us-central1`.
+
+The contradiction check permits absent and exactly-empty region strings. All
+nonempty values must equal `us-central1`; nulls, booleans, numbers, whitespace,
+wrong regions and zone names remain rejected. This exception applies ONLY to
+the region label, not project/instance/operation identity or other required fields.
+
+Before any audit evaluation, reconciliation independently describes the exact
+instance and requires project/name/region/state/connectionName, expected version,
+tier and synthetic labels. It rechecks fresh metadata after audit reads and stops
+on drift. The final report records `independentRegionVerification`; sanitized
+events retain ABSENT/EMPTY_UNSPECIFIED/EXPLICIT_EXPECTED/CONTRADICTORY_NONEMPTY/
+INVALID_TYPE and a safe actual region value. Empty labels supply no region proof.
+
+Run the FULL read-only `reconcile_recovery_audit.py` against the original protected
+`assessment-*`, not merely the identity diagnostic. The exact historical UPDATE
+is re-read with request-structure inspection and still must independently prove
+only the two expected staging labels, allowing routing/concurrency metadata only.
+Missing/redacted requests, broader masks/settings and different labels remain
+blockers, regardless of current labels or a valid instance region.
+Neither result authorizes resets, initialization or any mutation.
+
 #### Resource-format correction and two-record identity diagnostic
 
 `diagnose_recovery_resource_identity.py --evidence /absolute/protected/reconciliation-directory`

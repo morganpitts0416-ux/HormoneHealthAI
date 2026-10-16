@@ -163,6 +163,80 @@ class ReconciliationSafety(unittest.TestCase):
         self.assertEqual(report["status"], "BLOCKED")
         self.assertTrue(any("labels-only" in b["reason"] for b in report["blockers"]))
 
+    def set_update_region(self, region):
+        self.raw_events[1]["resource"] = {"type": "cloudsql_database", "labels": {
+            "project_id": rx.PROJECT, "database_id": rx.PROJECT + ":" + rx.NAME, "region": region}}
+
+    def test_empty_audit_region_requires_fresh_actual_region_and_labels_only_request(self):
+        self.set_update_region("")
+        before = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in self.evidence.iterdir()}
+        output, report = self.run_tool()
+        self.assertEqual(report["blockers"], [])
+        self.assertEqual(report["labelRequestEventIds"], ["event-update"])
+        proof = report["independentRegionVerification"]
+        self.assertEqual(proof["region"], rx.REGION)
+        self.assertTrue(proof["verifiedBeforeAndAfter"])
+        self.assertTrue(proof["emptyAuditRegionIsNotUsedAsProof"])
+        rows = json.loads((output / "sanitized-audit.json").read_text())
+        update = next(e for e in rows if e["insertId"] == "event-update")
+        self.assertEqual(update["monitoredResourceRegion"]["state"], "EMPTY_UNSPECIFIED")
+        self.assertFalse(update["monitoredResourceRegion"]["suppliesRegionEvidence"])
+        self.assertTrue(update["requestReview"]["labelsOnly"])
+        self.assertEqual(before, {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in self.evidence.iterdir()})
+        self.assertFalse(report["credentialResetAuthorized"])
+
+    def test_empty_audit_region_does_not_hide_wrong_actual_cloud_sql_region(self):
+        self.set_update_region("")
+        self.data["instance"]["region"] = "us-east1"
+        with self.assertRaisesRegex(rx.Stop, "region"):
+            self.run_tool()
+        self.assertFalse(any(call[0] == "audit" for call in self.calls))
+
+    def test_empty_audit_region_does_not_waive_historical_update_request_verification(self):
+        for body in (None, {"body": {"settings": {"userLabels": dict(rx.LABELS), "tier": "unreviewed"}}},
+                     {"body": {"settings": {"userLabels": {"purpose": "wrong"}}}}):
+            self.set_update_region("")
+            if body is None:
+                self.raw_events[1]["protoPayload"].pop("request", None)
+            else:
+                self.raw_events[1]["protoPayload"]["request"] = body
+            _, report = self.run_tool()
+            self.assertEqual(report["status"], "BLOCKED")
+            self.assertTrue(any("UPDATE" in item["reason"] or "labels-only" in item["reason"] for item in report["blockers"]))
+            self.assertFalse(report["credentialResetAuthorized"])
+
+    def test_wrong_nonempty_or_malformed_audit_regions_are_still_blocked(self):
+        for region in ("us-east1", "us-central1-a", " ", "US-CENTRAL1", None, False, 0):
+            self.set_update_region(region)
+            _, report = self.run_tool()
+            self.assertEqual(report["status"], "BLOCKED")
+            self.assertTrue(any("Monitored-resource" in item["reason"] for item in report["blockers"]))
+
+    def test_empty_region_does_not_hide_other_identity_or_operation_contradictions(self):
+        for key, value in (("project_id", "wrong-project"), ("database_id", "realign-app"),
+                           ("database_id", "realign-app-new")):
+            self.set_update_region("")
+            self.raw_events[1]["resource"]["labels"][key] = value
+            _, report = self.run_tool()
+            self.assertEqual(report["status"], "BLOCKED")
+        self.set_update_region("")
+        self.raw_events[1]["operation"]["id"] = "not-the-staging-update"
+        with self.assertRaises(rx.Stop):
+            self.run_tool()
+        self.raw_events[1]["operation"]["id"] = reconcile.UPDATE
+        self.descriptions[reconcile.UPDATE]["targetProject"] = "wrong-project"
+        with self.assertRaises(rx.Stop):
+            self.run_tool()
+
+    def test_region_evidence_distinguishes_absent_empty_expected_and_wrong(self):
+        cases = [({}, "ABSENT"), ({"region": ""}, "EMPTY_UNSPECIFIED"),
+                 ({"region": rx.REGION}, "EXPLICIT_EXPECTED"), ({"region": "us-east1"}, "CONTRADICTORY_NONEMPTY"),
+                 ({"region": None}, "INVALID_TYPE")]
+        for labels, expected in cases:
+            metadata = reconcile.monitored_region_evidence({"resource": {"labels": labels}})
+            self.assertEqual(metadata["state"], expected)
+            self.assertEqual(metadata["suppliesRegionEvidence"], expected == "EXPLICIT_EXPECTED")
+
     def test_same_method_time_but_wrong_operation_id_fails(self):
         self.raw_events[0]["operation"]["id"] = "not-the-sql-operation"
         with self.assertRaisesRegex(rx.Stop, "Historical event missing or changed"):
