@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { localDateStr, visitDateToDateStr } from "@/lib/date-utils";
+import { EncounterDateSession } from "@/lib/encounter-date-session";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { NoteTemplate, PatientChart } from "@shared/schema";
@@ -1426,6 +1427,7 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
   const { toast } = useToast();
   const [chiefComplaint, setChiefComplaint] = useState("");
   const [visitDate, setVisitDate] = useState(localDateStr);
+  const dateSession = useRef(new EncounterDateSession()).current;
   const [visitType, setVisitType] = useState("follow-up");
   const [blocks, setBlocks] = useState<SoapBlock[]>([
     { uid: uid(), type: "hpi", content: "", mode: "freetext" },
@@ -1482,7 +1484,8 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
         }
         const cc = sn?.chiefComplaint ?? enc.chiefComplaint ?? "";
         if (cc) setChiefComplaint(cc);
-        const vd = sn?.visitDate ?? enc.visitDate;
+        dateSession.remember(enc);
+        const vd = enc.visitDate;
         if (vd) setVisitDate(visitDateToDateStr(vd));
         const vt = sn?.visitType ?? enc.visitType;
         if (vt) setVisitType(vt);
@@ -1810,13 +1813,15 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
           clinicianNotes: "Manual SOAP Note",
         });
         const encounter = await createRes.json();
+        dateSession.remember(encounter);
         encId = encounter.id;
         setSavedEncounterId(encId);
       } else {
-        await apiRequest("PUT", `/api/encounters/${encId}`, {
+        await dateSession.save(encId!, {
           visitDate,
           visitType,
           chiefComplaint: chiefComplaint || null,
+          expectedPatientId: patientId,
         });
       }
 
@@ -1842,8 +1847,10 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
               heightInches: vd.heightInches ?? null,
               weightLbs: vd.weightLbs ?? null,
               source: "clinic",
+              sourceEncounterId: encId,
             });
             queryClient.invalidateQueries({ queryKey: ["/api/patients", patientId, "vitals"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/patients", patientId, "vitals", "all"] });
           } catch (ve) {
             console.warn("[Manual SOAP] Vitals save failed (non-fatal):", ve);
           }

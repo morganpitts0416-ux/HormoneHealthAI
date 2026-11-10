@@ -2,6 +2,7 @@ import { eq, ne, desc, asc, ilike, like, or, and, isNull, isNotNull, count, sql,
 import { getSeedAsEntries } from "./medication-seed.js";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
+import { parseEncounterDate, encounterDay, encounterVitalDate, assertEncounterDateEdit, EncounterDateError } from "@shared/encounter-date";
 const { Pool } = pg;
 import * as schema from "@shared/schema";
 import { detectControlledSubstances, detectNewDiagnoses, computeQuotaPeriodKey, computeEnforcementDueAt, daysPastDue } from "./lib/chart-review-rules";
@@ -327,6 +328,7 @@ export interface IStorage {
   discontinuePatientMedication(id: number, patientId: number, clinicId: number, opts: { discontinuedByUserId?: number | null; discontinuedByStaffId?: number | null; discontinuedReason?: string | null }): Promise<schema.PatientMedication | null>;
 
   // Patient Vitals
+  upsertEncounterVital: DbStorage["upsertEncounterVital"];
   getPatientVitals(patientId: number, clinicianId?: number | null): Promise<schema.PatientVital[]>;
   createPatientVital(data: { patientId: number; clinicianId: number } & schema.InsertPatientVital & { bmi?: number | null }): Promise<schema.PatientVital>;
   updatePatientVital(id: number, patientId: number, data: Partial<schema.InsertPatientVital> & { bmi?: number | null }): Promise<schema.PatientVital | null>;
@@ -2119,6 +2121,7 @@ export class DbStorage implements IStorage {
         signedAt: schema.clinicalEncounters.signedAt,
         signedBy: schema.clinicalEncounters.signedBy,
         isAmended: schema.clinicalEncounters.isAmended,
+        encounterVersions: schema.clinicalEncounters.encounterVersions,
         amendedAt: schema.clinicalEncounters.amendedAt,
         lockedAt: schema.clinicalEncounters.lockedAt,
         pendingCollabReview: schema.clinicalEncounters.pendingCollabReview,
@@ -2159,11 +2162,72 @@ export class DbStorage implements IStorage {
   async updateEncounter(id: number, clinicianId: number, data: any, _clinicId?: number | null): Promise<ClinicalEncounter | undefined> {
     // Edit/amend access is restricted to the encounter's original author, even
     // for clinic-shared encounters. Other providers can view but not modify.
-    const result = await db.update(schema.clinicalEncounters)
-      .set({ ...data, updatedAt: new Date() })
-      .where(and(eq(schema.clinicalEncounters.id, id), eq(schema.clinicalEncounters.clinicianId, clinicianId)))
-      .returning();
-    return result[0];
+    return db.transaction(async tx => {
+      const scope = and(
+        eq(schema.clinicalEncounters.id, id),
+        eq(schema.clinicalEncounters.clinicianId, clinicianId),
+        _clinicId ? and(
+          or(eq(schema.clinicalEncounters.clinicId, _clinicId), isNull(schema.clinicalEncounters.clinicId)),
+          sql`exists (select 1 from patients p where p.id = ${schema.clinicalEncounters.patientId} and p.clinic_id = ${_clinicId})`,
+        ) : undefined,
+      );
+      const [current] = await tx.select().from(schema.clinicalEncounters).where(scope).for("update");
+      if (!current) return undefined;
+      const { expectedVisitDate, ...patch } = data;
+      if (expectedVisitDate !== undefined) {
+        let matches = false;
+        try { matches = parseEncounterDate(expectedVisitDate).getTime() === current.visitDate.getTime(); } catch {}
+        if (!matches) throw new EncounterDateError("Encounter date changed. Reopen and verify before continuing.", 409);
+      }
+      if (patch.signedAt === null && current.signedAt) {
+        const versions = current.encounterVersions ?? [];
+        if (!versions.some(v => v.signedAt === current.signedAt!.toISOString())) {
+          // A legacy signed chart may have no saved version. Preserve the
+          // original signature/content, but do NOT invent its clinical date.
+          patch.encounterVersions = [...versions, {
+            version: versions.length + 1, soapNote: current.soapNote,
+            signedAt: current.signedAt.toISOString(), signedBy: current.signedBy,
+            visitDate: null, action: versions.length ? "amendment" : "initial_sign",
+          }];
+        }
+      }
+      if (patch.visitDate !== undefined) {
+        assertEncounterDateEdit(current, patch.visitDate, expectedVisitDate);
+      }
+      if (patch.signedAt) {
+        // Construct snapshots under the same lock as date corrections. Never
+        // copy a stale date/history from an earlier request or generation.
+        const versions = current.encounterVersions ?? [];
+        const proposed = patch.encounterVersions?.at(-1);
+        patch.encounterVersions = [...versions, {
+          ...proposed,
+          version: versions.length + 1,
+          soapNote: patch.soapNote ?? current.soapNote,
+          visitDate: encounterDay(current.visitDate),
+          signedAt: patch.signedAt.toISOString(),
+          signedBy: patch.signedBy,
+        }];
+      }
+      const [updated] = await tx.update(schema.clinicalEncounters)
+        .set({ ...patch, updatedAt: new Date() }).where(scope).returning();
+      if (patch.visitDate && encounterDay(patch.visitDate) !== encounterDay(current.visitDate)) {
+        // Match verified patient/clinic relationship; never touch patient logs,
+        // monitoring readings, unrelated manual entries, values or created_at.
+        const [patient] = await tx.select().from(schema.patients)
+          .where(eq(schema.patients.id, current.patientId));
+        if (patient && (current.clinicId ? patient.clinicId === current.clinicId : patient.userId === clinicianId)) {
+          await tx.update(schema.patientVitals).set({
+            recordedAt: encounterVitalDate(patch.visitDate), timeOfDay: null,
+          }).where(and(
+            eq(schema.patientVitals.patientId, current.patientId),
+            eq(schema.patientVitals.sourceEncounterId, id),
+            eq(schema.patientVitals.source, "clinic"),
+            isNull(schema.patientVitals.monitoringEpisodeId),
+          ));
+        }
+      }
+      return updated;
+    });
   }
 
   async deleteEncounter(id: number, clinicianId: number, _clinicId?: number | null): Promise<boolean> {
@@ -2795,9 +2859,51 @@ export class DbStorage implements IStorage {
       .orderBy(desc(schema.patientVitals.recordedAt));
   }
 
+  async upsertEncounterVital(
+    data: { patientId: number; clinicianId: number } & schema.InsertPatientVital & { bmi?: number | null },
+    clinicId?: number | null,
+  ): Promise<schema.PatientVital> {
+    return db.transaction(async tx => {
+      const [encounter] = await tx.select().from(schema.clinicalEncounters)
+        .where(and(
+          eq(schema.clinicalEncounters.id, data.sourceEncounterId!),
+          eq(schema.clinicalEncounters.patientId, data.patientId),
+          clinicId ? or(eq(schema.clinicalEncounters.clinicId, clinicId),
+            and(isNull(schema.clinicalEncounters.clinicId), eq(schema.clinicalEncounters.clinicianId, data.clinicianId)))
+            : eq(schema.clinicalEncounters.clinicianId, data.clinicianId),
+        )).for("update");
+      const [patient] = await tx.select().from(schema.patients).where(eq(schema.patients.id, data.patientId));
+      if (!encounter || !patient || (clinicId && patient.clinicId !== clinicId) ||
+          (encounter.clinicId ? patient.clinicId !== encounter.clinicId : patient.userId !== encounter.clinicianId)) {
+        throw new EncounterDateError("Source encounter not found for this patient and clinic.", 403);
+      }
+      if (data.source === "patient_logged" || data.monitoringEpisodeId) {
+        throw new EncounterDateError("Patient and monitoring readings cannot use an encounter date.", 400);
+      }
+      const { patientId, clinicianId, recordedAt: ignored, ...measurements } = data;
+      const patch = { ...measurements, source: "clinic", recordedAt: encounterVitalDate(encounter.visitDate), timeOfDay: null };
+      const [existing] = await tx.select().from(schema.patientVitals).where(and(
+        eq(schema.patientVitals.patientId, patientId),
+        eq(schema.patientVitals.sourceEncounterId, encounter.id),
+        eq(schema.patientVitals.source, "clinic"),
+        isNull(schema.patientVitals.monitoringEpisodeId),
+      )).orderBy(asc(schema.patientVitals.id)).limit(1);
+      if (existing) {
+        const [updated] = await tx.update(schema.patientVitals).set(patch)
+          .where(eq(schema.patientVitals.id, existing.id)).returning();
+        return updated;
+      }
+      const [inserted] = await tx.insert(schema.patientVitals).values({
+        ...patch, patientId, clinicianId, symptoms: data.symptoms ?? [],
+      }).returning();
+      return inserted;
+    });
+  }
+
   async createPatientVital(
     data: { patientId: number; clinicianId: number } & schema.InsertPatientVital & { bmi?: number | null },
   ): Promise<schema.PatientVital> {
+    if (data.sourceEncounterId) return this.upsertEncounterVital(data);
     const recordedAt = data.recordedAt ? new Date(data.recordedAt as any) : new Date();
     const [row] = await db
       .insert(schema.patientVitals)
@@ -2843,7 +2949,14 @@ export class DbStorage implements IStorage {
     if (data.oxygenSaturation !== undefined) updates.oxygenSaturation = data.oxygenSaturation ?? null;
     if (data.painScore !== undefined) updates.painScore = data.painScore ?? null;
     if (data.notes !== undefined) updates.notes = data.notes ?? null;
-    if (data.recordedAt !== undefined) updates.recordedAt = new Date(data.recordedAt as any);
+    if (data.recordedAt !== undefined) {
+      const [current] = await db.select().from(schema.patientVitals)
+        .where(and(eq(schema.patientVitals.id, id), eq(schema.patientVitals.patientId, patientId)));
+      if (current?.sourceEncounterId && current.source === "clinic" && !current.monitoringEpisodeId) {
+        throw new EncounterDateError("Correct the source encounter date through its amendment/review process.", 423);
+      }
+      updates.recordedAt = new Date(data.recordedAt as any);
+    }
     if (Object.keys(updates).length === 0) return null;
     const [row] = await db
       .update(schema.patientVitals)
@@ -3835,7 +3948,7 @@ export interface ChartReviewStorage {
     clinicId: number;
     agreement: schema.ChartReviewAgreement;
     reasons: string[];
-    parkEncounter?: { signedBy: string };
+    parkEncounter?: { signedBy: string; expectedVisitDate?: string };
   }): Promise<{
     item: schema.ChartReviewItem | null;
     encounter: schema.ClinicalEncounter | null;
@@ -5004,11 +5117,12 @@ const ALLOWED_AGREEMENT_FIELDS: ReadonlySet<string> = new Set([
     const [encounter] = await tx.select().from(schema.clinicalEncounters).where(and(
       eq(schema.clinicalEncounters.id, existing.encounterId),
       eq(schema.clinicalEncounters.clinicId, clinicId),
-    )).limit(1);
+    )).limit(1).for("update");
     if (encounter && encounter.pendingCollabReview && !encounter.signedAt) {
       const existingVersions = (encounter.encounterVersions as any[] | null) ?? [];
       const newVersion = {
         version: existingVersions.length + 1,
+        visitDate: encounterDay(encounter.visitDate),
         soapNote: encounter.soapNote,
         signedAt: reviewedAt.toISOString(),
         signedBy: encounter.signedBy ?? "(prospective concur)",
@@ -5339,7 +5453,7 @@ async function _resolveMandatoryReasons(
   // pendingCollabReview) inside the same transaction as the queue insert.
   // signedBy is stashed on the encounter so the physician's concur step
   // can finalize the sign without recomputing the mid-level's identity.
-  parkEncounter?: { signedBy: string };
+  parkEncounter?: { signedBy: string; expectedVisitDate?: string };
 }): Promise<{
   item: schema.ChartReviewItem | null;
   encounter: schema.ClinicalEncounter | null;
@@ -5358,8 +5472,12 @@ async function _resolveMandatoryReasons(
       eq(schema.clinicalEncounters.id, opts.encounterId),
       eq(schema.clinicalEncounters.clinicId, opts.clinicId),
       eq(schema.clinicalEncounters.clinicianId, opts.midLevelUserId),
-    )).limit(1);
+    )).limit(1).for("update");
     if (!encounter) return { item: null, encounter: null };
+    if (opts.parkEncounter?.expectedVisitDate &&
+        parseEncounterDate(opts.parkEncounter.expectedVisitDate).getTime() !== encounter.visitDate.getTime()) {
+      throw new EncounterDateError("Encounter date changed before review submission. Reopen and verify.", 409);
+    }
 
     // Park the encounter atomically (only if caller asked us to). We
     // intentionally do this BEFORE the queue insert: if the queue write

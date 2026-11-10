@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { localDateTimeStr, visitDateToInputStr } from "@/lib/date-utils";
+import { EncounterDateSession } from "@/lib/encounter-date-session";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -23,6 +24,7 @@ const CONTACT_OPTIONS = ["Patient", "Family member", "Pharmacy", "Insurance", "O
 export function PhoneNoteDialog({ patientId, onClose, initialEncounterId }: PhoneNoteDialogProps) {
   const { toast } = useToast();
   const [visitDate, setVisitDate] = useState(localDateTimeStr());
+  const dateSession = useRef(new EncounterDateSession()).current;
   const [contactedWith, setContactedWith] = useState("Patient");
   const [direction, setDirection] = useState<"incoming" | "outgoing">("incoming");
   const [chiefComplaint, setChiefComplaint] = useState("");
@@ -34,6 +36,7 @@ export function PhoneNoteDialog({ patientId, onClose, initialEncounterId }: Phon
   const [autoSaveStatus, setAutoSaveStatus] = useState<"saved" | "saving" | "unsaved">("saved");
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savedEncounterIdRef = useRef<number | null>(initialEncounterId ?? null);
+  const autoSaveInFlightRef = useRef<Promise<void> | null>(null);
 
   useEffect(() => { savedEncounterIdRef.current = savedEncounterId; }, [savedEncounterId]);
 
@@ -44,6 +47,7 @@ export function PhoneNoteDialog({ patientId, onClose, initialEncounterId }: Phon
         const res = await fetch(`/api/encounters/${initialEncounterId}`);
         if (!res.ok) return;
         const enc = await res.json();
+        dateSession.remember(enc);
         if (enc.visitDate) setVisitDate(visitDateToInputStr(enc.visitDate));
         const pc = enc.phoneContact ?? {};
         if (pc.contactedWith) setContactedWith(pc.contactedWith);
@@ -75,13 +79,16 @@ export function PhoneNoteDialog({ patientId, onClose, initialEncounterId }: Phon
 
   const performAutoSave = useCallback(async () => {
     if (!content.trim()) return;
+    if (autoSaveInFlightRef.current) await autoSaveInFlightRef.current;
+    const work = (async () => {
     setAutoSaveStatus("saving");
     try {
       const { cc, header } = buildBody();
       const existingId = savedEncounterIdRef.current;
       if (existingId) {
-        await apiRequest("PUT", `/api/encounters/${existingId}`, {
+        await dateSession.save(existingId, {
           visitDate, visitType: "phone-call", chiefComplaint: cc,
+          expectedPatientId: patientId,
           clinicianNotes: content, phoneContact: { contactedWith, direction },
         });
         await apiRequest("PUT", `/api/encounters/${existingId}/soap`, { soapNote: { fullNote: header } });
@@ -93,6 +100,7 @@ export function PhoneNoteDialog({ patientId, onClose, initialEncounterId }: Phon
           soapNote: { fullNote: header },
         });
         const enc = await res.json();
+        dateSession.remember(enc);
         savedEncounterIdRef.current = enc.id;
         setSavedEncounterId(enc.id);
       }
@@ -100,33 +108,43 @@ export function PhoneNoteDialog({ patientId, onClose, initialEncounterId }: Phon
       queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/encounters`] });
       queryClient.invalidateQueries({ queryKey: ["/api/encounters"] });
       setAutoSaveStatus("saved");
-    } catch {
+    } catch (error: any) {
       setAutoSaveStatus("unsaved");
+      toast({ title: "Auto-save failed", description: error?.message ?? "The encounter date was not saved. Reopen and verify before continuing.", variant: "destructive" });
     }
+    })();
+    autoSaveInFlightRef.current = work;
+    await work;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content, chiefComplaint, visitDate, direction, contactedWith, patientId, buildBody]);
 
   useEffect(() => {
+    if (loading) return;
     if (!content.trim()) return;
     setAutoSaveStatus("unsaved");
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(performAutoSave, 4000);
     return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current); };
-  }, [content, chiefComplaint, visitDate, direction, contactedWith, performAutoSave]);
+  }, [content, chiefComplaint, visitDate, direction, contactedWith, performAutoSave, loading]);
 
   const saveMut = useMutation({
     mutationFn: async () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+      await autoSaveInFlightRef.current;
       const { cc, header } = buildBody();
-      if (savedEncounterId) {
-        await apiRequest("PUT", `/api/encounters/${savedEncounterId}`, {
+      const existingId = savedEncounterIdRef.current;
+      if (existingId) {
+        await dateSession.save(existingId, {
           visitDate, visitType: "phone-call", chiefComplaint: cc,
+          expectedPatientId: patientId,
           clinicianNotes: content, phoneContact: { contactedWith, direction },
         });
-        return apiRequest("PUT", `/api/encounters/${savedEncounterId}/soap`, { soapNote: { fullNote: header } });
+        return apiRequest("PUT", `/api/encounters/${existingId}/soap`, { soapNote: { fullNote: header } });
       }
       if (initialEncounterId) {
-        await apiRequest("PUT", `/api/encounters/${initialEncounterId}`, {
+        await dateSession.save(initialEncounterId, {
           visitDate, visitType: "phone-call", chiefComplaint: cc,
+          expectedPatientId: patientId,
           clinicianNotes: content, phoneContact: { contactedWith, direction },
         });
         return apiRequest("PUT", `/api/encounters/${initialEncounterId}/soap`, { soapNote: { fullNote: header } });
@@ -176,6 +194,7 @@ export function PhoneNoteDialog({ patientId, onClose, initialEncounterId }: Phon
         {autoSaveStatus === "saved" && savedEncounterId && (
           <span className="text-xs text-muted-foreground flex-shrink-0">Auto-saved</span>
         )}
+        {autoSaveStatus === "unsaved" && <span className="text-xs text-destructive">Unsaved changes</span>}
       </div>
       <div className="flex items-center gap-1 flex-shrink-0">
         <Button size="icon" variant="ghost" onClick={() => setMinimized(m => !m)} title={minimized ? "Restore" : "Minimize"} data-testid="button-minimize-phone-note">

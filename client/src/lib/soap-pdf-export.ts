@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import { resolveBranding, PLATFORM_DEFAULT_BRANDING, type PartialBranding } from "@/lib/branding";
 import { sanitizeFieldLabel } from "@shared/note-builtin-blocks";
+import { encounterDay } from "@shared/encounter-date";
 
 interface SoapPdfOptions {
   soapText: string;
@@ -142,15 +143,6 @@ function stripMarkdown(text: string): string {
 
 // Parse a date string safely — treats date-only strings (YYYY-MM-DD) as local
 // noon so no timezone shift pushes them into the previous day.
-function parseDateOnly(value: string | null | undefined): Date {
-  if (!value) return new Date();
-  // ISO date-only: "2026-05-07" → parse as local noon to avoid UTC shift
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
-    return new Date(value.trim() + 'T12:00:00');
-  }
-  return new Date(value);
-}
-
 function sanitizeForPdf(text: string): string {
   return text
     .replace(/\u2013/g, '-')
@@ -281,10 +273,10 @@ export async function exportSoapPdf(opts: SoapPdfOptions): Promise<void> {
   try {
     // Always show the encounter/visit date — not the signing date.
     // The signing date appears only in the signature block at the bottom.
-    const dateStr = parseDateOnly(opts.visitDate).toLocaleDateString('en-US', {
-      month: 'long', day: 'numeric', year: 'numeric',
+    const dateStr = new Date(`${encounterDay(opts.visitDate)}T00:00:00Z`).toLocaleDateString('en-US', {
+      month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC',
     });
-    doc.text(`Date: ${dateStr}`, PAGE_W - MARGIN, y, { align: 'right' });
+    doc.text(`Encounter date: ${dateStr}`, PAGE_W - MARGIN, y, { align: 'right' });
   } catch (_) {
     doc.text(`Date: ${opts.visitDate}`, PAGE_W - MARGIN, y, { align: 'right' });
   }

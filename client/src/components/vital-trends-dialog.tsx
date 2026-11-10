@@ -245,7 +245,7 @@ export function VitalTrendsDialog({ open, onOpenChange, patientId, patientName }
           </span>
           <span className="inline-flex items-center gap-1.5">
             <FileText className="w-3.5 h-3.5" />
-            <span>From note <span className="text-muted-foreground/70">(auto-synced)</span></span>
+            <span>From note <span className="text-muted-foreground/70">(encounter date; time not recorded)</span></span>
           </span>
           <span className="inline-flex items-center gap-1.5">
             <Home className="w-3.5 h-3.5" />
@@ -327,7 +327,7 @@ export function VitalTrendsDialog({ open, onOpenChange, patientId, patientName }
                   <table className="w-full text-xs">
                     <thead className="bg-muted/50">
                       <tr>
-                        <th className="text-left px-3 py-2 font-medium text-muted-foreground">Date</th>
+                        <th className="text-left px-3 py-2 font-medium text-muted-foreground">Clinical date</th>
                         <th className="text-left px-3 py-2 font-medium text-muted-foreground">BP</th>
                         <th className="text-left px-3 py-2 font-medium text-muted-foreground">HR</th>
                         <th className="text-left px-3 py-2 font-medium text-muted-foreground">Weight</th>

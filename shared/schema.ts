@@ -1198,6 +1198,8 @@ export type SoapNote = {
 
 export type EncounterVersion = {
   version: number;
+  // Absent in legacy snapshots: do not guess from the current encounter.
+  visitDate?: string | null;
   soapNote: SoapNote;
   signedAt: string;
   signedBy: string;
@@ -1564,6 +1566,8 @@ export const patientVitals = pgTable("patient_vitals", {
   id: serial("id").primaryKey(),
   patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: "cascade" }),
   clinicianId: integer("clinician_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  // Independent readings: measurement timestamp. Encounter-derived clinic
+  // readings: calendar-date carrier only (timeOfDay=null), NOT measured midnight.
   recordedAt: timestamp("recorded_at").defaultNow().notNull(),
   systolicBp: integer("systolic_bp"),
   diastolicBp: integer("diastolic_bp"),

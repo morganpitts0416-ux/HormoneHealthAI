@@ -383,7 +383,8 @@ app.use(
     store: new PgSession({
       conString: process.env.DATABASE_URL,
       tableName: "session",
-      createTableIfMissing: true,
+      // Schema is provisioned by separately approved operator migrations.
+      createTableIfMissing: false,
     }),
     secret: process.env.SESSION_SECRET || "fallback-dev-secret-change-in-prod",
     resave: false,
@@ -449,12 +450,10 @@ app.use((req, res, next) => {
   }
 
   try {
-    console.log("[startup] running ensureSchema…");
-    await ensureSchema();
     console.log("[startup] validating schema drift…");
     await validateSchemaDrift();
-    console.log("[startup] cleaning up bad chart entries…");
-    await cleanupObjectObjectChartEntries();
+    // Never run broad schema reconciliation or clinical chart cleanup at boot.
+    // This release uses existing columns and requires no migration/backfill.
     // ── OpenAI / AI integration key check ────────────────────────────────────
     const aiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
     const aiBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;

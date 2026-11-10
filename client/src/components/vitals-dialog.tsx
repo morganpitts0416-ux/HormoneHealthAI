@@ -409,6 +409,7 @@ export function VitalsDialog({ open, onOpenChange, patientId, patientName, onSho
             Vital Signs — {patientName}
           </DialogTitle>
         </DialogHeader>
+        <p className="text-xs text-muted-foreground">Note-derived readings use the encounter date, without a measurement time. Other readings retain their own measurement dates.</p>
 
         <div className="flex-1 overflow-y-auto -mx-6 px-6">
           {/* Active monitoring episode banner(s) */}

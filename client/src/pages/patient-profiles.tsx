@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { usePatientContext } from "@/hooks/use-patient-context";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { utcDateStr } from "@/lib/date-utils";
+import { EncounterSignatureHistory } from "@/components/encounter-signature-history";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -2371,7 +2372,7 @@ function PatientChartPanel({
             >
               {encounters.map(enc => (
                 <option key={enc.id} value={String(enc.id)}>
-                  {new Date(enc.visitDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                  {safeDate(enc.visitDate)}
                   {" — "}{enc.visitType}
                   {(enc as any).chiefComplaint ? ` (${(enc as any).chiefComplaint})` : ""}
                   {!enc.transcription && !(enc as any).soapNote ? " [no transcript]" : ""}
@@ -3573,6 +3574,7 @@ export default function PatientProfiles() {
   });
 
   type EncounterSummary = Pick<ClinicalEncounter, 'id' | 'patientId' | 'visitDate' | 'visitType' | 'chiefComplaint' | 'transcription' | 'soapNote' | 'patientSummary' | 'summaryPublished'> & {
+    encounterVersions?: ClinicalEncounter["encounterVersions"];
     patientName: string;
     noteType?: string | null;
     clinicId?: number | null;
@@ -5928,6 +5930,7 @@ export default function PatientProfiles() {
                           )}
                           {isExpanded && hasSoap && (
                             <div className="border-t bg-muted/10">
+                              <EncounterSignatureHistory versions={enc.encounterVersions} />
                               {/* Inline Evidence Panel */}
                               {isEvidenceOpen && evidenceSuggestions.length > 0 && (
                                 <div className="border-b bg-primary/5 px-4 py-3 space-y-2">

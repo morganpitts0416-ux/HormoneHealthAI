@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { localDateTimeStr, visitDateToInputStr } from "@/lib/date-utils";
+import { EncounterDateSession } from "@/lib/encounter-date-session";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -111,6 +112,7 @@ function uid() { return Math.random().toString(36).substring(2, 10); }
 export function NurseNoteBuilder({ patientId, onClose, initialEncounterId }: NurseNoteBuilderProps) {
   const { toast } = useToast();
   const [visitDate, setVisitDate] = useState(localDateTimeStr());
+  const dateSession = useRef(new EncounterDateSession()).current;
   const [chiefComplaint, setChiefComplaint] = useState("");
   const [blocks, setBlocks] = useState<NurseBlock[]>([
     { uid: uid(), type: "chief_complaint", label: "Reason for Visit", content: "" },
@@ -126,6 +128,7 @@ export function NurseNoteBuilder({ patientId, onClose, initialEncounterId }: Nur
   const [autoSaveStatus, setAutoSaveStatus] = useState<"saved" | "saving" | "unsaved">("saved");
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savedEncounterIdRef = useRef<number | null>(initialEncounterId ?? null);
+  const autoSaveInFlightRef = useRef<Promise<void> | null>(null);
 
   const { data: templates = [] } = useQuery<NoteTemplate[]>({
     queryKey: ["/api/note-templates", { noteType: "nurse" }],
@@ -144,6 +147,7 @@ export function NurseNoteBuilder({ patientId, onClose, initialEncounterId }: Nur
         const res = await fetch(`/api/encounters/${initialEncounterId}`);
         if (!res.ok) return;
         const enc = await res.json();
+        dateSession.remember(enc);
         const sn = enc.soapNote as any;
         if (Array.isArray(sn?.blocks) && sn.blocks.length > 0) {
           setBlocks(sn.blocks);
@@ -161,13 +165,15 @@ export function NurseNoteBuilder({ patientId, onClose, initialEncounterId }: Nur
   useEffect(() => { savedEncounterIdRef.current = savedEncounterId; }, [savedEncounterId]);
 
   const performAutoSave = useCallback(async () => {
+    if (autoSaveInFlightRef.current) await autoSaveInFlightRef.current;
+    const work = (async () => {
     setAutoSaveStatus("saving");
     try {
       const fullNote = nurseBlocksToText(blocks);
       const cc = chiefComplaint || blocks.find(b => b.type === "chief_complaint")?.content || "Nurse visit";
       const existingId = savedEncounterIdRef.current;
       if (existingId) {
-        await apiRequest("PUT", `/api/encounters/${existingId}`, { visitDate, visitType: "nurse-visit", chiefComplaint: cc });
+        await dateSession.save(existingId, { visitDate, visitType: "nurse-visit", chiefComplaint: cc, expectedPatientId: patientId });
         await apiRequest("PUT", `/api/encounters/${existingId}/soap`, { soapNote: { fullNote, blocks } as any });
       } else {
         const res = await apiRequest("POST", "/api/encounters", {
@@ -175,19 +181,25 @@ export function NurseNoteBuilder({ patientId, onClose, initialEncounterId }: Nur
           soapNote: { fullNote, blocks } as any,
         });
         const enc = await res.json();
+        dateSession.remember(enc);
         savedEncounterIdRef.current = enc.id;
         setSavedEncounterId(enc.id);
       }
       queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/encounters`] });
       queryClient.invalidateQueries({ queryKey: ["/api/encounters"] });
       setAutoSaveStatus("saved");
-    } catch {
+    } catch (error: any) {
       setAutoSaveStatus("unsaved");
+      toast({ title: "Auto-save failed", description: error?.message ?? "The encounter date was not saved. Reopen and verify before continuing.", variant: "destructive" });
     }
+    })();
+    autoSaveInFlightRef.current = work;
+    await work;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [blocks, chiefComplaint, visitDate, patientId]);
 
   useEffect(() => {
+    if (loadingExisting) return;
     const hasContent = chiefComplaint.trim() ||
       blocks.some(b =>
         (b.content && b.content.trim()) ||
@@ -198,7 +210,7 @@ export function NurseNoteBuilder({ patientId, onClose, initialEncounterId }: Nur
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(performAutoSave, 4000);
     return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current); };
-  }, [blocks, chiefComplaint, visitDate, performAutoSave]);
+  }, [blocks, chiefComplaint, visitDate, performAutoSave, loadingExisting]);
 
   const applyTemplate = useCallback((id: string) => {
     setSelectedTemplateId(id);
@@ -270,17 +282,20 @@ export function NurseNoteBuilder({ patientId, onClose, initialEncounterId }: Nur
 
   const saveMut = useMutation({
     mutationFn: async () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+      await autoSaveInFlightRef.current;
       const fullNote = nurseBlocksToText(blocks);
       const cc = chiefComplaint || blocks.find(b => b.type === "chief_complaint")?.content || "Nurse visit";
-      const existingId = savedEncounterId;
+      const existingId = savedEncounterIdRef.current;
       let encounterId: number;
 
       if (existingId) {
         // Update existing encounter
-        await apiRequest("PUT", `/api/encounters/${existingId}`, {
+        await dateSession.save(existingId, {
           visitDate: visitDate,
           visitType: "nurse-visit",
           chiefComplaint: cc,
+          expectedPatientId: patientId,
         });
         await apiRequest("PUT", `/api/encounters/${existingId}/soap`, {
           soapNote: { fullNote, blocks } as any,
@@ -297,6 +312,7 @@ export function NurseNoteBuilder({ patientId, onClose, initialEncounterId }: Nur
         };
         const res = await apiRequest("POST", "/api/encounters", body);
         const encounter = await res.json();
+        dateSession.remember(encounter);
         encounterId = encounter.id;
         setSavedEncounterId(encounterId);
       }
@@ -383,6 +399,7 @@ export function NurseNoteBuilder({ patientId, onClose, initialEncounterId }: Nur
         {autoSaveStatus === "saved" && savedEncounterId && (
           <span className="text-xs text-muted-foreground flex-shrink-0">Auto-saved</span>
         )}
+        {autoSaveStatus === "unsaved" && <span className="text-xs text-destructive">Unsaved changes</span>}
       </div>
       <div className="flex items-center gap-1 flex-shrink-0">
         <Button size="icon" variant="ghost" onClick={() => setMinimized(m => !m)} title={minimized ? "Restore" : "Minimize"} data-testid="button-minimize-nurse-note">

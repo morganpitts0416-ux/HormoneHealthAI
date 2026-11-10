@@ -2,6 +2,8 @@ import { useState, useRef, useCallback, useEffect, Component, type ReactNode, ty
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
 import { localDateStr, visitDateToDateStr } from "@/lib/date-utils";
+import { EncounterDateSession } from "@/lib/encounter-date-session";
+import { EncounterSignatureHistory } from "@/components/encounter-signature-history";
 import {
   Mic, Upload, FileText, FlaskConical, ChevronLeft, Plus,
   Sparkles, Send, CheckCircle2, Circle, AlertCircle, Trash2,
@@ -90,7 +92,7 @@ export class EncounterErrorBoundary extends Component<{ children: ReactNode }, {
 // Safe UTC date display — avoids the off-by-one-day bug from UTC midnight
 function displayDate(dateStr: string | Date, opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric' }) {
   const d = new Date(dateStr as string);
-  if (isNaN(d.getTime()) || d.getFullYear() < 2000) return "Unknown date";
+  if (isNaN(d.getTime())) return "Unknown date";
   return d.toLocaleDateString('en-US', { timeZone: 'UTC', ...opts });
 }
 
@@ -746,6 +748,7 @@ export function EncounterEditor({
   const [visitDate, setVisitDate] = useState<string>(
     encounter ? visitDateToDateStr(encounter.visitDate as unknown as string) : localDateStr()
   );
+  const dateSession = useRef(new EncounterDateSession(encounter?.visitDate)).current;
   const [visitType, setVisitType] = useState<string>(encounter?.visitType ?? "follow-up");
   const [chiefComplaint, setChiefComplaint] = useState<string>(encounter?.chiefComplaint ?? "");
   const [clinicianNotes, setClinicianNotes] = useState<string>(encounter?.clinicianNotes ?? "");
@@ -867,6 +870,7 @@ export function EncounterEditor({
   const [signedAtLocal, setSignedAtLocal] = useState<Date | string | null>(encounter?.signedAt ?? null);
   const [signedByLocal, setSignedByLocal] = useState<string | null>(encounter?.signedBy ?? null);
   const [isAmendedLocal, setIsAmendedLocal] = useState<boolean>(encounter?.isAmended ?? false);
+  const [signatureVersions, setSignatureVersions] = useState(encounter?.encounterVersions);
   const isSigned = !!(signedAtLocal);
 
   // ── Co-pilot SOAP editing integration ────────────────────────────────────
@@ -1029,11 +1033,12 @@ export function EncounterEditor({
         };
         const saveRes = await apiRequest("POST", "/api/encounters", body);
         const saved = await saveRes.json();
+        dateSession.remember(saved);
         setSavedId(saved.id);
         encounterId = saved.id;
       }
       const expectedPatientId = parseInt(patientId);
-      await apiRequest("PUT", `/api/encounters/${encounterId}`, { transcription: transcription || null, visitType, chiefComplaint: chiefComplaint || null, expectedPatientId });
+      await dateSession.save(encounterId!, { visitDate, transcription: transcription || null, visitType, chiefComplaint: chiefComplaint || null, expectedPatientId });
       setGlobalLoading("June is extracting template fields…", { june: true, juneImage: "analyzing" });
       const res = await apiRequest("POST", `/api/encounters/${encounterId}/generate-template-note`, {
         templateId: parseInt(selectedTemplateId),
@@ -1106,11 +1111,11 @@ export function EncounterEditor({
       };
       if (savedId) {
         // PATIENT-SAFETY: tripwire — server returns 409 on patient mismatch.
-        const res = await apiRequest("PUT", `/api/encounters/${savedId}`, { ...body, expectedPatientId: parseInt(patientId) });
-        return res.json();
+        return dateSession.save(savedId, { ...body, expectedPatientId: parseInt(patientId) });
       } else {
         const res = await apiRequest("POST", "/api/encounters", body);
         const data = await res.json();
+        dateSession.remember(data);
         setSavedId(data.id);
         return data;
       }
@@ -1171,6 +1176,7 @@ export function EncounterEditor({
         };
         const saveRes = await apiRequest("POST", "/api/encounters", body);
         const saved = await saveRes.json();
+        dateSession.remember(saved);
         setSavedId(saved.id);
         encounterId = saved.id;
       }
@@ -1187,7 +1193,7 @@ export function EncounterEditor({
       // visit type currently selected in the UI — otherwise a visit-type change made
       // after the encounter was auto-created never reaches the pipeline and the note
       // is generated with a stale (e.g. "follow-up") visit type.
-      await apiRequest("PUT", `/api/encounters/${encounterId}`, { transcription: transcription || null, visitType, chiefComplaint: chiefComplaint || null, expectedPatientId });
+      await dateSession.save(encounterId!, { visitDate, transcription: transcription || null, visitType, chiefComplaint: chiefComplaint || null, expectedPatientId });
 
       const res = await apiRequest("POST", `/api/encounters/${encounterId}/generate-soap`, { expectedPatientId });
       return { ...(await res.json()), encounterId };
@@ -1256,12 +1262,13 @@ export function EncounterEditor({
         };
         const saveRes = await apiRequest("POST", "/api/encounters", body);
         const saved = await saveRes.json();
+        dateSession.remember(saved);
         setSavedId(saved.id);
         encounterId = saved.id;
       } else {
         // Persist visit metadata too — the visit type selected in the UI must reach
         // the pipeline even if it changed after the encounter was created.
-        await apiRequest("PUT", `/api/encounters/${encounterId}`, { transcription: transcription || null, visitType, chiefComplaint: chiefComplaint || null, expectedPatientId: parseInt(patientId) });
+        await dateSession.save(encounterId!, { visitDate, transcription: transcription || null, visitType, chiefComplaint: chiefComplaint || null, expectedPatientId: parseInt(patientId) });
       }
 
       // Step 2: Generate SOAP first, then use its persisted plan for evidence.
@@ -1349,6 +1356,7 @@ export function EncounterEditor({
   const saveSoapMutation = useMutation({
     mutationFn: async () => {
       if (!savedId) throw new Error("Save the encounter first");
+      await dateSession.save(savedId, { visitDate, visitType, expectedPatientId: Number(patientId) });
       // PATIENT-SAFETY: tripwire (see soapMutation above for rationale).
       const res = await apiRequest("PUT", `/api/encounters/${savedId}/soap`, {
         soapNote: soap,
@@ -1588,19 +1596,21 @@ export function EncounterEditor({
       // Include the current SOAP state so unsaved edits are persisted as
       // part of the same atomic sign operation. Without this, the server
       // would snapshot the last persisted (potentially un-edited) note.
-      const res = await apiRequest("POST", `/api/encounters/${savedId}/sign`, {
-        expectedPatientId: patientId ? parseInt(patientId) : undefined,
-        sendForReview,
-        soapNote: soap,
+      return dateSession.beforeAction(savedId, { visitDate, visitType, expectedPatientId: Number(patientId) }, async expectedVisitDate => {
+        const res = await apiRequest("POST", `/api/encounters/${savedId}/sign`, {
+          expectedPatientId: patientId ? parseInt(patientId) : undefined,
+          sendForReview, expectedVisitDate, soapNote: soap,
+        });
+        return res.json();
       });
-      return res.json();
     },
     onSuccess: (data: any) => {
       // Slice 2: prospective full-gate parks the chart in
       // pending_collab_review state — signedAt stays null until the
       // physician concurs. UI must reflect "locked but not yet signed".
       const isPendingReview = !!data.pendingReview;
-      setSignedAtLocal(isPendingReview ? null : (data.signedAt ?? new Date().toISOString()));
+      setSignatureVersions(data.encounterVersions);
+      setSignedAtLocal(isPendingReview ? null : (data.signedAt ?? null));
       setSignedByLocal(data.signedBy ?? null);
       setIsAmendedLocal(data.isAmended ?? false);
       setSoapViewMode("view");
@@ -1908,6 +1918,7 @@ export function EncounterEditor({
                   id="visit-date"
                   type="date"
                   value={visitDate}
+                  disabled={isSigned || !!encounter?.pendingCollabReview || !!encounter?.lockedAt}
                   onChange={e => setVisitDate(e.target.value)}
                   data-testid="input-visit-date"
                 />
@@ -2133,6 +2144,7 @@ export function EncounterEditor({
                         transcription: transcription || null,
                       });
                       const data = await res.json();
+                      dateSession.remember(data);
                       encounterId = data.id;
                       setSavedId(data.id);
                       invalidate();
@@ -2182,6 +2194,7 @@ export function EncounterEditor({
                       };
                       const res = await apiRequest("POST", "/api/encounters", body);
                       const data = await res.json();
+                      dateSession.remember(data);
                       setSavedId(data.id);
                       invalidate();
                       toast({ title: "Transcription auto-saved", description: "You can finish the SOAP note later." });
@@ -3155,6 +3168,7 @@ export function EncounterEditor({
         {/* ── Tab: SOAP Note ──────────────────────────────────────────── */}
         {activeTab === "soap" && (
           <>
+            <EncounterSignatureHistory versions={signatureVersions ?? encounter?.encounterVersions} />
             {/* Signed note banner */}
             {isSigned && (
               <div className="rounded-md border border-emerald-200 bg-emerald-50/70">
@@ -3166,7 +3180,7 @@ export function EncounterEditor({
                     </p>
                     <p className="text-xs text-emerald-700 mt-0.5">
                       {signedByLocal ? `Signed by ${signedByLocal}` : "Signed"}
-                      {signedAtLocal ? ` · ${new Date(signedAtLocal as string).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ""}
+                      {signedAtLocal ? ` · Signed on ${new Date(signedAtLocal as string).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ""}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">

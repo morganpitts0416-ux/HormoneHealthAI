@@ -11,6 +11,7 @@ import { execFile } from "child_process";
 import multer from "multer";
 import OpenAI from "openai";
 import { z } from "zod";
+import { parseEncounterDate, EncounterDateError } from "@shared/encounter-date";
 import * as schema from "@shared/schema";
 import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable, clinicProviderInvites, patientFormAssignments, clinicalEncounters, patients as patientsTable, insertAppointmentTypeSchema, insertProviderAvailabilitySchema, insertCalendarBlockSchema, insertPatientVitalSchema, insertVitalsMonitoringEpisodeSchema, PATIENT_DOCUMENT_CATEGORIES, type PatientDocumentCategory, chartReviewCollaborators, chartReviewAgreements, type InsertNoteTemplate, updateClinicalBlockDefaultsSchema, insertEncounterTemplateSchema, clinicianStaff } from "@shared/schema";
 import { eq, and, sql, desc, isNull, isNotNull, or, ilike, inArray } from "drizzle-orm";
@@ -497,25 +498,8 @@ function persistVitalsFromNoteText(
     : 'Auto-recorded from AI-generated note';
   Promise.resolve()
     .then(async () => {
-      if (encounterId) {
-        // Upsert by sourceEncounterId: if the note was amended with updated vitals,
-        // UPDATE the existing row so there is never more than one vital entry per note.
-        const existing = await storageDb
-          .select({ id: schema.patientVitals.id })
-          .from(schema.patientVitals)
-          .where(and(
-            eq(schema.patientVitals.patientId, patientId),
-            eq(schema.patientVitals.sourceEncounterId, encounterId),
-          ))
-          .limit(1);
-        if (existing.length > 0) {
-          await storageDb
-            .update(schema.patientVitals)
-            .set({ ...(v as any), bmi, notes: noteTag })
-            .where(eq(schema.patientVitals.id, existing[0].id));
-          return;
-        }
-      }
+      // Storage resolves the CURRENT authorized encounter date under a row
+      // lock; a late generation result cannot restore an earlier clinical date.
       await storage.createPatientVital({
         patientId,
         clinicianId,
@@ -9816,6 +9800,9 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       const clinicId = getEffectiveClinicId(req);
       const { patientId, visitDate, visitType, chiefComplaint, linkedLabResultId, clinicianNotes, transcription, noteType, phoneContact, soapNote } = req.body;
       if (!patientId || !visitDate) return res.status(400).json({ message: "patientId and visitDate are required" });
+      let clinicalDate: Date;
+      try { clinicalDate = parseEncounterDate(visitDate); }
+      catch { return res.status(400).json({ message: "Invalid encounter date" }); }
 
       // PATIENT-SAFETY: Verify the patient belongs to this clinician's clinic
       // before creating an encounter against them. Without this check the
@@ -9833,7 +9820,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
         clinicianId,
         clinicId,
         patientId: parsedPatientId,
-        visitDate: new Date(visitDate),
+        visitDate: clinicalDate,
         visitType: visitType || 'follow-up',
         chiefComplaint: chiefComplaint || null,
         linkedLabResultId: linkedLabResultId ? parseInt(linkedLabResultId) : null,
@@ -9969,6 +9956,11 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
       const { visitDate, visitType, chiefComplaint, transcription, audioProcessed, linkedLabResultId, clinicianNotes, phoneContact, clinicalExtraction, evidenceSuggestions, expectedPatientId } = req.body;
+      let clinicalDate: Date | undefined;
+      if (visitDate !== undefined) {
+        try { clinicalDate = parseEncounterDate(visitDate); }
+        catch { return res.status(400).json({ message: "Invalid encounter date" }); }
+      }
 
       // PATIENT-SAFETY: stale-context tripwire. If the client tells us which
       // patient the UI thinks this encounter belongs to and it doesn't match,
@@ -10000,7 +9992,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       }
 
       const updated = await storage.updateEncounter(id, clinicianId, {
-        ...(visitDate !== undefined && { visitDate: new Date(visitDate) }),
+        ...(clinicalDate !== undefined && { visitDate: clinicalDate, expectedVisitDate: req.body.expectedVisitDate }),
         ...(visitType !== undefined && { visitType }),
         ...(chiefComplaint !== undefined && { chiefComplaint }),
         ...(transcription !== undefined && { transcription }),
@@ -10014,6 +10006,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       if (!updated) return res.status(404).json({ message: "Encounter not found" });
       res.json(updated);
     } catch (err) {
+      if (err instanceof EncounterDateError) return res.status(err.status).json({ message: err.message });
       res.status(500).json({ message: "Failed to update encounter" });
     }
   });
@@ -10098,7 +10091,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
         const persisted = await storage.updateEncounter(
           id,
           clinicianId,
-          { soapNote: req.body.soapNote },
+          { soapNote: req.body.soapNote, expectedVisitDate: req.body.expectedVisitDate } as any,
           clinicId,
         );
         if (persisted) encounter = persisted;
@@ -10170,7 +10163,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
               clinicId,
               agreement: gate.agreement,
               reasons: gate.reasons,
-              parkEncounter: { signedBy },
+              parkEncounter: { signedBy, expectedVisitDate: req.body.expectedVisitDate },
             });
             if (!updatedGated || !item) {
               // Defense-in-depth: if the atomic submission fails for any
@@ -10188,6 +10181,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
             }
           }
         } catch (e) {
+          if (e instanceof EncounterDateError) throw e;
           // Defense-in-depth: if the gate calculation itself fails, fall
           // through to standard sign rather than block the user. The
           // post-sign enqueue hook below will still queue retrospectively.
@@ -10208,6 +10202,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
 
       const updated = await storage.updateEncounter(id, clinicianId, {
         signedAt: now,
+        expectedVisitDate: req.body.expectedVisitDate,
         signedBy,
         isAmended: isAlreadySigned,
         amendedAt: isAlreadySigned ? now : undefined,
@@ -10227,7 +10222,10 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       // a 500 here would confuse the user (sign succeeded but response failed).
       if (encounter.soapNote) {
         try {
-          persistVitalsFromNoteText(encounter.patientId, clinicianId, encounter.soapNote, id);
+          // Pass the same note text used by generation persistence. Extraction
+          // rules are unchanged; the encounter link resolves its clinical date.
+          const noteText = typeof encounter.soapNote === "string" ? encounter.soapNote : encounter.soapNote.fullNote;
+          if (noteText) persistVitalsFromNoteText(encounter.patientId, clinicianId, noteText, id);
         } catch (vitalsErr) {
           console.warn('[Sign] vitals extraction failed (non-fatal, note is signed):', (vitalsErr as any)?.message ?? vitalsErr);
         }
@@ -10251,6 +10249,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
 
       res.json({ ...updated, chartReviewItem });
     } catch (err) {
+      if (err instanceof EncounterDateError) return res.status(err.status).json({ message: err.message });
       console.error('[Sign] Error:', err);
       res.status(500).json({ message: "Failed to sign note." });
     }
@@ -16269,22 +16268,8 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       // Upsert: if a sourceEncounterId is present, update the existing row
       // for that encounter instead of creating a duplicate.
       if (data.sourceEncounterId) {
-        const existing = await storageDb
-          .select({ id: schema.patientVitals.id })
-          .from(schema.patientVitals)
-          .where(and(
-            eq(schema.patientVitals.patientId, patientId),
-            eq(schema.patientVitals.sourceEncounterId, data.sourceEncounterId),
-          ))
-          .limit(1);
-        if (existing.length > 0) {
-          const updated = await storageDb
-            .update(schema.patientVitals)
-            .set({ ...data, bmi })
-            .where(eq(schema.patientVitals.id, existing[0].id))
-            .returning();
-          return res.json(updated[0]);
-        }
+        const vital = await storage.upsertEncounterVital({ patientId, clinicianId, ...data, bmi }, clinicId);
+        return res.json(vital);
       }
 
       const vital = await storage.createPatientVital({
@@ -16295,6 +16280,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       });
       res.status(201).json(vital);
     } catch (err: any) {
+      if (err instanceof EncounterDateError) return res.status(err.status).json({ message: err.message });
       console.error("[Vitals] create error:", err?.message, err?.stack ?? err);
       res.status(500).json({ message: err?.message || "Failed to save vitals" });
     }
