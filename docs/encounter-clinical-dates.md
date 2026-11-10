@@ -93,32 +93,42 @@ dependencies. No package manifest or lockfile changes were made.
 | Existing regression suites | 71 passed | 71 passed |
 | Date semantics/editor/signature UI | Not present | 21 passed |
 | Startup/build/portal-independence guards | Not present | 3 passed |
+| Male lab rendering and actual Spruce route/auth/clinic-scope regressions | Not present | 8 passed |
 | Actual storage with private PostgreSQL 18.4 | Not present | 8 passed |
-| TypeScript (`tsc --noEmit --incremental false`) | FAIL: 247 diagnostics | FAIL: 245 diagnostics |
+| TypeScript (`tsc --noEmit --incremental false`) | FAIL: 247 diagnostics | FAIL: 242 diagnostics |
 
-Release tests total **103 passed**, without skipped PostgreSQL checks. The
+Release tests total **111 passed**, without skipped PostgreSQL checks. The
 PostgreSQL runner creates and removes a new private socket cluster; it never
 resolves inherited application database credentials. Its installed Vitest binary
 is invoked directly to avoid package downloads or the Nix npx wrapper's environment
 requirements.
 
 TypeScript diagnostics were compared by file, error code and message with line
-coordinates normalized. There are **no newly introduced diagnostics**; two prior
-route argument-type errors are eliminated. Both builds retain existing large
+coordinates normalized. There are **no newly introduced diagnostics**. The date
+integration eliminated two prior route argument-type errors. The subsequent two
+approved runtime corrections remove three additional diagnostics: the undefined
+lab identifier, obsolete summary props, and undefined route database identifier.
+Both builds retain existing large
 chunk/bundle warnings. This is not a globally clean TypeScript release.
 
-### Deployment disposition: NO-GO pending review
+### Narrow runtime corrections and publication boundary
 
-GitHub main already contains runtime-risk diagnostics including:
+The separately approved corrections are limited to:
 
-- The male lab page references undefined `savedLabId`.
-- The Spruce patient-rematching route references undefined `db`.
-- Other pre-existing diagnostics include missing storage-interface members and
-  downlevel iteration issues; these were not broadly remediated.
+- Removing obsolete `labId`/`patientId` props from the male lab's PatientSummary.
+  Its actual JSX is rendered in a regression without an undefined identifier.
+- Using the existing `storageDb` alias in the Spruce patient-rematching route.
+  The existing authentication guard, effective-clinic resolver, clinic/phone SQL
+  predicates and backfill/error behavior are exercised with synthetic fixtures.
 
-Those first two references are preserved unchanged from main to respect the
-encounter-date-only scope. Passing date/regression tests do not certify these
-uncovered paths or establish parity with the current production image. Restore
-the separately reviewed fixes and verify the final release before approving
-production deployment. No push, main merge, container build, production database
-operation, historical repair or GCP deployment has been performed.
+All encounter-date and startup changes are retained. No production data or live
+Spruce connection is used by those tests. No transfer feature, prescription work,
+schema migration, dependency or lockfile change is introduced.
+
+The 242 remaining baseline diagnostics include missing storage-interface members
+and downlevel iteration issues; these were not broadly remediated. Production
+source/image parity and environment/schema preflight remain separately reviewed
+deployment gates. The branch is prepared for authorized GitHub publication, not
+automatic approval to merge or deploy. Publication SHA/status is reported
+separately. No main merge, container build, production database operation,
+historical repair, traffic change or GCP deployment was performed.

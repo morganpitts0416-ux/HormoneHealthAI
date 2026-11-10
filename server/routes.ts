@@ -3312,7 +3312,7 @@ Rules:
       const clinicId = getEffectiveClinicId(req);
       if (!clinicId) return res.status(400).json({ error: "No clinic context" });
       // Get all patients with phones in this clinic
-      const patients = await db
+      const patients = await storageDb
         .select({ id: schema.patients.id, phone: schema.patients.phone })
         .from(schema.patients)
         .where(and(

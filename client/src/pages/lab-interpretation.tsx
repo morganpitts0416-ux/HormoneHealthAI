@@ -746,8 +746,6 @@ export default function LabInterpretation() {
                   <PatientSummary
                     summary={interpretationResult.patientSummary}
                     labValues={labValues}
-                    labId={savedLabId}
-                    patientId={selectedPatient?.id ?? null}
                     generationStatus={interpretationResult.patientSummaryGenerationStatus}
                   />
                 )}
