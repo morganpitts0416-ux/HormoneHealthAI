@@ -3,6 +3,7 @@ import { getSeedAsEntries } from "./medication-seed.js";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import { parseEncounterDate, encounterDay, encounterVitalDate, assertEncounterDateEdit, EncounterDateError } from "@shared/encounter-date";
+import { vitalMeasurementDate } from "@shared/vital-date";
 const { Pool } = pg;
 import * as schema from "@shared/schema";
 import { detectControlledSubstances, detectNewDiagnoses, computeQuotaPeriodKey, computeEnforcementDueAt, daysPastDue } from "./lib/chart-review-rules";
@@ -2904,7 +2905,7 @@ export class DbStorage implements IStorage {
     data: { patientId: number; clinicianId: number } & schema.InsertPatientVital & { bmi?: number | null },
   ): Promise<schema.PatientVital> {
     if (data.sourceEncounterId) return this.upsertEncounterVital(data);
-    const recordedAt = data.recordedAt ? new Date(data.recordedAt as any) : new Date();
+    const recordedAt = data.recordedAt !== undefined ? vitalMeasurementDate(data.recordedAt) : new Date();
     const [row] = await db
       .insert(schema.patientVitals)
       .values({
@@ -2955,7 +2956,7 @@ export class DbStorage implements IStorage {
       if (current?.sourceEncounterId && current.source === "clinic" && !current.monitoringEpisodeId) {
         throw new EncounterDateError("Correct the source encounter date through its amendment/review process.", 423);
       }
-      updates.recordedAt = new Date(data.recordedAt as any);
+      updates.recordedAt = vitalMeasurementDate(data.recordedAt);
     }
     if (Object.keys(updates).length === 0) return null;
     const [row] = await db

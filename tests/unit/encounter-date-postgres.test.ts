@@ -4,6 +4,32 @@ import { getTableColumns, getTableName, SQL, eq } from "drizzle-orm";
 import { PgDialect, getTableConfig } from "drizzle-orm/pg-core";
 import * as schema from "../../shared/schema";
 import { parseEncounterDate, encounterVitalDate } from "../../shared/encounter-date";
+import { EncounterDateError } from "../../shared/encounter-date";
+import { readFileSync } from "node:fs";
+import { runInNewContext } from "node:vm";
+import ts from "typescript";
+
+// Execute the actual registered vital callbacks and auth/clinic helpers against
+// real isolated storage, without starting an app or loading external services.
+const routes = ts.createSourceFile("routes.ts", readFileSync("server/routes.ts", "utf8"), ts.ScriptTarget.Latest, true);
+const functions = new Map<string, ts.Node>();
+const handlers = new Map<string, ts.Node>();
+function locate(node: ts.Node) {
+  if (ts.isFunctionDeclaration(node) && node.name) functions.set(node.name.text, node);
+  if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) &&
+      node.arguments[0] && ts.isStringLiteral(node.arguments[0]) &&
+      ["/api/patients/:id/vitals", "/api/vitals/:id"].includes(node.arguments[0].text)) {
+    expect(node.arguments[1].getText(routes)).toBe("requireAuth");
+    handlers.set(`${node.expression.name.text}:${node.arguments[0].text}`, node.arguments[node.arguments.length - 1]);
+  }
+  ts.forEachChild(node, locate);
+}
+locate(routes);
+function evaluate(node: ts.Node, context: Record<string, unknown>) {
+  return runInNewContext(ts.transpileModule(`(${node.getText(routes)})`, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
+  }).outputText, context);
+}
 
 // Import the REAL storage with only the connection target replaced. No inherited
 // application URL or credential is used, even if this test is invoked manually.
@@ -80,6 +106,77 @@ describe.skipIf(!process.env.ENCOUNTER_DATE_TEST_SOCKET)("Encounter date lifecyc
     signedAt: timestamp, signedBy: "Synthetic Provider", lockedAt: timestamp,
     encounterVersions: [{ action: "initial_sign" }],
   } as any, 10);
+
+  async function invokeVital(method: "post" | "patch", id: number, body: unknown, authenticated = true) {
+    const context: Record<string, unknown> = {
+      storage, storageDb: db, schema, eq, insertPatientVitalSchema: schema.insertPatientVitalSchema,
+      EncounterDateError, console: { error: vi.fn() },
+    };
+    for (const name of ["getClinicianId", "getEffectiveClinicId", "computeBmi", "requireAuth"]) {
+      context[name] = evaluate(functions.get(name)!, context);
+    }
+    const req = { params: { id: String(id) }, body, session: {},
+      user: { id: 1, defaultClinicId: 10 }, isAuthenticated: () => authenticated };
+    const res = { statusCode: 200, body: undefined as any,
+      status(code: number) { this.statusCode = code; return this; },
+      json(value: unknown) { this.body = value; return this; } };
+    let allowed = false;
+    (context.requireAuth as Function)(req, res, () => { allowed = true; });
+    if (allowed) {
+      const path = method === "post" ? "/api/patients/:id/vitals" : "/api/vitals/:id";
+      await evaluate(handlers.get(`${method}:${path}`)!, context)(req, res);
+    }
+    return res;
+  }
+
+  it("creates and corrects standalone measurement dates via real routes/storage without changing audit time", async () => {
+    const saved = await invokeVital("post", 1, { source: "clinic", heartRate: 72, recordedAt: "2026-11-02" });
+    expect(saved.statusCode).toBe(201);
+    expect(saved.body.recordedAt.toISOString()).toBe("2026-11-02T00:00:00.000Z");
+    const auditTime = saved.body.createdAt;
+    const edited = await invokeVital("patch", saved.body.id, { recordedAt: "2026-10-31" });
+    expect(edited.statusCode).toBe(200);
+    expect(edited.body.recordedAt.toISOString()).toBe("2026-10-31T00:00:00.000Z");
+    expect(edited.body.createdAt).toEqual(auditTime);
+    expect(edited.body.clinicianId).toBe(saved.body.clinicianId);
+    const reopened = (await storage.getPatientVitals(1)).find(v => v.id === saved.body.id)!;
+    expect(reopened.recordedAt.toISOString()).toBe("2026-10-31T00:00:00.000Z");
+    for (const value of ["", "not-a-date", "2026-02-29"]) {
+      expect((await invokeVital("post", 1, { recordedAt: value })).statusCode).toBe(400);
+      expect((await invokeVital("patch", saved.body.id, { recordedAt: value })).statusCode).toBe(400);
+    }
+    expect((await storage.getPatientVitals(1)).find(v => v.id === saved.body.id)?.recordedAt).toEqual(reopened.recordedAt);
+  });
+
+  it("preserves real route authentication, clinic isolation and linked-date locks", async () => {
+    expect((await invokeVital("post", 1, { recordedAt: oldDay }, false)).statusCode).toBe(401);
+    expect((await invokeVital("post", 2, { recordedAt: oldDay })).statusCode).toBe(404);
+    const foreign = await storage.createPatientVital({ patientId: 2, clinicianId: 2, recordedAt: oldDay });
+    expect((await invokeVital("patch", foreign.id, { recordedAt: "2026-01-01" })).statusCode).toBe(403);
+    expect((await storage.getPatientVitals(2)).find(v => v.id === foreign.id)?.recordedAt.toISOString())
+      .toBe(`${oldDay}T00:00:00.000Z`);
+    for (const state of [{}, { signedAt: now, lockedAt: now }, { pendingCollabReview: true, lockedAt: now }]) {
+      const enc = await create(oldDay);
+      const linked = await vital(enc.id, { recordedAt: "2026-11-02" });
+      if (Object.keys(state).length) await storage.updateEncounter(enc.id, 1, state as any, 10);
+      expect(linked.recordedAt).toEqual(encounterVitalDate(oldDay));
+      expect((await invokeVital("patch", linked.id, { recordedAt: "2026-11-02" })).statusCode).toBe(423);
+      expect((await storage.getPatientVitals(1)).find(v => v.id === linked.id)?.recordedAt).toEqual(linked.recordedAt);
+    }
+  });
+
+  it("orders standalone history by measurement date and preserves legacy timestamps", async () => {
+    const values = ["2000-02-03", "2000-02-01", "2000-02-02"];
+    const readings = await Promise.all(values.map(recordedAt =>
+      storage.createPatientVital({ patientId: 3, clinicianId: 1, recordedAt, heartRate: 70 })));
+    const history = await storage.getPatientVitals(3);
+    expect(history.filter(v => readings.some(r => r.id === v.id)).map(v => v.recordedAt.toISOString().slice(0, 10)))
+      .toEqual(["2000-02-03", "2000-02-02", "2000-02-01"]);
+    const legacy = await storage.createPatientVital({ patientId: 3, clinicianId: 1, recordedAt: "2026-11-02T23:10:00-06:00" });
+    const updated = await storage.updatePatientVital(legacy.id, 3, { heartRate: 75 });
+    expect(updated?.recordedAt.toISOString()).toBe("2026-11-03T05:10:00.000Z");
+    expect(updated?.createdAt).toEqual(legacy.createdAt);
+  });
 
   it("backdates after auto-creation, generates, saves, reopens, and signs later without changing audit creation", async () => {
     const enc = await create("2026-11-09");

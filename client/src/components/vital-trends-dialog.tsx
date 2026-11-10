@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { PatientVital } from "@shared/schema";
+import { encounterDay } from "@shared/encounter-date";
 
 interface Props {
   open: boolean;
@@ -19,6 +20,7 @@ interface Props {
 }
 
 interface EditForm {
+  dateTaken: string;
   systolicBp: string;
   diastolicBp: string;
   heartRate: string;
@@ -31,6 +33,7 @@ interface EditForm {
 
 function toEditForm(v: PatientVital): EditForm {
   return {
+    dateTaken: encounterDay(v.recordedAt),
     systolicBp: v.systolicBp != null ? String(v.systolicBp) : "",
     diastolicBp: v.diastolicBp != null ? String(v.diastolicBp) : "",
     heartRate: v.heartRate != null ? String(v.heartRate) : "",
@@ -102,6 +105,10 @@ export function VitalTrendsDialog({ open, onOpenChange, patientId, patientName }
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<EditForm | null>(null);
+  useEffect(() => {
+    setEditingId(null);
+    setEditForm(null);
+  }, [patientId, open]);
 
   const { data: vitalsRaw, isLoading } = useQuery<PatientVital[]>({
     queryKey: ["/api/patients", patientId, "vitals"],
@@ -126,7 +133,7 @@ export function VitalTrendsDialog({ open, onOpenChange, patientId, patientName }
   });
 
   const editMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Record<string, number | null> }) =>
+    mutationFn: ({ id, data }: { id: number; data: Record<string, number | string | null> }) =>
       apiRequest("PATCH", `/api/vitals/${id}`, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/patients", patientId, "vitals"] });
@@ -151,10 +158,16 @@ export function VitalTrendsDialog({ open, onOpenChange, patientId, patientName }
   }
 
   function saveEdit(id: number) {
-    if (!editForm) return;
+    if (!editForm?.dateTaken) return;
+    const original = vitals.find(v => v.id === id);
+    if (!original) return;
     editMutation.mutate({
       id,
       data: {
+        // Unchanged dates keep legacy timestamp precision. Encounter-linked
+        // dates belong to the encounter and are never submitted by this editor.
+        ...(!original.sourceEncounterId && editForm.dateTaken !== encounterDay(original.recordedAt)
+          ? { recordedAt: editForm.dateTaken } : {}),
         systolicBp: numOrNull(editForm.systolicBp),
         diastolicBp: numOrNull(editForm.diastolicBp),
         heartRate: numOrNull(editForm.heartRate),
@@ -348,7 +361,19 @@ export function VitalTrendsDialog({ open, onOpenChange, patientId, patientName }
                           return (
                             <tr key={v.id} className="border-t bg-muted/30">
                               <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">
-                                {fmtDateFull(v.recordedAt as any)}
+                                <label className="text-xs">
+                                  Date Taken
+                                  <Input
+                                    type="date"
+                                    required
+                                    aria-label={`Date Taken for reading ${v.id}`}
+                                    data-testid={`input-edit-date-${v.id}`}
+                                    value={editForm.dateTaken}
+                                    disabled={!!v.sourceEncounterId}
+                                    onChange={e => setField("dateTaken", e.target.value)}
+                                  />
+                                </label>
+                                {!!v.sourceEncounterId && <span className="text-xs text-muted-foreground">Inherited from encounter</span>}
                               </td>
                               <td className="px-2 py-1.5">
                                 <div className="flex items-center gap-1">
@@ -398,7 +423,7 @@ export function VitalTrendsDialog({ open, onOpenChange, patientId, patientName }
                                     size="icon"
                                     variant="default"
                                     onClick={() => saveEdit(v.id)}
-                                    disabled={isSaving}
+                                    disabled={isSaving || !editForm.dateTaken}
                                   >
                                     {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                                   </Button>

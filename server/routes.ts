@@ -16328,6 +16328,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       if (!updated) return res.status(400).json({ message: "No changes" });
       res.json(updated);
     } catch (err: any) {
+      if (err instanceof EncounterDateError) return res.status(err.status).json({ message: err.message });
       console.error("[Vitals] patch error:", err);
       res.status(500).json({ message: err.message || "Failed to update vitals" });
     }

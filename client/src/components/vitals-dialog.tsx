@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { PatientVital } from "@shared/schema";
 import { ConfigureVitalsMonitoringDialog } from "./configure-vitals-monitoring-dialog";
+import { localClinicalDay } from "@shared/vital-date";
 
 interface VitalsDialogProps {
   open: boolean;
@@ -266,22 +267,23 @@ type _MonitoringResp = {
   alertsPerEpisode: Record<string, _Alert[]>;
 };
 
+function emptyVitalsForm() {
+  return {
+    dateTaken: localClinicalDay(), systolicBp: "", diastolicBp: "", heartRate: "",
+    respiratoryRate: "", temperature: "", oxygenSaturation: "", painScore: "",
+    weightLbs: "", heightInches: "", notes: "",
+  };
+}
+
 export function VitalsDialog({ open, onOpenChange, patientId, patientName, onShowTrends }: VitalsDialogProps) {
   const { toast } = useToast();
   const [showForm, setShowForm] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
-  const [form, setForm] = useState({
-    systolicBp: "",
-    diastolicBp: "",
-    heartRate: "",
-    respiratoryRate: "",
-    temperature: "",
-    oxygenSaturation: "",
-    painScore: "",
-    weightLbs: "",
-    heightInches: "",
-    notes: "",
-  });
+  const [form, setForm] = useState(emptyVitalsForm);
+  useEffect(() => {
+    setShowForm(false);
+    setForm(emptyVitalsForm());
+  }, [patientId]);
 
   // All vitals (clinic + patient-logged) come from one endpoint.
   const { data: vitals = [], isLoading } = useQuery<PatientVital[]>({
@@ -307,7 +309,7 @@ export function VitalsDialog({ open, onOpenChange, patientId, patientName, onSho
 
   const createMut = useMutation({
     mutationFn: async () => {
-      const payload: any = { source: "clinic" };
+      const payload: any = { source: "clinic", recordedAt: form.dateTaken };
       const intField = (s: string) => { const n = parseInt(s, 10); return Number.isFinite(n) ? n : undefined; };
       const floatField = (s: string) => { const n = parseFloat(s); return Number.isFinite(n) ? n : undefined; };
       if (form.systolicBp.trim())     { const v = intField(form.systolicBp);     if (v !== undefined) payload.systolicBp = v; }
@@ -327,7 +329,7 @@ export function VitalsDialog({ open, onOpenChange, patientId, patientName, onSho
       queryClient.invalidateQueries({ queryKey: ["/api/patients", patientId, "vitals"] });
       queryClient.invalidateQueries({ queryKey: ["/api/patients", patientId, "vitals", "all"] });
       setShowForm(false);
-      setForm({ systolicBp: "", diastolicBp: "", heartRate: "", respiratoryRate: "", temperature: "", oxygenSaturation: "", painScore: "", weightLbs: "", heightInches: "", notes: "" });
+      setForm(emptyVitalsForm());
       toast({ title: "Vitals recorded" });
     },
     onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
@@ -362,7 +364,11 @@ export function VitalsDialog({ open, onOpenChange, patientId, patientName, onSho
   // Pre-fill height from most recent entry that has it
   const lastHeight = safeVitals.find((v) => v.heightInches)?.heightInches;
   const handleOpenForm = () => {
-    setForm((f) => ({ ...f, heightInches: f.heightInches || (lastHeight ? String(lastHeight) : "") }));
+    setForm((f) => ({
+      ...f,
+      dateTaken: showForm ? f.dateTaken : localClinicalDay(),
+      heightInches: f.heightInches || (lastHeight ? String(lastHeight) : ""),
+    }));
     setShowForm(true);
   };
 
@@ -581,6 +587,18 @@ export function VitalsDialog({ open, onOpenChange, patientId, patientName, onSho
                   <SourceBadge source="clinic" />
                   <span className="text-xs text-muted-foreground">Recording vitals captured in clinic.</span>
                 </div>
+                <div>
+                  <Label htmlFor="vitals-date-taken" className="text-xs">Date Taken</Label>
+                  <Input
+                    id="vitals-date-taken"
+                    type="date"
+                    required
+                    value={form.dateTaken}
+                    onChange={(e) => setForm((f) => ({ ...f, dateTaken: e.target.value }))}
+                    data-testid="input-vitals-date-taken"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">The date the measurements were taken, not the date entered.</p>
+                </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   <div>
                     <Label className="text-xs">Systolic BP</Label>
@@ -704,7 +722,7 @@ export function VitalsDialog({ open, onOpenChange, patientId, patientName, onSho
                   <Button
                     size="sm"
                     onClick={() => createMut.mutate()}
-                    disabled={createMut.isPending}
+                    disabled={createMut.isPending || !form.dateTaken}
                     data-testid="button-save-vitals"
                   >
                     {createMut.isPending && <Loader2 className="w-3 h-3 animate-spin mr-1" />}

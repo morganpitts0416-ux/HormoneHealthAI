@@ -2707,7 +2707,7 @@ function PatientContextRail({
   const vitalCols = useMemo(() => recentVitals.map(v => ({
     vital: v,
     src: (v.source === "patient_logged" ? "patient_logged" : "clinic") as "clinic" | "patient_logged",
-    dateLabel: new Date(v.recordedAt).toLocaleDateString("en-US", { month: "numeric", day: "numeric" }),
+    dateLabel: new Date(v.recordedAt).toLocaleDateString("en-US", { month: "numeric", day: "numeric", timeZone: "UTC" }),
     values: new Map<string, number | null>(
       VITAL_ROWS.map(r => [r.key as string, (v[r.key] as number | null | undefined) ?? null])
     ),
